@@ -1,0 +1,95 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "ochami-helm.fullname" . }}-smd
+  labels:
+    {{- include "ochami-helm.labels" . | nindent 4 }}
+    app.kubernetes.io/component: smd
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "ochami-helm.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: smd
+  template:
+    metadata:
+      labels:
+        {{- include "ochami-helm.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: smd
+    spec:
+      initContainers:
+#        - name: wait-for-postgres
+#          image: busybox:1.36 # Using a recent busybox version with nc
+#          imagePullPolicy: IfNotPresent
+#          command: ['sh', '-c', 'until nc -z {{ include "ochami-helm.fullname" . }}-postgres {{ .Values.service.postgres.port | default "5432" }}; do echo "waiting for postgres..."; sleep 2; done;']
+        - name: smd-init-run
+          image: "{{ .Values.smdInit.image.repository }}:{{ .Values.smdInit.image.tag }}"
+          imagePullPolicy: {{ .Values.smdInit.image.pullPolicy }}
+          env:
+            - name: SMD_DBHOST
+              value: "{{ include "ochami-helm.fullname" . }}-postgres"
+            - name: SMD_DBPORT
+              value: "{{ .Values.smd.db.port }}"
+            - name: SMD_DBNAME
+              value: "{{ .Values.smd.db.name }}"
+            - name: SMD_DBUSER
+              value: "{{ .Values.smd.db.user }}"
+            - name: SMD_DBPASS
+              value: "{{ .Values.smd.db.pass }}"
+            - name: SMD_DBOPTS
+              value: "{{ .Values.smd.db.opts }}"
+          #command: ["/smd-init"]
+          command: ['sh', '-c', 'until nc -z {{ include "ochami-helm.fullname" . }}-postgres {{ .Values.service.postgres.port | default "5432" }}; do echo "waiting for postgres..."; sleep 2; done; /smd-init']
+      containers:
+        - name: smd
+          image: "{{ .Values.image.smd.repository }}:{{ .Values.image.smd.tag }}"
+          imagePullPolicy: {{ .Values.image.smd.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 27779
+              protocol: TCP
+          env:
+            - name: SMD_DBHOST
+              value: "{{ include "ochami-helm.fullname" . }}-postgres"
+            - name: SMD_DBPORT
+              value: "{{ .Values.smd.db.port }}"
+            - name: SMD_DBNAME
+              value: "{{ .Values.smd.db.name }}"
+            - name: SMD_DBUSER
+              value: "{{ .Values.smd.db.user }}"
+            - name: SMD_DBPASS
+              value: "{{ .Values.smd.db.pass }}"
+            - name: SMD_DBOPTS
+              value: "{{ .Values.smd.db.opts }}"
+            - name: SMD_JWKS_URL
+              value: "{{ .Values.smd.jwks.url }}"
+          livenessProbe:
+            httpGet:
+              path: /hsm/v2/service/ready
+              port: http
+            initialDelaySeconds: 20
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
+          readinessProbe:
+            httpGet:
+              path: /hsm/v2/service/ready
+              port: http
+            initialDelaySeconds: 20
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

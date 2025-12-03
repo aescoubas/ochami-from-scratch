@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "ochami-helm.fullname" . }}-smd
+  labels:
+    {{- include "ochami-helm.labels" . | nindent 4 }}
+    app.kubernetes.io/component: smd
+spec:
+  type: {{ .Values.service.smd.type }}
+  ports:
+    - port: {{ .Values.service.smd.port }}
+      targetPort: http
+      protocol: TCP
+      name: http
+      {{- if (and (eq .Values.service.smd.type "NodePort") (not (empty .Values.service.smd.nodePort))) }}
+      nodePort: {{ .Values.service.smd.nodePort }}
+      {{- end }}
+  selector:
+    {{- include "ochami-helm.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: smd

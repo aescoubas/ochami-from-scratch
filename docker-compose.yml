@@ -1,0 +1,91 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: postgres
+    environment:
+      - POSTGRES_USER=hmsdsuser
+      - POSTGRES_PASSWORD=hmsdsuser
+      - POSTGRES_DB=hmsds
+    ports:
+      - "5432:5432"
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hmsdsuser -d hmsds"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # This is your application container
+#  smd:
+#    image: smd:latest  # The image you built
+#    container_name: smd
+#    depends_on:
+#      - postgres
+#    environment:
+#      - SMD_DBHOST=postgresql
+#      - SMD_DBPORT=5432
+#      - SMD_DBUSER=hmsdsuser
+#      - SMD_DBPASS=hmsdsuser
+#      - SMD_DBOPTS=sslmode=disable
+#    ports:
+#      - "27779:27779"
+#    networks:
+#      - internal
+    
+
+  smd-init:
+    image: smd
+    container_name: smd-init
+    hostname: smd-init
+    environment:
+      - SMD_DBHOST=postgres
+      - SMD_DBPORT=5432
+      - SMD_DBNAME=hmsds
+      - SMD_DBUSER=hmsdsuser
+      - SMD_DBPASS=hmsdsuser
+      - SMD_DBOPTS=sslmode=disable
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - internal
+    entrypoint:
+      - /smd-init
+  # SMD
+  smd:
+    image: smd
+    container_name: smd
+    hostname: smd
+    environment:
+      - SMD_DBHOST=postgres
+      - SMD_DBPORT=5432
+      - SMD_DBNAME=hmsds
+      - SMD_DBUSER=hmsdsuser
+      - SMD_DBPASS=hmsdsuser
+      - SMD_DBOPTS=sslmode=disable
+      #- SMD_JWKS_URL=http://opaal:3333/keys
+    #command: ["/smd", "-h"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      smd-init:
+        condition: service_completed_successfully
+      #opaal:
+      #  condition: service_healthy
+    ports:
+      - "27779:27779"
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "http://localhost:27779/hsm/v2/service/ready"]
+      interval: 5s
+      retries: 60
+      start_period: 20s
+      timeout: 10s
+    networks:
+      - internal
+
+
+networks:
+  internal:
