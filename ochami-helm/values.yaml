@@ -13,42 +13,78 @@ image:
   postgres:
     repository: postgres
     pullPolicy: IfNotPresent
-    tag: "15-alpine"
+    tag: "11.5-alpine"
 
 imagePullSecrets: []
 nameOverride: ""
-fullnameOverride: ""
+fullnameOverride: "ochami"
 
 service:
   smd:
     type: ClusterIP
     port: 27779
+  bss:
+    type: ClusterIP
+    port: 27778
   postgres:
     type: ClusterIP
     port: 5432
 
 postgres:
-  user: hmsdsuser
-  password: hmsdsuser
-  database: hmsds
+  user: ochami
+  password: "CHANGEME"
+  smd_password: "CHANGEME"
+  bss_password: "CHANGEME"
+  hydra_password: "CHANGEME"
 
 # smdInit job configuration
 smdInit:
   image:
     repository: localhost/smd
-    tag: latest
+    tag: "latest"
     pullPolicy: IfNotPresent
 
 smd:
   db:
-    host: "ochami-helm-postgres" # service name of postgres
+    host: "ochami-postgres"
     port: 5432
     name: "hmsds"
-    user: "hmsdsuser"
-    pass: "hmsdsuser"
+    user: "smd-user"
     opts: "sslmode=disable"
   jwks:
     url: ""
+
+# bssInit job configuration
+bssInit:
+  image:
+    repository: localhost/bss
+    tag: "latest"
+    pullPolicy: IfNotPresent
+
+bss:
+  image:
+    repository: localhost/bss
+    tag: "latest"
+    pullPolicy: IfNotPresent
+  db:
+    host: "ochami-postgres"
+    port: 5432
+    name: "bssdb"
+    user: "bss-user"
+    opts: "sslmode=disable"
+  jwks:
+    #url: "http://ochami-opaal:3333/keys"
+    url: ""
+  ipxe:
+    #server: "ochami.openchami.cluster"
+    server: ""
+  chain:
+    #proto: "https"
+    proto: ""
+  bootscript:
+    #notify_url: "http://ochami-tpm-manager:27780/Node"
+    notify_url: ""
+  advertise_address: "localhost" # without this value, the bss microservice doesn't start
 
 serviceAccount:
   # Specifies whether a service account should be created

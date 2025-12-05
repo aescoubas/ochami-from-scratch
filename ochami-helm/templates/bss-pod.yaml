@@ -1,0 +1,109 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ochami-bss
+  labels:
+    {{- include "ochami-helm.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: bss
+spec:
+  terminationGracePeriodSeconds: 0  # TODO: remove this line for production
+  initContainers:
+    - name: wait-for-postgres
+      image: "{{ .Values.bssInit.image.repository }}:{{ .Values.bssInit.image.tag }}"
+      imagePullPolicy: IfNotPresent
+      command: ['sh', '-c', 'until nc -z {{ include "ochami-helm.fullname" . }}-postgres {{ .Values.bss.db.port }}; do echo "waiting for postgres..."; sleep 1; done; echo "Connection with Postgres successful"']
+    - name: wait-for-smd
+      image: "{{ .Values.bssInit.image.repository }}:{{ .Values.bssInit.image.tag }}"
+      imagePullPolicy: IfNotPresent
+      #command: ['sh', '-c', 'until /usr/bin/curl http://{{ include "ochami-helm.fullname" . }}-smd.{{ .Release.Namespace }}.svc.cluster.local:{{ .Values.service.smd.port }}/hsm/v2/service/ready; do echo "waiting for smd..."; sleep 1; done;']
+      command: ['sh', '-c', 'until /usr/bin/curl http://ochami-smd.ochami.svc.cluster.local:{{ .Values.service.smd.port }}/hsm/v2/service/ready; do echo "waiting for smd..."; sleep 1; done;']
+    - name: bss-init-run
+      image: "{{ .Values.bssInit.image.repository }}:{{ .Values.bssInit.image.tag }}"
+      imagePullPolicy: {{ .Values.bssInit.image.pullPolicy }}
+      env:
+        - name: BSS_USESQL
+          value: "true"
+        - name: BSS_INSECURE
+          value: "true"
+        - name: BSS_DBHOST
+          value: "{{ include "ochami-helm.fullname" . }}-postgres"
+        - name: BSS_DBPORT
+          value: {{ .Values.bss.db.port | quote }}
+        - name: BSS_DBNAME
+          value: {{ .Values.bss.db.name | quote }}
+        - name: BSS_DBUSER
+          value: {{ .Values.bss.db.user | quote }}
+        - name: BSS_DBPASS
+          value: {{ .Values.postgres.bss_password | quote }}
+      command: ["/usr/local/bin/bss-init"]
+  containers:
+    - name: bss
+      image: "{{ .Values.bss.image.repository }}:{{ .Values.bss.image.tag }}"
+      imagePullPolicy: {{ .Values.bss.image.pullPolicy }}
+      ports:
+        - name: http
+          containerPort: 27778
+          protocol: TCP
+      env:
+        - name: HSM_URL
+          value: "http://{{ include "ochami-helm.fullname" . }}-smd.{{ .Release.Namespace }}.svc.cluster.local:{{ .Values.service.smd.port }}"
+        - name: BSS_USESQL
+          value: "true"
+        - name: BSS_INSECURE
+          value: "true"
+        - name: BSS_DEBUG
+          value: "true"
+        - name: BSS_DBHOST
+          value: "{{ include "ochami-helm.fullname" . }}-postgres"
+        - name: BSS_DBPORT
+          value: {{ .Values.bss.db.port | quote }}
+        - name: BSS_DBNAME
+          value: {{ .Values.bss.db.name | quote }}
+        - name: BSS_DBUSER
+          value: {{ .Values.bss.db.user | quote }}
+        - name: BSS_DBPASS
+          value: {{ .Values.postgres.bss_password | quote }}
+        - name: BSS_JWKS_URL
+          value: {{ .Values.bss.jwks.url | quote }}
+        - name: BSS_OAUTH2_ADMIN_BASE_URL
+          value: {{ .Values.bss.jwks.url | quote }} # Assuming same as jwks url
+        - name: BSS_OAUTH2_PUBLIC_BASE_URL
+          value: {{ .Values.bss.jwks.url | quote }} # Assuming same as jwks url
+        - name: BSS_IPXE_SERVER
+          value: {{ .Values.bss.ipxe.server | quote }}
+        - name: BSS_CHAIN_PROTO
+          value: {{ .Values.bss.chain.proto | quote }}
+        - name: BSS_BOOTSCRIPT_NOTIFY_URL
+          value: {{ .Values.bss.bootscript.notify_url | quote }}
+        - name: BSS_ADVERTISE_ADDRESS
+          value: {{ .Values.bss.advertise_address | quote }}
+      livenessProbe:
+        httpGet:
+          path: /boot/v1/service/status
+          port: http
+        initialDelaySeconds: 20
+        periodSeconds: 10
+        timeoutSeconds: 5
+        failureThreshold: 6
+      readinessProbe:
+        httpGet:
+          path: /boot/v1/service/status
+          port: http
+        initialDelaySeconds: 20
+        periodSeconds: 10
+        timeoutSeconds: 5
+        failureThreshold: 6
+      resources:
+        {{- toYaml .Values.resources | nindent 8 }}
+  {{- with .Values.nodeSelector }}
+  nodeSelector:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- with .Values.affinity }}
+  affinity:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- with .Values.tolerations }}
+  tolerations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}

@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: {{ include "ochami-helm.fullname" . }}-debug
+  labels:
+    {{- include "ochami-helm.labels" . | nindent 4 }}
+    app.kubernetes.io/component: debug
+spec:
+  containers:
+    - name: debug
+      image: nicolaka/netshoot
+      command:
+        - "sleep"
+        - "infinity"
+      imagePullPolicy: IfNotPresent
+  terminationGracePeriodSeconds: 0

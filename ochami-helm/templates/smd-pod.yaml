@@ -1,0 +1,84 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ochami-smd
+  labels:
+    {{- include "ochami-helm.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: smd
+spec:
+  terminationGracePeriodSeconds: 0  # TODO: remove this line for production
+  initContainers:
+    - name: wait-for-postgres
+      image: busybox:1.36
+      imagePullPolicy: IfNotPresent
+      command: ['sh', '-c', 'until nc -z {{ include "ochami-helm.fullname" . }}-postgres {{ .Values.smd.db.port }}; do echo "waiting for postgres..."; sleep 1; done;']
+    - name: smd-init-run
+      image: "{{ .Values.smdInit.image.repository }}:{{ .Values.smdInit.image.tag }}"
+      imagePullPolicy: {{ .Values.smdInit.image.pullPolicy }}
+      env:
+        - name: SMD_DBHOST
+          value: "{{ include "ochami-helm.fullname" . }}-postgres"
+        - name: SMD_DBPORT
+          value: {{ .Values.smd.db.port | quote }}
+        - name: SMD_DBNAME
+          value: {{ .Values.smd.db.name | quote }}
+        - name: SMD_DBUSER
+          value: {{ .Values.smd.db.user | quote }}
+        - name: SMD_DBPASS
+          value: {{ .Values.postgres.smd_password | quote }}
+        - name: SMD_DBOPTS
+          value: {{ .Values.smd.db.opts | quote }}
+      command: ["/smd-init"]
+  containers:
+    - name: smd
+      image: "{{ .Values.image.smd.repository }}:{{ .Values.image.smd.tag }}"
+      imagePullPolicy: {{ .Values.image.smd.pullPolicy }}
+      ports:
+        - name: http
+          containerPort: 27779
+          protocol: TCP
+      env:
+        - name: SMD_DBHOST
+          value: "{{ include "ochami-helm.fullname" . }}-postgres"
+        - name: SMD_DBPORT
+          value: {{ .Values.smd.db.port | quote }}
+        - name: SMD_DBNAME
+          value: {{ .Values.smd.db.name | quote }}
+        - name: SMD_DBUSER
+          value: {{ .Values.smd.db.user | quote }}
+        - name: SMD_DBPASS
+          value: {{ .Values.postgres.smd_password | quote }}
+        - name: SMD_DBOPTS
+          value: {{ .Values.smd.db.opts | quote }}
+        - name: SMD_JWKS_URL
+          value: {{ .Values.smd.jwks.url | quote }}
+      livenessProbe:
+        httpGet:
+          path: /hsm/v2/service/ready
+          port: http
+        initialDelaySeconds: 20
+        periodSeconds: 10
+        timeoutSeconds: 5
+        failureThreshold: 6
+      readinessProbe:
+        httpGet:
+          path: /hsm/v2/service/ready
+          port: http
+        initialDelaySeconds: 20
+        periodSeconds: 10
+        timeoutSeconds: 5
+        failureThreshold: 6
+      resources:
+        {{- toYaml .Values.resources | nindent 8 }}
+  {{- with .Values.nodeSelector }}
+  nodeSelector:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- with .Values.affinity }}
+  affinity:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- with .Values.tolerations }}
+  tolerations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
