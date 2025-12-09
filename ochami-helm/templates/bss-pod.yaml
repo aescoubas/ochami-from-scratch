@@ -16,7 +16,7 @@ spec:
       image: "{{ .Values.bssInit.image.repository }}:{{ .Values.bssInit.image.tag }}"
       imagePullPolicy: IfNotPresent
       #command: ['sh', '-c', 'until /usr/bin/curl http://{{ include "ochami-helm.fullname" . }}-smd.{{ .Release.Namespace }}.svc.cluster.local:{{ .Values.service.smd.port }}/hsm/v2/service/ready; do echo "waiting for smd..."; sleep 1; done;']
-      command: ['sh', '-c', 'until /usr/bin/curl http://ochami-smd.ochami.svc.cluster.local:{{ .Values.service.smd.port }}/hsm/v2/service/ready; do echo "waiting for smd..."; sleep 1; done;']
+      command: ['sh', '-c', 'until /usr/bin/curl -m 10 http://ochami-smd.ochami.svc.cluster.local:{{ .Values.service.smd.port }}/hsm/v2/service/ready; do echo "waiting for smd..."; sleep 1; done;']
     - name: bss-init-run
       image: "{{ .Values.bssInit.image.repository }}:{{ .Values.bssInit.image.tag }}"
       imagePullPolicy: {{ .Values.bssInit.image.pullPolicy }}
