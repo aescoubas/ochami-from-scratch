@@ -1,0 +1,56 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ochami-coredhcp
+  labels:
+    {{- include "ochami-helm.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: coredhcp
+spec:
+  hostNetwork: true
+  dnsPolicy: ClusterFirstWithHostNet
+  terminationGracePeriodSeconds: 0
+  initContainers:
+    - name: wait-for-smd
+      image: "{{ .Values.coredhcpInit.image.repository }}:{{ .Values.coredhcpInit.image.tag }}"
+      imagePullPolicy: {{ .Values.coredhcpInit.image.pullPolicy }}
+      command: ['sh', '-c', 'until nc -z -w 2 {{ include "ochami-helm.fullname" . }}-smd {{ .Values.service.smd.port }}; do echo "waiting for smd..."; sleep 1; done;']
+    - name: wait-for-bss
+      image: "{{ .Values.coredhcpInit.image.repository }}:{{ .Values.coredhcpInit.image.tag }}"
+      imagePullPolicy: {{ .Values.coredhcpInit.image.pullPolicy }}
+      command: ['sh', '-c', 'until nc -z -w 2 {{ include "ochami-helm.fullname" . }}-bss {{ .Values.service.bss.port }}; do echo "waiting for bss..."; sleep 1; done;']
+  containers:
+    - name: coredhcp
+      image: "{{ .Values.coredhcp.image.repository }}:{{ .Values.coredhcp.image.tag }}"
+      imagePullPolicy: {{ .Values.coredhcp.image.pullPolicy }}
+      securityContext:
+        capabilities:
+          add:
+            - "NET_ADMIN"
+      volumeMounts:
+        - name: coredhcp-config
+          mountPath: /etc/coredhcp/config.yaml
+          subPath: config.yaml
+        - name: root-ca
+          mountPath: /root_ca
+  volumes:
+    - name: coredhcp-config
+      configMap:
+        name: {{ include "ochami-helm.fullname" . }}-coredhcp-config
+    - name: root-ca
+      configMap:
+        # This assumes the root CA is stored in a configmap named 'ochami-root-ca'
+        # with a key 'root_ca.crt'. This needs to be created separately.
+        name: {{ include "ochami-helm.fullname" . }}-root-ca
+        optional: true # By making it optional, the pod will start even if the cm is not there
+  {{- with .Values.nodeSelector }}
+  nodeSelector:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- with .Values.affinity }}
+  affinity:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- with .Values.tolerations }}
+  tolerations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}

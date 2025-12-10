@@ -29,6 +29,9 @@ service:
   postgres:
     type: ClusterIP
     port: 5432
+  coredhcp:
+    type: ClusterIP
+    port: 67
 
 postgres:
   user: ochami
@@ -60,6 +63,31 @@ bssInit:
     repository: localhost/bss
     tag: "latest"
     pullPolicy: IfNotPresent
+
+# coredhcpInit job configuration
+coredhcpInit:
+  image:
+    repository: busybox
+    tag: "1.36"
+    pullPolicy: IfNotPresent
+
+coredhcp:
+  image:
+    repository: ghcr.io/openchami/coresmd
+    tag: "local-build-amd64"
+    pullPolicy: IfNotPresent
+  server_id: "192.168.0.254"
+  dns: "1.1.1.1 8.8.8.8"
+  router: "172.16.0.254"
+  netmask: "255.255.255.0"
+  cache_update_interval: "30s"
+  long_lease_time: "1h"
+  short_lease_time: "5m"
+  bootloop:
+    storage_path: "/tmp/coredhcp.db"
+    ip_pool_start: "192.168.0.150"
+    ip_pool_end: "192.168.0.253"
+
 
 bss:
   image:

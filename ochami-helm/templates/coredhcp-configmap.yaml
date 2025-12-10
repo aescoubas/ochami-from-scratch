@@ -1,0 +1,28 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "ochami-helm.fullname" . }}-coredhcp-config
+  labels:
+    {{- include "ochami-helm.labels" . | nindent 4 }}
+data:
+  config.yaml: |
+    server4:
+      plugins:
+        #
+        # Base CoreDHCP config
+        #
+
+        - server_id: {{ .Values.coredhcp.server_id | quote }}
+        - dns: {{ .Values.coredhcp.dns | quote }}
+        - router: {{ .Values.coredhcp.router | quote }}
+        - netmask: {{ .Values.coredhcp.netmask | quote }}
+
+        #
+        # CoreSMD config
+        #
+
+        # Args: ochami_base_url boot_script_base_url ca_cert_path cache_update_interval long_lease_time single_port_mode
+        - coresmd: "http://{{ include "ochami-helm.fullname" . }}-smd.{{ .Release.Namespace }}.svc.cluster.local:{{ .Values.service.smd.port }} http://{{ include "ochami-helm.fullname" . }}-bss.{{ .Release.Namespace }}.svc.cluster.local:{{ .Values.service.bss.port }} /root_ca/root_ca.crt {{ .Values.coredhcp.cache_update_interval }} {{ .Values.coredhcp.long_lease_time }} true"
+
+        # Args: storage_path boot_script_file short_lease_time ip_pool_start ip_pool_end
+        - bootloop: {{ .Values.coredhcp.bootloop.storage_path }} default {{ .Values.coredhcp.short_lease_time }} {{ .Values.coredhcp.bootloop.ip_pool_start }} {{ .Values.coredhcp.bootloop.ip_pool_end }}
