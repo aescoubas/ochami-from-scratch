@@ -8,8 +8,7 @@ image:
   smd:
     repository: localhost/smd
     pullPolicy: IfNotPresent
-    # Overrides the image tag whose default is the chart appVersion.
-    tag: "latest"
+    tag: "local-smd"
   postgres:
     repository: postgres
     pullPolicy: IfNotPresent
@@ -44,7 +43,7 @@ postgres:
 smdInit:
   image:
     repository: localhost/smd
-    tag: "latest"
+    tag: "local-smd"
     pullPolicy: IfNotPresent
 
 smd:
@@ -61,7 +60,7 @@ smd:
 bssInit:
   image:
     repository: localhost/bss
-    tag: "latest"
+    tag: "local-bss"
     pullPolicy: IfNotPresent
 
 # coredhcpInit job configuration
@@ -73,8 +72,8 @@ coredhcpInit:
 
 coredhcp:
   image:
-    repository: ghcr.io/openchami/coresmd
-    tag: "local-build-amd64"
+    repository: localhost/coresmd
+    tag: "local-coresmd"
     pullPolicy: IfNotPresent
   server_id: "192.168.0.254"
   dns: "1.1.1.1 8.8.8.8"
@@ -92,7 +91,7 @@ coredhcp:
 bss:
   image:
     repository: localhost/bss
-    tag: "latest"
+    tag: "local-bss"
     pullPolicy: IfNotPresent
   db:
     host: "ochami-postgres"
