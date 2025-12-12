@@ -1,7 +1,7 @@
 #!ipxe
 
-echo "Booting custom image from 192.168.100.2..."
-set base-url http://192.168.100.2:30080
-kernel ${base-url}/artifacts/vmlinuz-lts console=ttyS0
+echo "Booting full Fedora Linux from 192.168.39.230..."
+set base-url http://192.168.39.230:30080
+kernel ${base-url}/artifacts/vmlinuz-lts console=ttyS0 ip=dhcp rd.neednet=1 root=live:${base-url}/artifacts/rootfs.squashfs
 initrd ${base-url}/artifacts/initramfs-lts
 boot

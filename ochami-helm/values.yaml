@@ -160,7 +160,7 @@ httpServer:
   enabled: true
   image:
     repository: localhost/http-server
-    tag: v2
+    tag: latest
     pullPolicy: IfNotPresent
   service:
     type: NodePort
