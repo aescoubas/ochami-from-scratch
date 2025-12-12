@@ -18,6 +18,18 @@ if virsh dominfo "$VM_NAME" >/dev/null 2>&1; then
   exit 1
 fi
 
+virsh net-uuid pxe-net >/dev/null 2>&1 || virsh net-define <(cat <<EOF
+<network>
+  <name>pxe-net</name>
+  <uuid>c8f874f7-dd7a-465c-862a-ec30f41ac4bb</uuid>
+  <bridge name='virbr-pxe' stp='on' delay='0'/>
+  <mac address='52:54:00:d8:3f:37'/>
+  <ip address='192.168.100.1' netmask='255.255.255.0'>
+  </ip>
+</network>
+EOF
+)
+
 echo "Creating VM '$VM_NAME' with virt-install..."
 
 virt-install \
