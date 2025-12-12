@@ -1,0 +1,4 @@
+initramfs-lts
+rootfs.squashfs
+vmlinuz-lts
+coredhcp-values.yaml

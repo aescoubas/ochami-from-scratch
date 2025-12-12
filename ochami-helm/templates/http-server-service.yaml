@@ -1,0 +1,20 @@
+{{- if .Values.httpServer.enabled -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "ochami-helm.fullname" . }}-http-server
+  labels:
+    {{- include "ochami-helm.labels" . | nindent 4 }}
+    app.kubernetes.io/component: http-server
+spec:
+  type: {{ .Values.httpServer.service.type }}
+  ports:
+    - port: {{ .Values.httpServer.service.port }}
+      targetPort: 80
+      {{- if .Values.httpServer.service.nodePort }}
+      nodePort: {{ .Values.httpServer.service.nodePort }}
+      {{- end }}
+  selector:
+    {{- include "ochami-helm.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: http-server
+{{- end }}

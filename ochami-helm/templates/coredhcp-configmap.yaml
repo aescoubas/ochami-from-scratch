@@ -6,6 +6,9 @@ metadata:
     {{- include "ochami-helm.labels" . | nindent 4 }}
 data:
   config.yaml: |
+{{- if .Values.coredhcp.customConfig }}
+{{ .Values.coredhcp.customConfig | indent 4 }}
+{{- else }}
     server4:
       plugins:
         #
@@ -26,3 +29,4 @@ data:
 
         # Args: storage_path boot_script_file short_lease_time ip_pool_start ip_pool_end
         - bootloop: {{ .Values.coredhcp.bootloop.storage_path }} default {{ .Values.coredhcp.short_lease_time }} {{ .Values.coredhcp.bootloop.ip_pool_start }} {{ .Values.coredhcp.bootloop.ip_pool_end }}
+{{- end }}

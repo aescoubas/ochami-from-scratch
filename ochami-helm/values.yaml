@@ -86,6 +86,10 @@ coredhcp:
     storage_path: "/tmp/coredhcp.db"
     ip_pool_start: "192.168.0.150"
     ip_pool_end: "192.168.0.253"
+  # customConfig: |
+  #   server4:
+  #     ...
+
 
 
 bss:
@@ -103,11 +107,9 @@ bss:
     #url: "http://ochami-opaal:3333/keys"
     url: ""
   ipxe:
-    #server: "ochami.openchami.cluster"
-    server: ""
+    server: "192.168.100.1"
   chain:
-    #proto: "https"
-    proto: ""
+    proto: "http"
   bootscript:
     #notify_url: "http://ochami-tpm-manager:27780/Node"
     notify_url: ""
@@ -152,3 +154,15 @@ nodeSelector: {}
 tolerations: []
 
 affinity: {}
+
+# HTTP Server configuration
+httpServer:
+  enabled: true
+  image:
+    repository: localhost/http-server
+    tag: v2
+    pullPolicy: IfNotPresent
+  service:
+    type: NodePort
+    port: 80
+    nodePort: 30080

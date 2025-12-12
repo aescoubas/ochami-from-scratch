@@ -1,0 +1,27 @@
+{{- if .Values.httpServer.enabled -}}
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ochami-http-server
+  labels:
+    {{- include "ochami-helm.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: http-server
+spec:
+  containers:
+    - name: http-server
+      image: "{{ .Values.httpServer.image.repository }}:{{ .Values.httpServer.image.tag }}"
+      imagePullPolicy: {{ .Values.httpServer.image.pullPolicy }}
+      ports:
+        - containerPort: 80
+      volumeMounts:
+        - name: http-content
+          mountPath: /usr/share/nginx/html/index.html
+          subPath: index.html
+        - name: http-content
+          mountPath: /usr/share/nginx/html/boot.ipxe
+          subPath: boot.ipxe
+  volumes:
+    - name: http-content
+      configMap:
+        name: {{ include "ochami-helm.fullname" . }}-http-server-content
+{{- end }}

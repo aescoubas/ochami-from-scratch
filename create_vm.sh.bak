@@ -1,0 +1,50 @@
+#!/bin/bash
+
+set -e
+
+# This script creates a new Libvirt VM for the OpenCHAMI minimal tutorial.
+
+# --- Configuration ---
+VM_NAME="virtual-compute-node"
+MEMORY="2048" # in MiB
+VCPUS="1"
+# ---
+
+echo "Checking for existing VM..."
+if virsh dominfo "$VM_NAME" >/dev/null 2>&1; then
+  echo "VM '$VM_NAME' already exists. To recreate it, first destroy and undefine it:"
+  echo "  sudo virsh destroy $VM_NAME"
+  echo "  sudo virsh undefine --nvram $VM_NAME"
+  exit 1
+fi
+
+echo "Creating VM '$VM_NAME' with virt-install..."
+
+virt-install \
+  --name "$VM_NAME" \
+  --memory "$MEMORY" \
+  --vcpus "$VCPUS" \
+  --disk none \
+  --network network=pxe-net,model=virtio \
+  --os-variant centos-stream9 \
+  --graphics none \
+  --console pty,target_type=serial \
+  --pxe \
+  --boot network,hd \
+  --boot loader=/usr/share/OVMF/OVMF_CODE_4M.fd,loader.readonly=yes,loader.type=pflash,nvram.template=/usr/share/OVMF/OVMF_VARS_4M.fd \
+  --virt-type kvm \
+  --noautoconsole
+
+echo "VM '$VM_NAME' created successfully."
+echo ""
+
+echo "Fetching MAC address..."
+MAC_ADDRESS=$(sudo virsh domiflist "$VM_NAME" | awk '/pxe-net/ {print $5}')
+
+echo "========================================================================"
+echo "VM MAC Address: $MAC_ADDRESS"
+echo "========================================================================"
+echo ""
+echo "You can now use this MAC address to configure OpenCHAMI as described in the README.md."
+echo "To start the VM and connect to the console, run:"
+echo "  sudo virsh start --console $VM_NAME"

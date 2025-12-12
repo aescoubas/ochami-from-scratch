@@ -1,0 +1,13 @@
+{{- if .Values.httpServer.enabled -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "ochami-helm.fullname" . }}-http-server-content
+  labels:
+    {{- include "ochami-helm.labels" . | nindent 4 }}
+data:
+  boot.ipxe: |-
+{{ .Files.Get "files/boot.ipxe" | indent 4 }}
+  index.html: |-
+{{ .Files.Get "files/index.html" | indent 4 }}
+{{- end }}
