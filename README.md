@@ -14,12 +14,20 @@ This tutorial demonstrates a more advanced scenario where a custom-built Linux i
 
 This step builds the custom image artifacts, and then builds the `http-server` docker image and loads it into Minikube.
 
+### Option A: Fedora Image (Default)
+
 ```bash
 ./build_and_load_http_server.sh
 ```
 
-This script will:
-1.  Create `vmlinuz-lts`, `initramfs-lts`, and `rootfs.squashfs`.
+### Option B: SLES 15 SP6 (openSUSE Leap 15.6) Image
+
+```bash
+./build_and_load_http_server_sles.sh
+```
+
+These scripts will:
+1.  Create `vmlinuz-lts`, `initramfs-lts`, and `rootfs.squashfs` (from either Fedora or openSUSE).
 2.  Place these artifacts in `ochami-helm/http-server/artifacts/`.
 3.  Build the `localhost/http-server:latest` docker image.
 4.  Load the `localhost/http-server:latest` image into your Minikube cluster.
