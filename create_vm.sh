@@ -18,7 +18,8 @@ if virsh dominfo "$VM_NAME" >/dev/null 2>&1; then
   exit 1
 fi
 
-virsh net-uuid pxe-net >/dev/null 2>&1 || virsh net-define <(cat <<EOF
+virsh net-uuid pxe-net >/dev/null 2>&1 || {
+virsh net-define <(cat <<EOF
 <network>
   <name>pxe-net</name>
   <uuid>c8f874f7-dd7a-465c-862a-ec30f41ac4bb</uuid>
@@ -29,6 +30,9 @@ virsh net-uuid pxe-net >/dev/null 2>&1 || virsh net-define <(cat <<EOF
 </network>
 EOF
 )
+virsh net-start pxe-net
+virsh net-autostart pxe-net
+}
 
 echo "Creating VM '$VM_NAME' with virt-install..."
 
