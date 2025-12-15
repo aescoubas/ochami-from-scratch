@@ -5,14 +5,30 @@ RED='\033[0;31m'
 GREEN='\033[0;32m'
 NC='\033[0m'
 
+# Parse arguments
+REMOVE_IMAGES=false
+for arg in "$@"; do
+    case $arg in
+        --remove-images)
+        REMOVE_IMAGES=true
+        shift
+        ;;
+    esac
+done
+
 echo -e "${RED}=== OpenCHAMI Teardown Script ===${NC}"
 echo "This script will PERMANENTLY DELETE:"
 echo "  - VM: virtual-compute-node"
 echo "  - Network: pxe-net"
 echo "  - Minikube Cluster"
-echo "  - Docker Images (ochami related)"
 echo "  - Build Artifacts (kernels, initramfs)"
+if [ "$REMOVE_IMAGES" = true ]; then
+    echo "  - Docker Images (ochami related) [ENABLED]"
+else
+    echo "  - Docker Images (ochami related) [SKIPPED - use --remove-images to delete]"
+fi
 echo ""
+
 read -p "Are you sure you want to proceed? (y/N) " -n 1 -r
 echo
 if [[ ! $REPLY =~ ^[Yy]$ ]]; then
@@ -47,20 +63,25 @@ fi
 echo -e "${GREEN}--> Deleting Minikube cluster...${NC}"
 minikube delete
 
-# 4. Remove Docker Images
-echo -e "${GREEN}--> Removing Docker images...${NC}"
-# List of images to remove
-IMAGES="localhost/http-server:latest localhost/smd:local-smd localhost/bss:local-bss localhost/coresmd:local-coresmd"
-for img in $IMAGES; do
-    if docker image inspect "$img" >/dev/null 2>&1; then
-        docker rmi "$img" || echo "Failed to remove $img (might be in use or dependent)"
-    fi
-done
+# 4. Remove Docker Images (Optional)
+if [ "$REMOVE_IMAGES" = true ]; then
+    echo -e "${GREEN}--> Removing Docker images...${NC}"
+    # List of images to remove
+    IMAGES="localhost/http-server:latest localhost/smd:local-smd localhost/bss:local-bss localhost/coresmd:local-coresmd"
+    for img in $IMAGES; do
+        if docker image inspect "$img" >/dev/null 2>&1; then
+            docker rmi "$img" || echo "Failed to remove $img (might be in use or dependent)"
+        fi
+    done
+else
+    echo -e "${GREEN}--> Skipping Docker image removal.${NC}"
+fi
 
 # 5. Remove Artifacts
 echo -e "${GREEN}--> Cleaning up build artifacts...${NC}"
 rm -f ochami-helm/http-server/artifacts/vmlinuz-lts
 rm -f ochami-helm/http-server/artifacts/initramfs-lts
 rm -f ochami-helm/http-server/artifacts/rootfs.squashfs
+rm -f /tmp/configure_net.sh 2>/dev/null || true
 
 echo -e "${GREEN}=== Teardown Complete ===${NC}"
