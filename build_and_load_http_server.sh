@@ -81,9 +81,9 @@ echo "Artifacts staged in $ARTIFACTS_DIR"
 echo "--- Building and loading http-server image into Minikube ---"
 DOCKER_CONTEXT="ochami-helm/http-server/"
 docker build -t localhost/http-server:latest "$DOCKER_CONTEXT"
-kubectl delete pod ochami-http-server || true
-minikube image rm localhost/http-server:latest || true
-minikube image load localhost/http-server:latest
-helm upgrade ochami ./ochami-helm/ -f coredhcp-values.yaml
+
+# We use minikube image load. Note: Deployment restart is handled by deploy.sh
+echo "Loading image into Minikube..."
+minikube image load localhost/http-server:latest --overwrite=true
 
 echo "--- Done ---"

@@ -1,0 +1,13 @@
+# Custom values for PXE boot setup with Minikube on 192.168.100.2
+
+coredhcp:
+  customConfig: |
+    server4:
+      listen: "0.0.0.0:67"
+      plugins:
+        - server_id: 192.168.100.2
+        - router: 192.168.100.2
+        - dns: 8.8.8.8
+        - netmask: 255.255.255.0
+        - range: /tmp/coredhcp.leases 192.168.100.100 192.168.100.200 1h
+        - nbp: "http://192.168.100.2:30080/boot.ipxe"

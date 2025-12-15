@@ -10,78 +10,19 @@ This tutorial demonstrates a more advanced scenario where a custom-built Linux i
 *   [Docker](https://docs.docker.com/get-docker/)
 *   Libvirt & `virt-install`
 
-## Step 1: Build and Load Custom Image and Server
+## Step 1: Deployment
 
-This step builds the custom image artifacts, and then builds the `http-server` docker image and loads it into Minikube.
-
-### Option A: Fedora Image (Default)
-
-```bash
-./build_and_load_http_server.sh
-```
-
-### Option B: SLES 15 SP6 (openSUSE Leap 15.6) Image
+Run the automated deployment script. This will:
+1.  Build all necessary container images (Fedora-based by default).
+2.  Start Minikube (if not running).
+3.  Configure the `pxe-net` network and attach it to Minikube.
+4.  Deploy the OpenCHAMI services using Helm with the correct PXE configuration.
 
 ```bash
-./build_and_load_http_server_sles.sh
+./deploy.sh
 ```
 
-These scripts will:
-1.  Create `vmlinuz-lts`, `initramfs-lts`, and `rootfs.squashfs` (from either Fedora or openSUSE).
-2.  Place these artifacts in `ochami-helm/http-server/artifacts/`.
-3.  Build the `localhost/http-server:latest` docker image.
-4.  Load the `localhost/http-server:latest` image into your Minikube cluster.
-
-## Step 2: Configure and Deploy to Minikube
-
-Now we'll deploy the DHCP and HTTP servers to Minikube using the `ochami-helm` chart.
-
-1.  **Get Minikube IP:**
-
-    We need the IP address of the Minikube cluster to configure the services.
-
-    ```bash
-    export MINIKUBE_IP=$(minikube ip)
-    echo "Minikube IP: $MINIKUBE_IP"
-    ```
-
-2.  **Prepare Helm Values:**
-
-    Replace the placeholder in the iPXE script with the actual Minikube IP.
-
-    ```bash
-    sed -i "s/{{MINIKUBE_IP}}/$MINIKUBE_IP/g" ochami-helm/files/boot.ipxe
-    ```
-
-    Create a `coredhcp-values.yaml` file to override the default `coredhcp` configuration in the Helm chart.
-
-    ```bash
-    cat <<EOF > coredhcp-values.yaml
-    coredhcp:
-      customConfig: |
-        server4:
-          listen: "0.0.0.0:67"
-          plugins:
-            - server_id: ${MINIKUBE_IP}
-            - router: ${MINIKUBE_IP}
-            - dns: 8.8.8.8
-            - netmask: 255.255.255.0
-            - range: /tmp/coredhcp.leases 192.168.39.100 192.168.39.200 1h # Adjust if your minikube network is different
-            - nbp: "http://${MINIKUBE_IP}:30080/boot.ipxe"
-    EOF
-    ```
-
-3.  **Deploy the Helm Chart:**
-
-    Install the `ochami-helm` chart with the custom values. This will deploy all the necessary services, including our `http-server` and the reconfigured `coredhcp`.
-
-    ```bash
-    helm install ochami ./ochami-helm -f coredhcp-values.yaml
-    # alternatively:
-    helm upgrade ochami ./ochami-helm -f coredhcp-values.yaml
-    ```
-
-4.  **Verify the Deployment:**
+## Step 2: Verify the Deployment
 
     Check that all the pods are running and the services are created.
 
@@ -91,7 +32,7 @@ Now we'll deploy the DHCP and HTTP servers to Minikube using the `ochami-helm` c
     ```
     You should see pods for `coredhcp`, `ochami-http-server`, `smd`, `bss`, and `postgres`, and their corresponding services.
 
-## Step 4: Create and Boot the VM
+## Step 3: Create and Boot the VM
 
 1.  **Create the VM:**
 

@@ -2,3 +2,9 @@ initramfs-lts
 rootfs.squashfs
 vmlinuz-lts
 coredhcp-values.yaml
+ochami-smd/
+ochami-bss/
+ochami-coresmd/
+ochami-cloud-init/
+
+
