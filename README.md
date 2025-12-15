@@ -5,7 +5,6 @@ This tutorial demonstrates a more advanced scenario where a custom-built Linux i
 ## 1. Prerequisites
 
 *   [Minikube](https://minikube.sigs.k8s.io/docs/start/) with the docker driver.
-*   [kubectl](https://kubernetes.io/docs/tasks/tools/install-kubectl/)
 *   [Helm](https://helm.sh/docs/intro/install/)
 *   [Docker](https://docs.docker.com/get-docker/)
 *   Libvirt & `virt-install`
@@ -27,8 +26,8 @@ Run the automated deployment script. This will:
     Check that all the pods are running and the services are created.
 
     ```bash
-    kubectl get pods
-    kubectl get services
+    minikube kubectl get pods
+    minikube kubectl get services
     ```
     You should see pods for `coredhcp`, `ochami-http-server`, `smd`, `bss`, and `postgres`, and their corresponding services.
 
