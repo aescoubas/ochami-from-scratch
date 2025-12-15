@@ -100,7 +100,7 @@ for img in "${MS_IMAGES[@]}"; do
         fi
         
         echo "Loading $img into Minikube..."
-        minikube image load "$img" --overwrite=true
+        docker save "$img" | minikube image load -
     else
         echo "Image $img found in Minikube. Skipping."
     fi

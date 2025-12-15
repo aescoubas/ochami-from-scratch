@@ -84,6 +84,6 @@ docker build -t localhost/http-server:latest "$DOCKER_CONTEXT"
 
 # We use minikube image load. Note: Deployment restart is handled by deploy.sh
 echo "Loading image into Minikube..."
-minikube image load localhost/http-server:latest --overwrite=true
+docker save localhost/http-server:latest | minikube image load -
 
 echo "--- Done ---"
