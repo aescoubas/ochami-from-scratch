@@ -131,12 +131,12 @@ fi
 # 5. Deploy Helm Chart
 echo -e "${GREEN}--> Deploying OpenCHAMI Helm chart...${NC}"
 # Create namespace
-minikube kubectl create ns ochami --dry-run=client -o yaml | minikube kubectl apply -f -
+minikube kubectl -- create ns ochami || true
 
 # Restart http-server to pick up new image (since tag is latest)
 # We delete it BEFORE upgrade so Helm recreates it.
 echo "Removing old http-server pod..."
-minikube kubectl delete pod -n ochami -l app.kubernetes.io/component=http-server --wait=false 2>/dev/null || true
+minikube kubectl -- delete pod -n ochami -l app.kubernetes.io/component=http-server --wait=false 2>/dev/null || true
 
 # Install/Upgrade
 helm upgrade --install ochami ./ochami-helm -n ochami -f ochami-helm/values-pxe.yaml
@@ -144,7 +144,7 @@ helm upgrade --install ochami ./ochami-helm -n ochami -f ochami-helm/values-pxe.
 # 6. Final Instructions
 echo -e "${GREEN}=== Deployment Complete ===${NC}"
 echo "You can now verify the pods are running:"
-echo " minikube kubectl get pods -n ochami"
+echo " minikube kubectl -- get pods -n ochami"
 echo ""
 echo "To create and boot the VM, run:"
 echo "  sudo ./create_vm.sh"
