@@ -6,8 +6,8 @@ coredhcp:
     server4:
       listen: "0.0.0.0:67"
       plugins:
-        - server_id: 192.168.100.2
-        - router: 192.168.100.2
+        - server_id: {{ .Values.externalIp }}
+        - router: {{ .Values.externalIp }}
         - dns: 8.8.8.8
         - netmask: 255.255.255.0
         - range: /tmp/coredhcp.leases 192.168.100.100 192.168.100.200 1h
