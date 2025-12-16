@@ -7,7 +7,13 @@ metadata:
     {{- include "ochami-helm.labels" . | nindent 4 }}
 data:
   boot.ipxe: |-
-{{ .Files.Get "files/boot.ipxe" | indent 4 }}
+    #!ipxe
+
+    echo "Booting full openSUSE Leap 15.6 from {{ .Values.externalIp | default "192.168.100.2" }}..."
+    set base-url http://{{ .Values.externalIp | default "192.168.100.2" }}:30080
+    kernel ${base-url}/artifacts/vmlinuz-lts console=ttyS0 ip=dhcp rd.neednet=1 root=live:${base-url}/artifacts/rootfs.squashfs
+    initrd ${base-url}/artifacts/initramfs-lts
+    boot
   index.html: |-
 {{ .Files.Get "files/index.html" | indent 4 }}
 {{- end }}

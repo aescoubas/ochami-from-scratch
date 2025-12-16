@@ -51,8 +51,8 @@ echo -e "${GREEN}--> Building and loading images...${NC}"
 # 3.1 HTTP Server
 HTTP_IMAGE="localhost/http-server:latest"
 if $FORCE_REBUILD || ! image_exists_in_minikube "$HTTP_IMAGE"; then
-    echo "Building http-server..."
-    ./build_and_load_http_server.sh
+    echo "Building http-server (SLES)..."
+    ./build_and_load_http_server_sles.sh
 else
     echo "Image $HTTP_IMAGE found in Minikube. Skipping build/load."
 fi
@@ -154,7 +154,14 @@ echo "Removing old http-server pod..."
 minikube kubectl -- delete pod -n ochami -l app.kubernetes.io/component=http-server --wait=false 2>/dev/null || true
 
 # Install/Upgrade
-helm upgrade --install ochami ./ochami-helm -n ochami -f ochami-helm/values-pxe.yaml
+# Detect Host IP for PXE (Use the IP of the interface with the default route, or fallback to 192.168.100.2)
+HOST_IP=$(ip route get 8.8.8.8 | awk '{print $7; exit}')
+if [ -z "$HOST_IP" ]; then
+    HOST_IP="192.168.100.2"
+fi
+echo "Using Host IP for PXE boot: $HOST_IP"
+
+helm upgrade --install ochami ./ochami-helm -n ochami -f ochami-helm/values-pxe.yaml --set externalIp="$HOST_IP"
 
 # 6. Final Instructions
 echo -e "${GREEN}=== Deployment Complete ===${NC}"

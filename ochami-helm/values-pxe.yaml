@@ -1,4 +1,5 @@
 # Custom values for PXE boot setup with Minikube on 192.168.100.2
+externalIp: "192.168.100.2"
 
 coredhcp:
   customConfig: |
@@ -10,4 +11,4 @@ coredhcp:
         - dns: 8.8.8.8
         - netmask: 255.255.255.0
         - range: /tmp/coredhcp.leases 192.168.100.100 192.168.100.200 1h
-        - nbp: "http://192.168.100.2:30080/boot.ipxe"
+        - nbp: "http://{{ .Values.externalIp }}:30080/boot.ipxe"

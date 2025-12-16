@@ -59,6 +59,14 @@ else
     echo "Network '$NET_NAME' not found."
 fi
 
+# 2.1 Clean up host networking (for 'none' driver)
+HOST_IFACE="virbr-pxe"
+MINIKUBE_IP="192.168.100.2"
+if ip addr show "$HOST_IFACE" 2>/dev/null | grep -q "inet $MINIKUBE_IP/"; then
+    echo -e "${GREEN}--> Removing IP $MINIKUBE_IP from $HOST_IFACE...${NC}"
+    sudo ip addr del "$MINIKUBE_IP/24" dev "$HOST_IFACE"
+fi
+
 # 3. Delete Minikube
 echo -e "${GREEN}--> Deleting Minikube cluster...${NC}"
 # Check if using 'none' driver
@@ -89,5 +97,19 @@ rm -f ochami-helm/http-server/artifacts/vmlinuz-lts
 rm -f ochami-helm/http-server/artifacts/initramfs-lts
 rm -f ochami-helm/http-server/artifacts/rootfs.squashfs
 rm -f /tmp/configure_net.sh 2>/dev/null || true
+
+# 6. Clean up System Modifications (Optional/Aggressive)
+if [ "$REMOVE_IMAGES" = true ]; then
+    echo -e "${GREEN}--> Removing CNI plugins (/opt/cni)...${NC}"
+    if [ -d "/opt/cni" ]; then
+        sudo rm -rf "/opt/cni"
+    fi
+fi
+
+# Revert sysctl change (if it was changed to 0)
+if [ "$(sysctl -n fs.protected_regular)" = "0" ]; then
+    echo -e "${GREEN}--> Reverting fs.protected_regular to 1...${NC}"
+    sudo sysctl -w fs.protected_regular=1 >/dev/null 2>&1 || true
+fi
 
 echo -e "${GREEN}=== Teardown Complete ===${NC}"
