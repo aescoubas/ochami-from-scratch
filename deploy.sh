@@ -12,6 +12,7 @@ FORCE_REBUILD=false
 DHCP_START=""
 DHCP_END=""
 DHCP_NETMASK=""
+WHITELIST_MACS=""
 
 while [[ "$#" -gt 0 ]]; do
     case $1 in
@@ -19,6 +20,7 @@ while [[ "$#" -gt 0 ]]; do
         --dhcp-start) DHCP_START="$2"; shift ;;
         --dhcp-end) DHCP_END="$2"; shift ;;
         --dhcp-netmask) DHCP_NETMASK="$2"; shift ;;
+        --whitelist-macs) WHITELIST_MACS="$2"; shift ;;
         *) echo "Unknown parameter passed: $1"; exit 1 ;;
     esac
     shift
@@ -27,6 +29,16 @@ done
 if [ "$FORCE_REBUILD" = true ]; then
     echo "Force rebuild enabled."
 fi
+
+# Helper to increment IP address
+next_ip() {
+    IP=$1
+    IP_HEX=$(printf '%.2X%.2X%.2X%.2X\n' `echo $IP | sed -e 's/\./ /g'`)
+    NEXT_IP_HEX=$(printf %.8X `echo $(( 0x$IP_HEX + 1 ))`)
+    NEXT_IP=$(printf '%d.%d.%d.%d\n' `echo $NEXT_IP_HEX | sed -r 's/(..)/0x\1 /g'`)
+    echo "$NEXT_IP"
+}
+
 
 # 0. Check and Install Prerequisites (System-level for 'none' driver)
 ./install_prerequisites.sh
@@ -175,12 +187,32 @@ if [ -z "$HOST_IP" ]; then
 fi
 echo "Using Host IP for PXE boot: $HOST_IP"
 
-HELM_ARGS="--set externalIp=$HOST_IP"
-if [ -n "$DHCP_START" ]; then HELM_ARGS="$HELM_ARGS --set dhcpStart=$DHCP_START"; fi
-if [ -n "$DHCP_END" ]; then HELM_ARGS="$HELM_ARGS --set dhcpEnd=$DHCP_END"; fi
-if [ -n "$DHCP_NETMASK" ]; then HELM_ARGS="$HELM_ARGS --set dhcpNetmask=$DHCP_NETMASK"; fi
+# Generate dynamic values file
+VALUES_FILE=$(mktemp)
+echo "externalIp: \"$HOST_IP\"" > "$VALUES_FILE"
 
-helm upgrade --install ochami ./ochami-helm -n ochami -f ochami-helm/values-pxe.yaml $HELM_ARGS
+if [ -n "$DHCP_START" ]; then echo "dhcpStart: \"$DHCP_START\"" >> "$VALUES_FILE"; fi
+if [ -n "$DHCP_END" ]; then echo "dhcpEnd: \"$DHCP_END\"" >> "$VALUES_FILE"; fi
+if [ -n "$DHCP_NETMASK" ]; then echo "dhcpNetmask: \"$DHCP_NETMASK\"" >> "$VALUES_FILE"; fi
+
+if [ -n "$WHITELIST_MACS" ]; then
+    echo "dhcpAllocationConfig: |" >> "$VALUES_FILE"
+    
+    # Use DHCP_START or default
+    CURRENT_IP="${DHCP_START:-192.168.100.100}"
+    
+    IFS=',' read -ra MACS <<< "$WHITELIST_MACS"
+    for mac in "${MACS[@]}"; do
+        # Trim whitespace
+        mac=$(echo "$mac" | xargs)
+        echo "  - static: $mac $CURRENT_IP" >> "$VALUES_FILE"
+        CURRENT_IP=$(next_ip "$CURRENT_IP")
+    done
+fi
+
+helm upgrade --install ochami ./ochami-helm -n ochami -f ochami-helm/values-pxe.yaml -f "$VALUES_FILE"
+
+rm -f "$VALUES_FILE"
 
 # 6. Final Instructions
 echo -e "${GREEN}=== Deployment Complete ===${NC}"
