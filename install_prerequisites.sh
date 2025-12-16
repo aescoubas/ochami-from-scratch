@@ -104,7 +104,7 @@ if [ ! -d "$CNI_BIN_DIR" ] || [ -z "$(ls -A $CNI_BIN_DIR)" ]; then
     
     echo "Extracting to $CNI_BIN_DIR..."
     sudo mkdir -p "$CNI_BIN_DIR"
-    sudo tar -Cxzvf "$CNI_BIN_DIR" /tmp/cni-plugins.tgz
+    sudo tar -xzvf /tmp/cni-plugins.tgz -C "$CNI_BIN_DIR"
     rm -f /tmp/cni-plugins.tgz
 else
     echo "CNI plugins seem to be installed in $CNI_BIN_DIR."
