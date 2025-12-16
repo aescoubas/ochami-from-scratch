@@ -5,7 +5,7 @@ dhcpEnd: "192.168.100.200"
 dhcpNetmask: "255.255.255.0"
 # Default allocation strategy (Range). Can be overridden by deploy.sh to use static leases.
 dhcpAllocationConfig: |
-  - range: /tmp/coredhcp.leases {{ .Values.dhcpStart }} {{ .Values.dhcpEnd }} 1h
+- range: /tmp/coredhcp.leases {{ .Values.dhcpStart }} {{ .Values.dhcpEnd }} 1h
 
 coredhcp:
   customConfig: |
