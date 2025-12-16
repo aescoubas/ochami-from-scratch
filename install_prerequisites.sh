@@ -33,7 +33,23 @@ fi
 # 3. Install cri-tools (crictl)
 if ! command_exists crictl; then
     echo -e "${GREEN}--> Installing cri-tools...${NC}"
+    
+    # Check if package exists, if not, add Kubernetes repo
     ensure_apt_update
+    if ! apt-cache show cri-tools >/dev/null 2>&1; then
+        echo "Adding Kubernetes repository..."
+        sudo apt-get install -y apt-transport-https ca-certificates curl gpg
+        
+        sudo mkdir -p -m 755 /etc/apt/keyrings
+        # Using v1.34 to match the Kubernetes version seen in Minikube
+        K8S_VER="v1.34"
+        curl -fsSL "https://pkgs.k8s.io/core:/stable:/${K8S_VER}/deb/Release.key" | sudo gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+        echo "deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/${K8S_VER}/deb/ /" | sudo tee /etc/apt/sources.list.d/kubernetes.list
+        
+        sudo apt-get update
+        UPDATED_APT=true
+    fi
+    
     sudo apt-get install -y cri-tools
 else
     echo "cri-tools is installed."
