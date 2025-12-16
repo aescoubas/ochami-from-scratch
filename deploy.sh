@@ -9,8 +9,22 @@ echo -e "${GREEN}=== OpenCHAMI Minikube Deployment Script ===${NC}"
 
 # Arguments
 FORCE_REBUILD=false
-if [[ "$1" == "--rebuild" ]]; then
-    FORCE_REBUILD=true
+DHCP_START=""
+DHCP_END=""
+DHCP_NETMASK=""
+
+while [[ "$#" -gt 0 ]]; do
+    case $1 in
+        --rebuild) FORCE_REBUILD=true ;;
+        --dhcp-start) DHCP_START="$2"; shift ;;
+        --dhcp-end) DHCP_END="$2"; shift ;;
+        --dhcp-netmask) DHCP_NETMASK="$2"; shift ;;
+        *) echo "Unknown parameter passed: $1"; exit 1 ;;
+    esac
+    shift
+done
+
+if [ "$FORCE_REBUILD" = true ]; then
     echo "Force rebuild enabled."
 fi
 
@@ -161,7 +175,12 @@ if [ -z "$HOST_IP" ]; then
 fi
 echo "Using Host IP for PXE boot: $HOST_IP"
 
-helm upgrade --install ochami ./ochami-helm -n ochami -f ochami-helm/values-pxe.yaml --set externalIp="$HOST_IP"
+HELM_ARGS="--set externalIp=$HOST_IP"
+if [ -n "$DHCP_START" ]; then HELM_ARGS="$HELM_ARGS --set dhcpStart=$DHCP_START"; fi
+if [ -n "$DHCP_END" ]; then HELM_ARGS="$HELM_ARGS --set dhcpEnd=$DHCP_END"; fi
+if [ -n "$DHCP_NETMASK" ]; then HELM_ARGS="$HELM_ARGS --set dhcpNetmask=$DHCP_NETMASK"; fi
+
+helm upgrade --install ochami ./ochami-helm -n ochami -f ochami-helm/values-pxe.yaml $HELM_ARGS
 
 # 6. Final Instructions
 echo -e "${GREEN}=== Deployment Complete ===${NC}"
