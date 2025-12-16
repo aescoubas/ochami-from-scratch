@@ -14,6 +14,9 @@ if [[ "$1" == "--rebuild" ]]; then
     echo "Force rebuild enabled."
 fi
 
+# 0. Check and Install Prerequisites (System-level for 'none' driver)
+./install_prerequisites.sh
+
 # 1. Check Prerequisites
 echo -e "${GREEN}--> Checking prerequisites...${NC}"
 command -v minikube >/dev/null 2>&1 || { echo "minikube is required but not installed. Aborting." >&2; exit 1; }
@@ -26,7 +29,9 @@ command -v virt-install >/dev/null 2>&1 || { echo "virt-install is required but 
 echo -e "${GREEN}--> Ensuring Minikube is running...${NC}"
 if ! minikube status | grep -q "Running"; then
     echo "Starting Minikube..."
-    minikube start --force --driver=kvm2 --memory=4096 --cpus=2
+    sudo -E minikube start --driver=none --memory=4096 --cpus=2
+    # Fix permissions for the user
+    sudo chown -R $USER:$USER $HOME/.minikube $HOME/.kube
 else
     echo "Minikube is already running."
 fi
@@ -132,6 +137,16 @@ fi
 echo -e "${GREEN}--> Deploying OpenCHAMI Helm chart...${NC}"
 # Create namespace
 minikube kubectl -- create ns ochami || true
+
+# Wait for default service account (avoid race condition)
+echo "Waiting for default service account in ochami namespace..."
+for i in {1..30}; do
+    if minikube kubectl -- get sa default -n ochami >/dev/null 2>&1; then
+        break
+    fi
+    echo "Waiting for ServiceAccount..."
+    sleep 1
+done
 
 # Restart http-server to pick up new image (since tag is latest)
 # We delete it BEFORE upgrade so Helm recreates it.

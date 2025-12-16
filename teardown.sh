@@ -59,9 +59,15 @@ else
     echo "Network '$NET_NAME' not found."
 fi
 
-# 3. Delete Minikube (Run as user)
+# 3. Delete Minikube
 echo -e "${GREEN}--> Deleting Minikube cluster...${NC}"
-minikube delete
+# Check if using 'none' driver
+if minikube profile list -o json | grep -q '"Driver": "none"'; then
+    echo "Detected 'none' driver. Running delete with sudo to clean up root-owned artifacts..."
+    sudo -E minikube delete
+else
+    minikube delete
+fi
 
 # 4. Remove Docker Images (Optional)
 if [ "$REMOVE_IMAGES" = true ]; then
