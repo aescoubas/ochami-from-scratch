@@ -16,5 +16,5 @@ coredhcp:
         - router: {{ .Values.externalIp }}
         - dns: 8.8.8.8
         - netmask: {{ .Values.dhcpNetmask }}
-{{ .Values.dhcpAllocationConfig | indent 8 }}
+        {{- .Values.dhcpAllocationConfig | nindent 8 }}
         - nbp: "http://{{ .Values.externalIp }}:30080/boot.ipxe"
