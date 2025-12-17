@@ -14,6 +14,7 @@
 
 # Base URL for the GitHub organization where the forks reside
 readonly ORG_URL="https://github.com/aescoubas"
+readonly REPO_BASE_DIR="/tmp"
 
 # Associative array mapping logical service names to their forked repository names
 declare -A REPO_FORK_NAMES
@@ -58,12 +59,15 @@ prepare_repo() {
         return 1
     fi
 
-    if [ ! -d "$forked_repo_name" ]; then
-        echo "Cloning repository: $ORG_URL/$forked_repo_name.git"
-        git clone "$ORG_URL/$forked_repo_name.git" "$forked_repo_name"
+    
+    mkdir -p "$REPO_BASE_DIR"
+
+    if [ ! -d "$REPO_BASE_DIR/$forked_repo_name" ]; then
+        echo "Cloning repository: $ORG_URL/$forked_repo_name.git into $REPO_BASE_DIR"
+        git clone "$ORG_URL/$forked_repo_name.git" "$REPO_BASE_DIR/$forked_repo_name"
     fi
     
-    cd "$forked_repo_name"
+    cd "$REPO_BASE_DIR/$forked_repo_name"
     echo "Fetching updates and checking out ref: '$git_ref'..."
     git fetch --all --tags
     git checkout "$git_ref"

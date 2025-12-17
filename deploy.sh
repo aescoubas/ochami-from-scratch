@@ -205,7 +205,7 @@ if [ -n "$WHITELIST_MACS" ]; then
     for mac in "${MACS[@]}"; do
         # Trim whitespace
         mac=$(echo "$mac" | xargs)
-        echo "- static: $mac $CURRENT_IP" >> "$VALUES_FILE"
+        echo "  - static: $mac $CURRENT_IP" >> "$VALUES_FILE"
         CURRENT_IP=$(next_ip "$CURRENT_IP")
     done
 fi
