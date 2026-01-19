@@ -12,7 +12,9 @@ FORCE_REBUILD=false
 DHCP_START=""
 DHCP_END=""
 DHCP_NETMASK=""
-WHITELIST_MACS=""
+PXE_INTERFACE="virbr-pxe"
+PXE_IP="192.168.100.2"
+PXE_CIDR="24"
 
 while [[ "$#" -gt 0 ]]; do
     case $1 in
@@ -20,11 +22,19 @@ while [[ "$#" -gt 0 ]]; do
         --dhcp-start) DHCP_START="$2"; shift ;;
         --dhcp-end) DHCP_END="$2"; shift ;;
         --dhcp-netmask) DHCP_NETMASK="$2"; shift ;;
-        --whitelist-macs) WHITELIST_MACS="$2"; shift ;;
+        --interface) PXE_INTERFACE="$2"; shift ;;
+        --ip) PXE_IP="$2"; shift ;;
+        --cidr) PXE_CIDR="$2"; shift ;;
         *) echo "Unknown parameter passed: $1"; exit 1 ;;
     esac
     shift
 done
+
+# Validate that if one DHCP range parameter is set, the other is too
+if { [ -n "$DHCP_START" ] && [ -z "$DHCP_END" ]; } || { [ -z "$DHCP_START" ] && [ -n "$DHCP_END" ]; }; then
+    echo "Error: --dhcp-start and --dhcp-end must be specified together." >&2
+    exit 1
+fi
 
 if [ "$FORCE_REBUILD" = true ]; then
     echo "Force rebuild enabled."
@@ -139,9 +149,11 @@ done
 
 # 4. Configure Network
 echo -e "${GREEN}--> Configuring PXE network on Minikube...${NC}"
-if ! virsh net-info pxe-net >/dev/null 2>&1; then
-    echo "Defining pxe-net network..."
-    virsh net-define <(cat <<EOF
+
+if [ "$PXE_INTERFACE" == "virbr-pxe" ]; then
+    if ! virsh net-info pxe-net >/dev/null 2>&1; then
+        echo "Defining pxe-net network..."
+        virsh net-define <(cat <<EOF
 <network>
   <name>pxe-net</name>
   <uuid>c8f874f7-dd7a-465c-862a-ec30f41ac4bb</uuid>
@@ -152,12 +164,15 @@ if ! virsh net-info pxe-net >/dev/null 2>&1; then
 </network>
 EOF
 )
-    virsh net-start pxe-net
-    virsh net-autostart pxe-net
+        virsh net-start pxe-net
+        virsh net-autostart pxe-net
+    fi
+else
+    echo "Using custom interface: $PXE_INTERFACE. Skipping libvirt network creation."
 fi
 
 # Run the network setup script
-./setup_minikube_net.sh
+./setup_minikube_net.sh "$PXE_INTERFACE" "$PXE_IP" "$PXE_CIDR"
 
 # 5. Deploy Helm Chart
 echo -e "${GREEN}--> Deploying OpenCHAMI Helm chart...${NC}"
@@ -180,11 +195,7 @@ echo "Removing old http-server pod..."
 minikube kubectl -- delete pod -n ochami -l app.kubernetes.io/component=http-server --wait=false 2>/dev/null || true
 
 # Install/Upgrade
-# Detect Host IP for PXE (Use the IP of the interface with the default route, or fallback to 192.168.100.2)
-HOST_IP=$(ip route get 8.8.8.8 | awk '{print $7; exit}')
-if [ -z "$HOST_IP" ]; then
-    HOST_IP="192.168.100.2"
-fi
+HOST_IP="$PXE_IP"
 echo "Using Host IP for PXE boot: $HOST_IP"
 
 # Generate dynamic values file
@@ -195,20 +206,7 @@ if [ -n "$DHCP_START" ]; then echo "dhcpStart: \"$DHCP_START\"" >> "$VALUES_FILE
 if [ -n "$DHCP_END" ]; then echo "dhcpEnd: \"$DHCP_END\"" >> "$VALUES_FILE"; fi
 if [ -n "$DHCP_NETMASK" ]; then echo "dhcpNetmask: \"$DHCP_NETMASK\"" >> "$VALUES_FILE"; fi
 
-if [ -n "$WHITELIST_MACS" ]; then
-    echo "dhcpAllocationConfig: |" >> "$VALUES_FILE"
-    
-    # Use DHCP_START or default
-    CURRENT_IP="${DHCP_START:-192.168.100.100}"
-    
-    IFS=',' read -ra MACS <<< "$WHITELIST_MACS"
-    for mac in "${MACS[@]}"; do
-        # Trim whitespace
-        mac=$(echo "$mac" | xargs)
-        echo "  - static: $mac $CURRENT_IP" >> "$VALUES_FILE"
-        CURRENT_IP=$(next_ip "$CURRENT_IP")
-    done
-fi
+
 
 helm upgrade --install ochami ./ochami-helm -n ochami -f ochami-helm/values-pxe.yaml -f "$VALUES_FILE"
 

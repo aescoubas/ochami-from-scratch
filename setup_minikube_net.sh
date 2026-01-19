@@ -2,11 +2,14 @@
 set -e
 
 # Configuration
-NET_NAME="pxe-net"
-MINIKUBE_IP="192.168.100.2"
-HOST_IFACE="virbr-pxe" # Corresponds to the bridge name defined in deploy.sh
+NET_NAME="pxe-net" # Only used for Libvirt driver logic, effectively ignored for 'none' driver with custom interface
+CIDR=${3:-"24"}
+MINIKUBE_IP=${2:-"192.168.100.2"}
+HOST_IFACE=${1:-"virbr-pxe"} # Corresponds to the bridge name defined in deploy.sh
 
-echo "=== Configuring Minikube Network for PXE ==="
+echo "=== Configuring Network for PXE ==="
+echo "Interface: $HOST_IFACE"
+echo "IP Address: $MINIKUBE_IP/$CIDR"
 
 # Check if Minikube is running as a libvirt VM
 if virsh list --all --name | grep -q "^minikube$"; then
@@ -43,13 +46,13 @@ else
         
         # Check if IP is already assigned
         if ! ip addr show "$HOST_IFACE" | grep -q "inet $MINIKUBE_IP/"; then
-            echo "Adding IP $MINIKUBE_IP to $HOST_IFACE on host..."
-            sudo ip addr add "$MINIKUBE_IP/24" dev "$HOST_IFACE"
+            echo "Adding IP $MINIKUBE_IP/$CIDR to $HOST_IFACE on host..."
+            sudo ip addr add "$MINIKUBE_IP/$CIDR" dev "$HOST_IFACE"
         else
             echo "IP $MINIKUBE_IP already assigned to $HOST_IFACE."
         fi
     else
-        echo "Error: Host interface $HOST_IFACE not found. Ensure pxe-net is active (check deploy.sh network creation)."
+        echo "Error: Host interface $HOST_IFACE not found. Ensure the interface exists and is active."
         exit 1
     fi
 fi
