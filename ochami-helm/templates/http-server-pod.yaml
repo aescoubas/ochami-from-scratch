@@ -7,12 +7,14 @@ metadata:
     {{- include "ochami-helm.selectorLabels" . | nindent 4 }}
     app.kubernetes.io/component: http-server
 spec:
+  hostNetwork: {{ .Values.httpServer.hostNetwork }}
+  dnsPolicy: ClusterFirstWithHostNet
   containers:
     - name: http-server
       image: "{{ .Values.httpServer.image.repository }}:{{ .Values.httpServer.image.tag }}"
       imagePullPolicy: {{ .Values.httpServer.image.pullPolicy }}
       ports:
-        - containerPort: 80
+        - containerPort: {{ .Values.httpServer.port }}
       volumeMounts:
         - name: http-content
           mountPath: /usr/share/nginx/html/index.html
@@ -20,8 +22,14 @@ spec:
         - name: http-content
           mountPath: /usr/share/nginx/html/boot.ipxe
           subPath: boot.ipxe
+        - name: nginx-config
+          mountPath: /etc/nginx/conf.d/default.conf
+          subPath: default.conf
   volumes:
     - name: http-content
       configMap:
         name: {{ include "ochami-helm.fullname" . }}-http-server-content
+    - name: nginx-config
+      configMap:
+        name: {{ include "ochami-helm.fullname" . }}-http-server-config
 {{- end }}

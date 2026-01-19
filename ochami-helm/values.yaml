@@ -158,6 +158,8 @@ affinity: {}
 # HTTP Server configuration
 httpServer:
   enabled: true
+  hostNetwork: false
+  port: 80
   image:
     repository: localhost/http-server
     tag: latest

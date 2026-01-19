@@ -10,7 +10,7 @@ spec:
   type: {{ .Values.httpServer.service.type }}
   ports:
     - port: {{ .Values.httpServer.service.port }}
-      targetPort: 80
+      targetPort: {{ .Values.httpServer.port }}
       {{- if .Values.httpServer.service.nodePort }}
       nodePort: {{ .Values.httpServer.service.nodePort }}
       {{- end }}

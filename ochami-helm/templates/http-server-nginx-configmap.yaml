@@ -1,0 +1,26 @@
+{{- if .Values.httpServer.enabled -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "ochami-helm.fullname" . }}-http-server-config
+  labels:
+    {{- include "ochami-helm.labels" . | nindent 4 }}
+data:
+  default.conf: |
+    server {
+        listen       {{ .Values.httpServer.port }};
+        listen  [::]:{{ .Values.httpServer.port }};
+        server_name  localhost;
+
+        location / {
+            root   /usr/share/nginx/html;
+            index  index.html index.htm;
+            autoindex on;
+        }
+
+        error_page   500 502 503 504  /50x.html;
+        location = /50x.html {
+            root   /usr/share/nginx/html;
+        }
+    }
+{{- end }}

@@ -201,6 +201,9 @@ echo "Using Host IP for PXE boot: $HOST_IP"
 # Generate dynamic values file
 VALUES_FILE=$(mktemp)
 echo "externalIp: \"$HOST_IP\"" > "$VALUES_FILE"
+echo "httpServer:" >> "$VALUES_FILE"
+echo "  hostNetwork: true" >> "$VALUES_FILE"
+echo "  port: 30080" >> "$VALUES_FILE"
 
 if [ -n "$DHCP_START" ]; then echo "dhcpStart: \"$DHCP_START\"" >> "$VALUES_FILE"; fi
 if [ -n "$DHCP_END" ]; then echo "dhcpEnd: \"$DHCP_END\"" >> "$VALUES_FILE"; fi
