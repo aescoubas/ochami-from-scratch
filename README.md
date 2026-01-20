@@ -56,7 +56,7 @@ Check that all the pods are running and the services are created.
 minikube kubectl -- get pods -n ochami
 minikube kubectl -- get services -n ochami
 ```
-You should see pods for `coredhcp`, `ochami-http-server`, `smd`, `bss`, and `postgres` running.
+You should see pods for `ochami-kea`, `ochami-tftp`, `ochami-http-server`, `smd`, `bss`, and `postgres` running.
 
 ## Step 3: Create and Boot the VM (Local Mode)
 
@@ -80,8 +80,10 @@ You should see pods for `coredhcp`, `ochami-http-server`, `smd`, `bss`, and `pos
 3.  **Watch it Boot!**
 
     If everything is configured correctly, you should see the following in the VM's console:
-    *   The VM performs a PXE boot and gets an IP address from the `coredhcp` server.
-    *   The `coredhcp` server provides the URL to the `boot.ipxe` script.
+    *   The VM performs a PXE boot and gets an IP address from the `kea` DHCP server.
+    *   The DHCP server points to `ipxe.efi` (served by `tftp`).
+    *   The VM loads `ipxe.efi`, which then requests DHCP again.
+    *   The DHCP server detects iPXE and provides the URL to the `boot.ipxe` script.
     *   iPXE downloads and executes `boot.ipxe`.
     *   The iPXE script downloads the **openSUSE** kernel and initramfs from the `http-server`.
     *   The Linux kernel starts booting into a live SLES/openSUSE environment.

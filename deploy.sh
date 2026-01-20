@@ -93,6 +93,32 @@ else
     echo "Image $HTTP_IMAGE found in Minikube. Skipping build/load."
 fi
 
+# 3.1b Infrastructure (Kea & TFTP)
+KEA_IMAGE="localhost/kea:latest"
+if $FORCE_REBUILD || ! image_exists_in_minikube "$KEA_IMAGE"; then
+    echo "Building Kea DHCP..."
+    docker build -t "$KEA_IMAGE" ochami-helm/kea/
+    minikube image load "$KEA_IMAGE"
+else
+    echo "Image $KEA_IMAGE found in Minikube. Skipping."
+fi
+
+TFTP_IMAGE="localhost/tftp:latest"
+if $FORCE_REBUILD || ! image_exists_in_minikube "$TFTP_IMAGE"; then
+    echo "Building TFTP Server..."
+    # Ensure artifacts exist (from http-server build)
+    if [ ! -d "ochami-helm/http-server/artifacts" ]; then
+        echo "Error: artifacts not found. Please rebuild http-server."
+        exit 1
+    fi
+    mkdir -p ochami-helm/tftp/artifacts
+    cp -r ochami-helm/http-server/artifacts/* ochami-helm/tftp/artifacts/
+    docker build -t "$TFTP_IMAGE" ochami-helm/tftp/
+    minikube image load "$TFTP_IMAGE"
+else
+    echo "Image $TFTP_IMAGE found in Minikube. Skipping."
+fi
+
 # 3.2 Microservices
 # Source the build functions
 if [ -f build_microservices.sh ]; then
@@ -102,7 +128,7 @@ else
     exit 1
 fi
 
-MS_IMAGES=("localhost/smd:local-smd" "localhost/bss:local-bss" "localhost/coresmd:local-coresmd")
+MS_IMAGES=("localhost/smd:local-smd" "localhost/bss:local-bss")
 
 for img in "${MS_IMAGES[@]}"; do
     if $FORCE_REBUILD || ! image_exists_in_minikube "$img"; then
@@ -198,9 +224,14 @@ minikube kubectl -- delete pod -n ochami -l app.kubernetes.io/component=http-ser
 HOST_IP="$PXE_IP"
 echo "Using Host IP for PXE boot: $HOST_IP"
 
+# Calculate Subnet for Kea
+DHCP_SUBNET=$(python3 -c "import ipaddress; print(str(ipaddress.ip_network('$PXE_IP/$PXE_CIDR', strict=False)))")
+echo "Calculated DHCP Subnet: $DHCP_SUBNET"
+
 # Generate dynamic values file
 VALUES_FILE=$(mktemp)
 echo "externalIp: \"$HOST_IP\"" > "$VALUES_FILE"
+echo "dhcpSubnet: \"$DHCP_SUBNET\"" >> "$VALUES_FILE"
 echo "httpServer:" >> "$VALUES_FILE"
 echo "  hostNetwork: true" >> "$VALUES_FILE"
 echo "  port: 30080" >> "$VALUES_FILE"

@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ochami-tftp
+  labels:
+    {{- include "ochami-helm.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: tftp
+spec:
+  hostNetwork: true
+  containers:
+    - name: tftp
+      image: "{{ .Values.tftp.image.repository }}:{{ .Values.tftp.image.tag }}"
+      imagePullPolicy: {{ .Values.tftp.image.pullPolicy }}
+      ports:
+        - containerPort: 69
+          protocol: UDP

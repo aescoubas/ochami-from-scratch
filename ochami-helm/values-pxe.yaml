@@ -3,17 +3,3 @@ externalIp: "192.168.100.2"
 dhcpStart: "192.168.100.100"
 dhcpEnd: "192.168.100.200"
 dhcpNetmask: "255.255.255.0"
-# Default allocation strategy (Range). Can be overridden by deploy.sh to use static leases.
-dhcpAllocationConfig: "- range: /tmp/coredhcp.leases {{ .Values.dhcpStart }} {{ .Values.dhcpEnd }} 1h"
-
-coredhcp:
-  customConfig: |
-    server4:
-      listen: "0.0.0.0:67"
-      plugins:
-        - server_id: {{ .Values.externalIp }}
-        - router: {{ .Values.externalIp }}
-        - dns: 8.8.8.8
-        - netmask: {{ .Values.dhcpNetmask }}
-        {{- tpl .Values.dhcpAllocationConfig . | nindent 4 }}
-        - nbp: "http://{{ .Values.externalIp }}:30080/boot.ipxe"

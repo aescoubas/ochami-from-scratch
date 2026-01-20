@@ -28,9 +28,12 @@ service:
   postgres:
     type: ClusterIP
     port: 5432
-  coredhcp:
+  kea:
     type: ClusterIP
     port: 67
+  tftp:
+    type: ClusterIP
+    port: 69
 
 postgres:
   user: ochami
@@ -63,32 +66,18 @@ bssInit:
     tag: "local-bss"
     pullPolicy: IfNotPresent
 
-# coredhcpInit job configuration
-coredhcpInit:
+kea:
   image:
-    repository: busybox
-    tag: "1.36"
+    repository: localhost/kea
+    tag: "latest"
     pullPolicy: IfNotPresent
+  dns: "8.8.8.8"
 
-coredhcp:
+tftp:
   image:
-    repository: localhost/coresmd
-    tag: "local-coresmd"
+    repository: localhost/tftp
+    tag: "latest"
     pullPolicy: IfNotPresent
-  server_id: "192.168.0.254"
-  dns: "1.1.1.1 8.8.8.8"
-  router: "172.16.0.254"
-  netmask: "255.255.255.0"
-  cache_update_interval: "30s"
-  long_lease_time: "1h"
-  short_lease_time: "5m"
-  bootloop:
-    storage_path: "/tmp/coredhcp.db"
-    ip_pool_start: "192.168.0.150"
-    ip_pool_end: "192.168.0.253"
-  # customConfig: |
-  #   server4:
-  #     ...
 
 
 

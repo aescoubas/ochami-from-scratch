@@ -1,0 +1,75 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "ochami-helm.fullname" . }}-kea-config
+  labels:
+    {{- include "ochami-helm.labels" . | nindent 4 }}
+data:
+  kea-dhcp4.conf: |
+    {
+    "Dhcp4": {
+        "interfaces-config": {
+            "interfaces": ["*"]
+        },
+        "lease-database": {
+            "type": "memfile",
+            "persist": true,
+            "name": "/var/lib/kea/kea-leases4.csv"
+        },
+        "valid-lifetime": 4000,
+        "renew-timer": 1000,
+        "rebind-timer": 2000,
+        "option-data": [
+            {
+                "name": "domain-name-servers",
+                "data": "{{ .Values.kea.dns | default "8.8.8.8" }}"
+            },
+            {
+                "name": "routers",
+                "data": "{{ .Values.externalIp }}"
+            }
+        ],
+        "client-classes": [
+            {
+                "name": "iPXE",
+                "test": "substring(option[77].hex,0,4) == 'iPXE'",
+                "option-data": [
+                    {
+                        "name": "boot-file-name",
+                        "data": "http://{{ .Values.externalIp }}:30080/boot.ipxe"
+                    }
+                ]
+            },
+            {
+                "name": "EFI",
+                "test": "not member('iPXE')",
+                "option-data": [
+                    {
+                        "name": "boot-file-name",
+                        "data": "ipxe.efi"
+                    },
+                    {
+                        "name": "tftp-server-name",
+                        "data": "{{ .Values.externalIp }}"
+                    }
+                ]
+            }
+        ],
+        "subnet4": [
+            {
+                "subnet": "{{ .Values.dhcpSubnet }}", 
+                "pools": [
+                    {
+                        "pool": "{{ .Values.dhcpStart }} - {{ .Values.dhcpEnd }}"
+                    }
+                ],
+                 "option-data": [
+                    {
+                        "name": "routers",
+                        "data": "{{ .Values.externalIp }}"
+                    }
+                ]
+            }
+        ]
+    }
+    }

@@ -1,2 +1,5 @@
 # Ignore build artifacts
 http-server/artifacts/
+tftp/artifacts/
+kea/
+tftp/

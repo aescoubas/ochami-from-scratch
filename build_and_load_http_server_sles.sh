@@ -74,6 +74,12 @@ echo "--- Staging artifacts ---"
 ARTIFACTS_DIR="ochami-helm/http-server/artifacts"
 mkdir -p "$ARTIFACTS_DIR"
 mv vmlinuz-lts initramfs-lts rootfs.squashfs "$ARTIFACTS_DIR/"
+
+echo "--- Downloading ipxe.efi ---"
+# Download ipxe.efi from a reliable source. 
+# In a real environment, you might build this from source.
+curl -L -o "$ARTIFACTS_DIR/ipxe.efi" http://boot.ipxe.org/ipxe.efi
+
 echo "Artifacts staged in $ARTIFACTS_DIR"
 
 echo "--- Building and loading http-server image into Minikube ---"
