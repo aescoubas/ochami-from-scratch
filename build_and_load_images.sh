@@ -16,9 +16,33 @@ RUN zypper ref && zypper install -y kernel-default dracut squashfs iproute2 util
 # Configure system
 RUN echo 'root:root' | chpasswd
 
+# Create custom Wicked XML config to send DHCP Option 93 (Client Arch)
+RUN mkdir -p /tmp/netconfig
+RUN cat > /tmp/netconfig/eth0.xml <<XML
+<interface>
+  <name>eth0</name>
+  <control>
+    <mode>boot</mode>
+  </control>
+  <ipv4>
+    <enabled>true</enabled>
+    <dhcp>
+      <enabled>true</enabled>
+      <option>
+        <code value="93"/>
+        <type>uint16</type>
+        <value>0</value>
+      </option>
+    </dhcp>
+  </ipv4>
+</interface>
+XML
+
 # Generate Dracut initramfs with network and live boot support
+# We include the custom XML config in the correct path for wicked
+# Wicked usually looks in /etc/wicked/ifconfig/
 RUN KVER=\$(ls /lib/modules | head -n 1) && \
-    dracut -v --add "network dmsquash-live livenet" --no-hostonly --kver \$KVER /boot/initrd.img
+    dracut -v --add "network dmsquash-live livenet" --include /tmp/netconfig/eth0.xml /etc/wicked/ifconfig/eth0.xml --no-hostonly --kver \$KVER /boot/initrd.img
 EOF
 
 # Build the image
@@ -80,5 +104,8 @@ echo "--- Building and loading http-server image into Minikube ---"
 DOCKER_CONTEXT="ochami-helm/http-server/"
 docker build -t localhost/http-server:latest "$DOCKER_CONTEXT"
 minikube image load localhost/http-server:latest
+
+# Note: TFTP server is built into coresmd, no separate container needed
+# coresmd includes iPXE binaries (undionly.kpxe, ipxe.efi) for BIOS and UEFI boot
 
 echo "--- Done ---"

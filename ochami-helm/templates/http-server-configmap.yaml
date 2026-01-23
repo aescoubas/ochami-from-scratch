@@ -9,10 +9,23 @@ data:
   boot.ipxe: |-
     #!ipxe
 
-    echo "Booting full openSUSE Leap 15.6 from {{ .Values.externalIp | default "192.168.100.2" }}..."
-    set base-url http://{{ .Values.externalIp | default "192.168.100.2" }}:30080
+    {{- $httpPort := int (.Values.httpServer.service.nodePort | default 30080) }}
+    {{- $externalIp := .Values.externalIp | default "192.168.100.2" }}
+
+    echo "=============================================="
+    echo "OpenCHAMI Network Boot"
+    echo "Server: {{ $externalIp }}:{{ $httpPort }}"
+    echo "=============================================="
+
+    set base-url http://{{ $externalIp }}:{{ $httpPort }}
+
+    echo "Loading kernel..."
     kernel ${base-url}/artifacts/vmlinuz-lts console=ttyS0 ip=dhcp rd.neednet=1 root=live:${base-url}/artifacts/rootfs.squashfs
+
+    echo "Loading initramfs..."
     initrd ${base-url}/artifacts/initramfs-lts
+
+    echo "Booting..."
     boot
   index.html: |-
 {{ .Files.Get "files/index.html" | indent 4 }}

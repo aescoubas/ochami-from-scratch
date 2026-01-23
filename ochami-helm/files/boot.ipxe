@@ -1,7 +1,26 @@
 #!ipxe
+# This file is a reference. The actual boot.ipxe is templated via
+# ochami-helm/templates/http-server-configmap.yaml with values from values-pxe.yaml
 
-echo "Booting full Fedora Linux from 192.168.100.2..."
+# Boot flow:
+# 1. DHCP gives TFTP server + iPXE filename to raw PXE client
+# 2. iPXE binary is downloaded via TFTP
+# 3. iPXE sends another DHCP request (identifying as iPXE)
+# 4. DHCP responds with this boot script URL
+# 5. This script loads kernel/initrd via HTTP and boots
+
+echo "=============================================="
+echo "OpenCHAMI Network Boot"
+echo "Server: 192.168.100.2:30080"
+echo "=============================================="
+
 set base-url http://192.168.100.2:30080
+
+echo "Loading kernel..."
 kernel ${base-url}/artifacts/vmlinuz-lts console=ttyS0 ip=dhcp rd.neednet=1 root=live:${base-url}/artifacts/rootfs.squashfs
+
+echo "Loading initramfs..."
 initrd ${base-url}/artifacts/initramfs-lts
+
+echo "Booting..."
 boot

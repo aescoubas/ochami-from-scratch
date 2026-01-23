@@ -5,23 +5,54 @@ RED='\033[0;31m'
 GREEN='\033[0;32m'
 NC='\033[0m'
 
-# Parse arguments
+# Defaults
 REMOVE_IMAGES=false
-for arg in "$@"; do
-    case $arg in
+VM_NAME="virtual-compute-node"
+SKIP_CONFIRM=false
+
+# Parse arguments
+while [[ "$#" -gt 0 ]]; do
+    case $1 in
         --remove-images)
-        REMOVE_IMAGES=true
-        shift
-        ;;
+            REMOVE_IMAGES=true
+            ;;
+        --vm-name)
+            VM_NAME="$2"
+            shift
+            ;;
+        -y|--yes)
+            SKIP_CONFIRM=true
+            ;;
+        -h|--help)
+            echo "Usage: $0 [OPTIONS]"
+            echo ""
+            echo "Options:"
+            echo "  --remove-images   Also remove Docker images and CNI plugins"
+            echo "  --vm-name NAME    Specify VM name to remove (default: virtual-compute-node)"
+            echo "  -y, --yes         Skip confirmation prompt"
+            echo "  -h, --help        Show this help"
+            echo ""
+            echo "This script removes:"
+            echo "  - The test VM (virtual-compute-node or specified name)"
+            echo "  - The pxe-net libvirt network"
+            echo "  - The Minikube cluster"
+            echo "  - Build artifacts (kernels, initramfs, rootfs)"
+            exit 0
+            ;;
+        *)
+            echo "Unknown parameter: $1"
+            exit 1
+            ;;
     esac
+    shift
 done
 
 echo -e "${RED}=== OpenCHAMI Teardown Script ===${NC}"
 echo "This script will PERMANENTLY DELETE:"
-echo "  - VM: virtual-compute-node"
+echo "  - VM: $VM_NAME"
 echo "  - Network: pxe-net"
 echo "  - Minikube Cluster"
-echo "  - Build Artifacts (kernels, initramfs)"
+echo "  - Build Artifacts (kernels, initramfs, rootfs)"
 if [ "$REMOVE_IMAGES" = true ]; then
     echo "  - Docker Images (ochami related) [ENABLED]"
 else
@@ -29,15 +60,16 @@ else
 fi
 echo ""
 
-read -p "Are you sure you want to proceed? (y/N) " -n 1 -r
-echo
-if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-    echo "Aborted."
-    exit 1
+if [ "$SKIP_CONFIRM" = false ]; then
+    read -p "Are you sure you want to proceed? (y/N) " -n 1 -r
+    echo
+    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+        echo "Aborted."
+        exit 1
+    fi
 fi
 
 # 1. Destroy VM (Requires sudo as it was created with sudo)
-VM_NAME="virtual-compute-node"
 echo -e "${GREEN}--> Removing VM '$VM_NAME' (may ask for sudo password)...${NC}"
 if sudo virsh dominfo "$VM_NAME" >/dev/null 2>&1; then
     sudo virsh destroy "$VM_NAME" >/dev/null 2>&1 || true
@@ -80,9 +112,16 @@ fi
 # 4. Remove Docker Images (Optional)
 if [ "$REMOVE_IMAGES" = true ]; then
     echo -e "${GREEN}--> Removing Docker images...${NC}"
-    # List of images to remove
-    IMAGES="localhost/http-server:latest localhost/smd:local-smd localhost/bss:local-bss localhost/coresmd:local-coresmd"
-    for img in $IMAGES; do
+    # List of images to remove (HTTP server and microservices)
+    # Note: TFTP server is built into coresmd, no separate image
+    IMAGES=(
+        "localhost/http-server:latest"
+        "localhost/smd:local-smd"
+        "localhost/bss:local-bss"
+        "localhost/coresmd:local-coresmd"
+        "localhost/coresmd:local-build"
+    )
+    for img in "${IMAGES[@]}"; do
         if docker image inspect "$img" >/dev/null 2>&1; then
             docker rmi "$img" || echo "Failed to remove $img (might be in use or dependent)"
         fi
@@ -93,9 +132,15 @@ fi
 
 # 5. Remove Artifacts
 echo -e "${GREEN}--> Cleaning up build artifacts...${NC}"
-rm -f ochami-helm/http-server/artifacts/vmlinuz-lts
-rm -f ochami-helm/http-server/artifacts/initramfs-lts
-rm -f ochami-helm/http-server/artifacts/rootfs.squashfs
+# TFTP artifacts (iPXE binaries are kept as they're checked into git)
+rm -f ochami-helm/tftp/artifacts/vmlinuz-lts
+rm -f ochami-helm/tftp/artifacts/initramfs-lts
+rm -f ochami-helm/tftp/artifacts/rootfs.squashfs
+# Legacy HTTP server artifacts path (if exists)
+rm -f ochami-helm/http-server/artifacts/vmlinuz-lts 2>/dev/null || true
+rm -f ochami-helm/http-server/artifacts/initramfs-lts 2>/dev/null || true
+rm -f ochami-helm/http-server/artifacts/rootfs.squashfs 2>/dev/null || true
+# Temporary files
 rm -f /tmp/configure_net.sh 2>/dev/null || true
 
 # 6. Clean up System Modifications (Optional/Aggressive)

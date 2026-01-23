@@ -1,19 +1,39 @@
 # Custom values for PXE boot setup with Minikube on 192.168.100.2
+#
+# This configuration supports TWO boot modes:
+#   1. Traditional PXE (bare metal / standard VM firmware):
+#      DHCP → TFTP iPXE binary → iPXE → HTTP boot.ipxe → kernel
+#   2. HTTP boot (VMs with iPXE ROM or clients that already have iPXE):
+#      DHCP → HTTP boot.ipxe directly → kernel
+#
+# The coresmd plugin includes a built-in TFTP server with iPXE binaries.
+# The bootloop plugin handles unknown nodes during discovery.
+
 externalIp: "192.168.100.2"
 dhcpStart: "192.168.100.100"
 dhcpEnd: "192.168.100.200"
 dhcpNetmask: "255.255.255.0"
-# Default allocation strategy (Range). Can be overridden by deploy.sh to use static leases.
-dhcpAllocationConfig: "- range: /tmp/coredhcp.leases {{ .Values.dhcpStart }} {{ .Values.dhcpEnd }} 1h"
 
+# IP address for the TFTP server (usually same as externalIp)
+tftpServerIp: "192.168.100.2"
+
+# Boot script URL that iPXE will chainload to (after getting iPXE via TFTP)
+bootScriptUrl: "http://192.168.100.2:30080/boot.ipxe"
+
+# CoreDHCP/CoreSMD configuration
 coredhcp:
-  customConfig: |
-    server4:
-      listen: "0.0.0.0:67"
-      plugins:
-        - server_id: {{ .Values.externalIp }}
-        - router: {{ .Values.externalIp }}
-        - dns: 8.8.8.8
-        - netmask: {{ .Values.dhcpNetmask }}
-        {{- tpl .Values.dhcpAllocationConfig . | nindent 4 }}
-        - nbp: "http://{{ .Values.externalIp }}:30080/boot.ipxe"
+  # Override default server_id, router, etc.
+  server_id: "192.168.100.2"
+  router: "192.168.100.2"
+  dns: "8.8.8.8"
+  netmask: "255.255.255.0"
+
+  # Bootloop plugin config for unknown/discovery nodes
+  bootloop:
+    storage_path: "/tmp/coredhcp.db"
+    ip_pool_start: "192.168.100.100"
+    ip_pool_end: "192.168.100.200"
+
+# Note: We now use the default coredhcp-configmap.yaml template which properly configures:
+# - coresmd plugin: For nodes registered in SMD (uses iPXE base URL for HTTP boot)
+# - bootloop plugin: For unknown nodes (uses built-in TFTP server with "default" iPXE)

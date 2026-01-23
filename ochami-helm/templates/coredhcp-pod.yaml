@@ -32,6 +32,8 @@ spec:
           subPath: config.yaml
         - name: root-ca
           mountPath: /root_ca
+      # Note: coresmd includes a built-in TFTP server with iPXE binaries
+      # No separate TFTP container is needed
   volumes:
     - name: coredhcp-config
       configMap:

@@ -84,11 +84,11 @@ image_exists_locally() {
 # 3. Build and Load Images
 echo -e "${GREEN}--> Building and loading images...${NC}"
 
-# 3.1 HTTP Server
+# 3.1 HTTP Server (TFTP is built into coresmd, no separate container needed)
 HTTP_IMAGE="localhost/http-server:latest"
 if $FORCE_REBUILD || ! image_exists_in_minikube "$HTTP_IMAGE"; then
     echo "Building http-server (SLES)..."
-    ./build_and_load_http_server_sles.sh
+    ./build_and_load_images.sh
 else
     echo "Image $HTTP_IMAGE found in Minikube. Skipping build/load."
 fi
@@ -201,6 +201,7 @@ echo "Using Host IP for PXE boot: $HOST_IP"
 # Generate dynamic values file
 VALUES_FILE=$(mktemp)
 echo "externalIp: \"$HOST_IP\"" > "$VALUES_FILE"
+echo "projectRoot: \"$(pwd)\"" >> "$VALUES_FILE"
 echo "httpServer:" >> "$VALUES_FILE"
 echo "  hostNetwork: true" >> "$VALUES_FILE"
 echo "  port: 30080" >> "$VALUES_FILE"
