@@ -232,6 +232,7 @@ fi
 VALUES_FILE=$(mktemp)
 cat <<EOF > "$VALUES_FILE"
 externalIp: "$HOST_IP"
+pxeInterface: "$PXE_INTERFACE"
 tftpServerIp: "$HOST_IP"
 dhcpStart: "$DHCP_START"
 dhcpEnd: "$DHCP_END"

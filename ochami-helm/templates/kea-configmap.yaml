@@ -9,7 +9,7 @@ data:
     {
       "Dhcp4": {
         "interfaces-config": {
-          "interfaces": ["virbr-pxe"]
+          "interfaces": ["{{ .Values.pxeInterface }}"]
         },
         "hooks-libraries": [
           {
