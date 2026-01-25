@@ -1,0 +1,8 @@
+kea:
+  db:
+    host: "localhost"
+    port: 5432
+    name: "kea"
+    user: "kea"
+postgres:
+  kea_password: "pass"

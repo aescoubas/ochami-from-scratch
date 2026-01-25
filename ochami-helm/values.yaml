@@ -28,7 +28,7 @@ service:
   postgres:
     type: ClusterIP
     port: 5432
-  coredhcp:
+  kea:
     type: ClusterIP
     port: 67
 
@@ -38,6 +38,7 @@ postgres:
   smd_password: "CHANGEME"
   bss_password: "CHANGEME"
   hydra_password: "CHANGEME"
+  kea_password: "CHANGEME"
 
 # smdInit job configuration
 smdInit:
@@ -63,35 +64,28 @@ bssInit:
     tag: "local-bss"
     pullPolicy: IfNotPresent
 
-# coredhcpInit job configuration
-coredhcpInit:
+# Kea DHCP configuration
+kea:
   image:
-    repository: busybox
-    tag: "1.36"
+    repository: jonasal/kea-dhcp4
+    tag: "3.1.4"
     pullPolicy: IfNotPresent
-
-coredhcp:
-  image:
-    repository: localhost/coresmd
-    tag: "local-coresmd"
+  adminImage:
+    repository: jonasal/kea-admin
+    tag: "3.1.4"
     pullPolicy: IfNotPresent
-  server_id: "192.168.0.254"
-  dns: "1.1.1.1 8.8.8.8"
-  router: "172.16.0.254"
-  netmask: "255.255.255.0"
-  cache_update_interval: "30s"
-  long_lease_time: "1h"
-  short_lease_time: "5m"
-  bootloop:
-    storage_path: "/tmp/coredhcp.db"
-    ip_pool_start: "192.168.0.150"
-    ip_pool_end: "192.168.0.253"
-  # customConfig: |
-  #   server4:
-  #     ...
-
-
-
+  sidecar:
+    image:
+      repository: python
+      tag: "3.9-slim"
+      pullPolicy: IfNotPresent
+  db:
+    host: "ochami-postgres"
+    port: 5432
+    name: "kea"
+    user: "kea-user"
+    password: "CHANGEME"
+  
 bss:
   image:
     repository: localhost/bss
@@ -168,3 +162,13 @@ httpServer:
     type: NodePort
     port: 80
     nodePort: 30080
+
+# TFTP Server configuration
+tftp:
+  enabled: true
+  hostNetwork: true
+  port: 69
+  image:
+    repository: localhost/tftp
+    tag: latest
+    pullPolicy: IfNotPresent

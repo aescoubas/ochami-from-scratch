@@ -84,13 +84,23 @@ image_exists_locally() {
 # 3. Build and Load Images
 echo -e "${GREEN}--> Building and loading images...${NC}"
 
-# 3.1 HTTP Server (TFTP is built into coresmd, no separate container needed)
+# 3.1 HTTP Server and TFTP Server
 HTTP_IMAGE="localhost/http-server:latest"
 if $FORCE_REBUILD || ! image_exists_in_minikube "$HTTP_IMAGE"; then
     echo "Building http-server (SLES)..."
     ./build_and_load_images.sh
 else
     echo "Image $HTTP_IMAGE found in Minikube. Skipping build/load."
+fi
+
+TFTP_IMAGE="localhost/tftp:latest"
+if $FORCE_REBUILD || ! image_exists_in_minikube "$TFTP_IMAGE"; then
+    echo "Building tftp server..."
+    docker build -t "$TFTP_IMAGE" ochami-helm/tftp/
+    echo "Loading $TFTP_IMAGE into Minikube..."
+    minikube image load "$TFTP_IMAGE"
+else
+    echo "Image $TFTP_IMAGE found in Minikube. Skipping build/load."
 fi
 
 # 3.2 Microservices
@@ -102,7 +112,7 @@ else
     exit 1
 fi
 
-MS_IMAGES=("localhost/smd:local-smd" "localhost/bss:local-bss" "localhost/coresmd:local-coresmd")
+MS_IMAGES=("localhost/smd:local-smd" "localhost/bss:local-bss")
 
 for img in "${MS_IMAGES[@]}"; do
     if $FORCE_REBUILD || ! image_exists_in_minikube "$img"; then
@@ -193,22 +203,58 @@ done
 # We delete it BEFORE upgrade so Helm recreates it.
 echo "Removing old http-server pod..."
 minikube kubectl -- delete pod -n ochami -l app.kubernetes.io/component=http-server --wait=false 2>/dev/null || true
+echo "Removing old tftp pod..."
+minikube kubectl -- delete pod -n ochami -l app.kubernetes.io/component=tftp --wait=false 2>/dev/null || true
+echo "Removing old kea pod..."
+minikube kubectl -- delete pod -n ochami -l app.kubernetes.io/component=kea 2>/dev/null || true
+echo "Removing old postgres pod..."
+minikube kubectl -- delete pod -n ochami -l app.kubernetes.io/component=postgres 2>/dev/null || true
+echo "Removing old smd and bss pods..."
+minikube kubectl -- delete pod -n ochami -l app.kubernetes.io/component=smd 2>/dev/null || true
+minikube kubectl -- delete pod -n ochami -l app.kubernetes.io/component=bss 2>/dev/null || true
 
 # Install/Upgrade
 HOST_IP="$PXE_IP"
 echo "Using Host IP for PXE boot: $HOST_IP"
 
+# Set defaults for DHCP if not provided
+if [ -z "$DHCP_START" ]; then
+    DHCP_START="192.168.100.100"
+    DHCP_END="192.168.100.200"
+fi
+if [ -z "$DHCP_NETMASK" ]; then
+    DHCP_NETMASK="255.255.255.0"
+fi
+
 # Generate dynamic values file
 VALUES_FILE=$(mktemp)
-echo "externalIp: \"$HOST_IP\"" > "$VALUES_FILE"
-echo "projectRoot: \"$(pwd)\"" >> "$VALUES_FILE"
-echo "httpServer:" >> "$VALUES_FILE"
-echo "  hostNetwork: true" >> "$VALUES_FILE"
-echo "  port: 30080" >> "$VALUES_FILE"
+cat <<EOF > "$VALUES_FILE"
+externalIp: "$HOST_IP"
+tftpServerIp: "$HOST_IP"
+dhcpStart: "$DHCP_START"
+dhcpEnd: "$DHCP_END"
+dhcpNetmask: "$DHCP_NETMASK"
+dhcpCidr: "$PXE_CIDR"
+projectRoot: "$(pwd)"
+httpServer:
+  hostNetwork: true
+  port: 30080
 
-if [ -n "$DHCP_START" ]; then echo "dhcpStart: \"$DHCP_START\"" >> "$VALUES_FILE"; fi
-if [ -n "$DHCP_END" ]; then echo "dhcpEnd: \"$DHCP_END\"" >> "$VALUES_FILE"; fi
-if [ -n "$DHCP_NETMASK" ]; then echo "dhcpNetmask: \"$DHCP_NETMASK\"" >> "$VALUES_FILE"; fi
+bss:
+  ipxe:
+    server: "$HOST_IP"
+  advertise_address: "$HOST_IP:30080"
+
+kea:
+  db:
+    host: "ochami-postgres"
+    port: 5432
+    name: "kea"
+    user: "kea-user"
+    password: "CHANGEME" # Ensure this matches values.yaml or is overridden
+
+bootScriptUrl: "http://$HOST_IP:30080/boot.ipxe"
+EOF
 
 
 
