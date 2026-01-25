@@ -93,6 +93,11 @@ fi
 
 # 2.1 Clean up host networking (for 'none' driver)
 HOST_IFACE="virbr-pxe"
+if ip link show ochami-dummy >/dev/null 2>&1; then
+    echo -e "${GREEN}--> Removing dummy interface ochami-dummy...${NC}"
+    sudo ip link delete ochami-dummy
+fi
+
 MINIKUBE_IP="192.168.100.2"
 if ip addr show "$HOST_IFACE" 2>/dev/null | grep -q "inet $MINIKUBE_IP/"; then
     echo -e "${GREEN}--> Removing IP $MINIKUBE_IP from $HOST_IFACE...${NC}"
@@ -112,14 +117,12 @@ fi
 # 4. Remove Docker Images (Optional)
 if [ "$REMOVE_IMAGES" = true ]; then
     echo -e "${GREEN}--> Removing Docker images...${NC}"
-    # List of images to remove (HTTP server and microservices)
-    # Note: TFTP server is built into coresmd, no separate image
+    # List of images to remove (HTTP server, TFTP server, and microservices)
     IMAGES=(
         "localhost/http-server:latest"
+        "localhost/tftp:latest"
         "localhost/smd:local-smd"
         "localhost/bss:local-bss"
-        "localhost/coresmd:local-coresmd"
-        "localhost/coresmd:local-build"
     )
     for img in "${IMAGES[@]}"; do
         if docker image inspect "$img" >/dev/null 2>&1; then
@@ -133,13 +136,10 @@ fi
 # 5. Remove Artifacts
 echo -e "${GREEN}--> Cleaning up build artifacts...${NC}"
 # TFTP artifacts (iPXE binaries are kept as they're checked into git)
-rm -f ochami-helm/tftp/artifacts/vmlinuz-lts
-rm -f ochami-helm/tftp/artifacts/initramfs-lts
-rm -f ochami-helm/tftp/artifacts/rootfs.squashfs
-# Legacy HTTP server artifacts path (if exists)
-rm -f ochami-helm/http-server/artifacts/vmlinuz-lts 2>/dev/null || true
-rm -f ochami-helm/http-server/artifacts/initramfs-lts 2>/dev/null || true
-rm -f ochami-helm/http-server/artifacts/rootfs.squashfs 2>/dev/null || true
+# HTTP server artifacts (kernel, initramfs, rootfs)
+rm -f ochami-helm/http-server/artifacts/vmlinuz-lts
+rm -f ochami-helm/http-server/artifacts/initramfs-lts
+rm -f ochami-helm/http-server/artifacts/rootfs.squashfs
 # Temporary files
 rm -f /tmp/configure_net.sh 2>/dev/null || true
 

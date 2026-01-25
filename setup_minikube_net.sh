@@ -2,14 +2,17 @@
 set -e
 
 # Configuration
-NET_NAME="pxe-net" # Only used for Libvirt driver logic, effectively ignored for 'none' driver with custom interface
-CIDR=${3:-"24"}
-MINIKUBE_IP=${2:-"192.168.100.2"}
 HOST_IFACE=${1:-"virbr-pxe"} # Corresponds to the bridge name defined in deploy.sh
+MINIKUBE_IP=${2:-"192.168.100.2"}
+CIDR=${3:-"24"}
+PHY_IFACE=${4:-""}
 
 echo "=== Configuring Network for PXE ==="
 echo "Interface: $HOST_IFACE"
 echo "IP Address: $MINIKUBE_IP/$CIDR"
+if [ -n "$PHY_IFACE" ]; then
+    echo "Physical Bridge Port: $PHY_IFACE"
+fi
 
 # Check if Minikube is running as a libvirt VM
 if virsh list --all --name | grep -q "^minikube$"; then
@@ -44,6 +47,34 @@ else
     if ip link show "$HOST_IFACE" >/dev/null 2>&1; then
         echo "Found host interface $HOST_IFACE."
         
+        # Special handling for virbr-pxe: attach dummy interface to ensure carrier
+        if [ "$HOST_IFACE" == "virbr-pxe" ]; then
+             if ! ip link show ochami-dummy >/dev/null 2>&1; then
+                 echo "Creating dummy interface ochami-dummy to keep bridge UP..."
+                 sudo ip link add ochami-dummy type dummy
+                 sudo ip link set ochami-dummy master "$HOST_IFACE"
+                 sudo ip link set ochami-dummy up
+             else
+                 echo "Dummy interface ochami-dummy already exists."
+                 # Ensure it is up and attached
+                 sudo ip link set ochami-dummy up
+                 sudo ip link set ochami-dummy master "$HOST_IFACE" 2>/dev/null || true
+             fi
+             
+             # Bridge physical interface if provided
+             if [ -n "$PHY_IFACE" ]; then
+                 if ip link show "$PHY_IFACE" >/dev/null 2>&1; then
+                     echo "Bridging physical interface $PHY_IFACE to $HOST_IFACE..."
+                     # Ensure it's up
+                     sudo ip link set dev "$PHY_IFACE" up
+                     # Attach to bridge
+                     sudo ip link set dev "$PHY_IFACE" master "$HOST_IFACE"
+                 else
+                     echo "Warning: Physical interface $PHY_IFACE specified but not found on host."
+                 fi
+             fi
+        fi
+
         # Check if IP is already assigned
         if ! ip addr show "$HOST_IFACE" | grep -q "inet $MINIKUBE_IP/"; then
             echo "Adding IP $MINIKUBE_IP/$CIDR to $HOST_IFACE on host..."

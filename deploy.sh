@@ -15,6 +15,7 @@ DHCP_NETMASK=""
 PXE_INTERFACE="virbr-pxe"
 PXE_IP="192.168.100.2"
 PXE_CIDR="24"
+PHY_IFACE=""
 
 while [[ "$#" -gt 0 ]]; do
     case $1 in
@@ -25,6 +26,7 @@ while [[ "$#" -gt 0 ]]; do
         --interface) PXE_INTERFACE="$2"; shift ;;
         --ip) PXE_IP="$2"; shift ;;
         --cidr) PXE_CIDR="$2"; shift ;;
+        --phy-iface) PHY_IFACE="$2"; shift ;;
         *) echo "Unknown parameter passed: $1"; exit 1 ;;
     esac
     shift
@@ -182,7 +184,7 @@ else
 fi
 
 # Run the network setup script
-./setup_minikube_net.sh "$PXE_INTERFACE" "$PXE_IP" "$PXE_CIDR"
+./setup_minikube_net.sh "$PXE_INTERFACE" "$PXE_IP" "$PXE_CIDR" "$PHY_IFACE"
 
 # 5. Deploy Helm Chart
 echo -e "${GREEN}--> Deploying OpenCHAMI Helm chart...${NC}"

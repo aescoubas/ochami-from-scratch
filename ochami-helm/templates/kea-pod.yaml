@@ -9,6 +9,9 @@ spec:
   hostNetwork: true
   dnsPolicy: ClusterFirstWithHostNet
   initContainers:
+    - name: wait-for-interface
+      image: alpine:3.18
+      command: ["sh", "-c", "until ip link show virbr-pxe | grep -q 'state UP'; do echo waiting for virbr-pxe; sleep 1; done;"]
     - name: wait-for-postgres
       image: postgres:11.5-alpine
       command: ["sh", "-c", "until pg_isready -h ochami-postgres -p 5432; do echo waiting for database; sleep 2; done;"]
