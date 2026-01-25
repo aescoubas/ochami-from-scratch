@@ -154,8 +154,8 @@ To transition the node to production mode, you must register its MAC address in 
 We have provided a helper script to automate the registration process. It fetches the VM's MAC address and registers it with a specified IP.
 
 ```bash
-# Usage: ./register_node.sh <vm-name> <desired-ip>
-./register_node.sh virtual-compute-node 192.168.100.50
+# Usage: ./register_local_vm.sh <vm-name> <desired-ip>
+./register_local_vm.sh virtual-compute-node 192.168.100.50
 ```
 
 **Option 2: Manual Registration (Details)**
@@ -237,6 +237,31 @@ minikube kubectl -- logs -n ochami ochami-http-server | tail -10
 | `--vcpus N` | Number of vCPUs (default: 1) |
 | `--bios` | Use BIOS/Legacy boot mode (default) |
 | `--uefi` | Use UEFI boot mode |
+
+## 4. Booting Hardware Nodes
+
+The process for physical hardware is slightly different. Unlike local VMs, which you can easily "discover" by letting them bootloop, **hardware nodes must be registered BEFORE they can successfully boot the OS.**
+
+If you boot an unregistered hardware node, it will enter **Discovery Mode**: it will receive a temporary IP, download a default script, and reboot (or hang). It will **not** boot the OS.
+
+### 4a. Connect Hardware
+Ensure your hardware node is connected to the interface specified during deployment (e.g., `eth1`).
+*   **Warning:** Do not run this on a shared corporate network. Use an isolated switch or direct connection.
+*   **Firewall:** Ensure your host firewall allows traffic on ports 67/udp, 69/udp, and 30080/tcp on the PXE interface.
+
+### 4b. Register the Hardware Node
+Locate the MAC address of your hardware node (sticker or BIOS) and register it using the hardware-specific script:
+
+```bash
+# Usage: ./register_hardware_node.sh <MAC_ADDRESS> <IP_ADDRESS> [COMPONENT_ID]
+./register_hardware_node.sh 00:11:22:33:44:55 192.168.50.50 x1000c0s0b0n0
+```
+*   `MAC_ADDRESS`: The physical MAC address of the node's NIC.
+*   `IP_ADDRESS`: The static IP you want to assign to this node (must be within the range defined in `deploy.sh`).
+*   `COMPONENT_ID` (Optional): A unique ID for the node (default: `x1000c0s0b0n0`).
+
+### 4c. Boot the Hardware
+Power on the node. Since it is now registered in SMD, the `coresmd` plugin will recognize it and serve the boot image immediately.
 
 ## Cleanup
 
