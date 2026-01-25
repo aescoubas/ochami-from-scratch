@@ -4,7 +4,9 @@ This tutorial demonstrates a more advanced scenario where a custom-built Linux i
 
 ## Architecture Overview
 
-This deployment supports **two boot modes**:
+This deployment supports **two boot modes** and implements the **HPC node lifecycle** for automatic node discovery and provisioning.
+
+### Boot Modes
 
 1. **Traditional PXE Boot** (for bare metal servers and standard VM firmware):
    ```
@@ -29,6 +31,40 @@ This deployment supports **two boot modes**:
                       ↓
    iPXE downloads boot.ipxe → loads kernel/initrd → boots
    ```
+
+### HPC Node Lifecycle
+
+The deployment implements automatic node discovery using a two-plugin architecture:
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                          HPC Node Lifecycle                                  │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  ┌──────────────┐    ┌──────────────┐    ┌──────────────┐                   │
+│  │  UNKNOWN     │    │  DISCOVERED  │    │  PRODUCTION  │                   │
+│  │  Hardware    │───▶│  (in SMD)    │───▶│  Boot        │                   │
+│  └──────────────┘    └──────────────┘    └──────────────┘                   │
+│         │                   │                   │                            │
+│         ▼                   ▼                   ▼                            │
+│  ┌──────────────┐    ┌──────────────┐    ┌──────────────┐                   │
+│  │  bootloop    │    │  NAK sent    │    │  coresmd     │                   │
+│  │  assigns     │    │  to force    │    │  assigns     │                   │
+│  │  temp IP     │    │  re-handshake│    │  production  │                   │
+│  │  (5m lease)  │    │              │    │  IP (1h)     │                   │
+│  └──────────────┘    └──────────────┘    └──────────────┘                   │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+| Stage | Plugin | IP Source | Lease | Purpose |
+|-------|--------|-----------|-------|---------|
+| **Unknown** | bootloop | Temporary pool (192.168.100.100-200) | 5 min | Node boots discovery image to register with SMD |
+| **Transition** | bootloop | N/A (NAK) | N/A | Forces re-handshake when node becomes known |
+| **Production** | coresmd | SMD inventory | 1 hour | Production IP and boot parameters |
+
+**Why the NAK is critical:**
+When a node with a temporary lease is registered in SMD, the bootloop plugin detects this state change and sends a DHCPNAK. This forces the node to restart the DHCP handshake, where coresmd now recognizes it and assigns the production IP.
 
 The **coresmd** plugin includes a built-in TFTP server with iPXE binaries for x86 (BIOS/UEFI) and ARM.
 
@@ -90,59 +126,117 @@ You should see pods for `coredhcp`, `ochami-http-server`, `smd`, `bss`, and `pos
 
 ## Step 3: Create and Boot the VM (Local Mode)
 
+### 3a. Create and Boot an Unknown Node (Discovery Mode)
+
+When a VM is first created, its MAC address is not in SMD. The bootloop plugin handles it:
+
 1.  **Create the VM:**
 
-    The `create_vm.sh` script uses `virt-install` to create a VM configured for PXE boot.
-
     ```bash
-    # BIOS mode (default) - uses SeaBIOS with undionly.kpxe from TFTP
     sudo ./create_vm.sh
-
-    # UEFI mode - uses OVMF firmware with ipxe.efi from TFTP
-    sudo ./create_vm.sh --uefi
-
-    # Custom VM settings
-    sudo ./create_vm.sh --name my-compute-node --memory 4096 --vcpus 2 --uefi
     ```
 
-    **Available options:**
-    | Option | Description |
-    | :--- | :--- |
-    | `--name NAME` | VM name (default: virtual-compute-node) |
-    | `--memory MiB` | Memory in MiB (default: 2048) |
-    | `--vcpus N` | Number of vCPUs (default: 1) |
-    | `--bios` | Use BIOS/Legacy boot mode (default) |
-    | `--uefi` | Use UEFI boot mode |
+2.  **Watch the discovery boot:**
 
-    This will print the MAC address of the new VM and explain the boot flow.
+    The VM will get a temporary IP from the bootloop pool and receive a "default" (reboot) iPXE script. This is the discovery mode - the node keeps rebooting until registered.
 
-2.  **Start the VM:**
-
-    Start the VM and attach to its console to watch the boot process.
-
+    Check CoreDHCP logs to see bootloop handling the unknown MAC:
     ```bash
-    sudo virsh start --console virtual-compute-node
+    minikube kubectl -- logs -n ochami ochami-coredhcp | grep bootloop
     ```
 
-3.  **Watch it Boot!**
+### 3b. Register the Node in SMD
 
-    If everything is configured correctly, you should see the following in the VM's console:
+To transition the node to production mode, you must register its MAC address in the State Management Database (SMD).
 
-    **BIOS Mode Boot Flow:**
-    1. SeaBIOS PXE ROM sends DHCP request
-    2. CoreDHCP responds with TFTP server address + `undionly.kpxe` filename
-    3. PXE ROM downloads `undionly.kpxe` via TFTP
-    4. iPXE sends another DHCP request (identifies itself as iPXE client)
-    5. CoreDHCP responds with HTTP boot script URL
-    6. iPXE downloads `boot.ipxe` and boots the kernel/initrd
+**Option 1: Automated Script (Recommended)**
 
-    **UEFI Mode Boot Flow:**
-    1. OVMF PXE driver sends DHCP request
-    2. CoreDHCP responds with TFTP server address + `ipxe.efi` filename
-    3. Firmware downloads `ipxe.efi` via TFTP
-    4. iPXE sends another DHCP request (identifies itself as iPXE client)
-    5. CoreDHCP responds with HTTP boot script URL
-    6. iPXE downloads `boot.ipxe` and boots the kernel/initrd
+We have provided a helper script to automate the registration process. It fetches the VM's MAC address and registers it with a specified IP.
+
+```bash
+# Usage: ./register_node.sh <vm-name> <desired-ip>
+./register_node.sh virtual-compute-node 192.168.100.50
+```
+
+**Option 2: Manual Registration (Details)**
+
+If you prefer to understand the underlying API calls, you can perform the registration manually:
+
+```bash
+# 1. Get the VM's MAC address
+MAC=$(sudo virsh domiflist virtual-compute-node | grep virbr-pxe | awk '{print $5}')
+echo "VM MAC: $MAC"
+
+# 2. Get SMD service IP
+SMD_IP=$(minikube kubectl -- get svc ochami-smd -n ochami -o jsonpath='{.spec.clusterIP}')
+
+# 3. Add node component to SMD
+curl -X POST http://${SMD_IP}:27779/hsm/v2/State/Components \
+  -H "Content-Type: application/json" \
+  -d '{
+    "Components": [{
+      "ID": "x0c0s0b0n0",
+      "Type": "Node",
+      "State": "On",
+      "Flag": "OK",
+      "Role": "Compute",
+      "NID": 1,
+      "NetType": "Sling"
+    }]
+  }'
+
+# 4. Add EthernetInterface linking MAC to production IP
+curl -X POST http://${SMD_IP}:27779/hsm/v2/Inventory/EthernetInterfaces \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"Description\": \"Node NIC\",
+    \"MACAddress\": \"${MAC}\",
+    \"IPAddresses\": [{\"IPAddress\": \"192.168.100.50\"}],
+    \"ComponentID\": \"x0c0s0b0n0\"
+  }"
+
+# 5. Verify registration
+curl -s http://${SMD_IP}:27779/hsm/v2/Inventory/EthernetInterfaces | python3 -m json.tool
+```
+
+### 3c. Boot the Production Node
+
+After registration, restart the VM. The coresmd plugin will now handle it:
+
+```bash
+sudo virsh destroy virtual-compute-node
+sudo virsh start virtual-compute-node
+```
+
+Watch the CoreDHCP logs to see coresmd assign the production IP:
+```bash
+minikube kubectl -- logs -n ochami ochami-coredhcp | grep coresmd
+```
+
+You should see:
+```
+assigning 192.168.100.50 to <MAC> (Node) with a lease duration of 1h0m0s
+```
+
+### 3d. Verify the Boot
+
+```bash
+# Ping the production IP
+ping 192.168.100.50
+
+# Check HTTP server logs for boot artifact downloads
+minikube kubectl -- logs -n ochami ochami-http-server | tail -10
+```
+
+### VM Creation Options
+
+| Option | Description |
+| :--- | :--- |
+| `--name NAME` | VM name (default: virtual-compute-node) |
+| `--memory MiB` | Memory in MiB (default: 2048) |
+| `--vcpus N` | Number of vCPUs (default: 1) |
+| `--bios` | Use BIOS/Legacy boot mode (default) |
+| `--uefi` | Use UEFI boot mode |
 
 ## Cleanup
 
@@ -175,17 +269,35 @@ To remove the VM, Minikube cluster, network artifacts, and generated files, run:
 ./teardown.sh -y --remove-images
 ```
 
-This concludes the advanced tutorial. You have successfully booted a VM with a custom SLES image served entirely from within a Minikube cluster managed by a single Helm chart.
-
 ## Components Overview
 
 | Component | Purpose |
 | :--- | :--- |
-| **CoreDHCP (coresmd)** | DHCP server with coresmd/bootloop plugins for PXE boot. Includes **built-in TFTP server** with iPXE binaries (undionly.kpxe, ipxe.efi) for BIOS and UEFI boot. |
+| **CoreDHCP** | DHCP server with coresmd and bootloop plugins |
+| **coresmd plugin** | Handles **known** nodes from SMD. Assigns production IPs, serves boot scripts. Includes **built-in TFTP server** with iPXE binaries. |
+| **bootloop plugin** | Handles **unknown** nodes. Assigns temporary IPs for discovery. Sends NAK when node becomes known to trigger re-handshake. |
 | **HTTP Server** | Serves boot.ipxe script, kernel, initramfs, and rootfs |
 | **SMD** | State Management Daemon - hardware inventory database |
-| **BSS** | Boot Script Service - provides boot scripts for known nodes |
+| **BSS** | Boot Script Service - provides dynamic boot scripts for known nodes |
 | **PostgreSQL** | Persistent storage for SMD and BSS |
+
+### CoreDHCP Plugin Chain
+
+The plugins are processed in order:
+
+```yaml
+plugins:
+  - server_id: "192.168.100.2"      # DHCP server identity
+  - dns: "8.8.8.8"                   # DNS server for clients
+  - router: "192.168.100.2"          # Default gateway
+  - netmask: "255.255.255.0"         # Subnet mask
+
+  # coresmd - FIRST: Check if MAC is in SMD
+  - coresmd: <smd_url> <boot_script_url> "" 30s 1h true
+
+  # bootloop - SECOND: Catch-all for unknown MACs
+  - bootloop: /tmp/coredhcp.db default 5m 192.168.100.100 192.168.100.200
+```
 
 ## Networking & Driver Challenges
 
@@ -240,6 +352,15 @@ DHCP relies on broadcast packets (`DHCPDISCOVER`), which are not routed. The DHC
 - Check CoreDHCP logs: `kubectl logs -n ochami ochami-coredhcp`
 - Ensure the VM is on the `pxe-net` network: `virsh domiflist <vm-name>`
 
+### Unknown node keeps rebooting (expected behavior)
+- This is the discovery mode - bootloop sends a "default" reboot script
+- Register the node in SMD to transition to production mode (see Step 3b)
+
+### Node registered but still getting temporary IP
+- Wait for coresmd cache to refresh (every 30 seconds)
+- Check cache status in logs: `kubectl logs -n ochami ochami-coredhcp | grep "Cache updated"`
+- Verify node is in SMD: `curl http://<SMD_IP>:27779/hsm/v2/Inventory/EthernetInterfaces`
+
 ### VM gets DHCP but fails to download iPXE
 - Check CoreDHCP logs for TFTP errors: `kubectl logs -n ochami ochami-coredhcp`
 - The TFTP server is built into coresmd - iPXE binaries are bundled in the image
@@ -250,7 +371,25 @@ DHCP relies on broadcast packets (`DHCPDISCOVER`), which are not routed. The DHC
 - Test HTTP manually: `curl http://192.168.100.2:30080/boot.ipxe`
 - Check boot script content: `kubectl get configmap -n ochami ochami-http-server-content -o yaml`
 
-### Kernel fails to boot
+### Kernel fails to boot or rootfs not downloaded
 - Verify kernel and initramfs exist in artifacts directory
 - Check the boot.ipxe script URLs are correct
-- Try loading kernel manually in iPXE: `kernel http://192.168.100.2:30080/artifacts/vmlinuz-lts`
+- Check HTTP server logs for rootfs.squashfs requests
+- Ensure the kernel got DHCP (no NAKs during boot): check CoreDHCP logs
+
+### Checking the full boot flow
+```bash
+# Watch all logs in real-time
+kubectl logs -n ochami ochami-coredhcp -f &
+kubectl logs -n ochami ochami-http-server -f &
+
+# Start the VM
+sudo virsh start virtual-compute-node
+
+# Expected sequence:
+# 1. coresmd/bootloop: IP assignment
+# 2. HTTP: boot.ipxe download
+# 3. HTTP: vmlinuz-lts download
+# 4. HTTP: initramfs-lts download
+# 5. HTTP: rootfs.squashfs download (from kernel/dracut)
+```

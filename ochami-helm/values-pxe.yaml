@@ -28,12 +28,33 @@ coredhcp:
   dns: "8.8.8.8"
   netmask: "255.255.255.0"
 
+  # Lease times and cache settings
+  short_lease_time: "5m"    # Lease time for unknown/discovery nodes
+  long_lease_time: "1h"      # Lease time for known/production nodes
+  cache_interval: "30s"      # How often to refresh SMD cache
+
   # Bootloop plugin config for unknown/discovery nodes
   bootloop:
     storage_path: "/tmp/coredhcp.db"
     ip_pool_start: "192.168.100.100"
     ip_pool_end: "192.168.100.200"
 
-# Note: We now use the default coredhcp-configmap.yaml template which properly configures:
-# - coresmd plugin: For nodes registered in SMD (uses iPXE base URL for HTTP boot)
-# - bootloop plugin: For unknown nodes (uses built-in TFTP server with "default" iPXE)
+# BSS (Boot Script Service) configuration
+bss:
+  ipxe:
+    server: "192.168.100.2"    # IP of the HTTP server with boot artifacts
+  advertise_address: "192.168.100.2:30080"  # Where BSS is accessible (via nginx proxy)
+
+# Plugin chain (configured in coredhcp-configmap.yaml):
+#
+# 1. coresmd - Handles KNOWN nodes from SMD
+#    - Checks if MAC is registered in SMD inventory
+#    - If known: assigns production IP, serves boot script URL
+#    - If unknown: passes to next plugin
+#    - Built-in TFTP server for raw PXE clients
+#
+# 2. bootloop - Handles UNKNOWN nodes for discovery
+#    - Assigns temporary IP from pool for network discovery
+#    - Boots "default" (reboot) script or discovery image
+#    - When node becomes known in SMD, sends NAK to force re-handshake
+#    - Node then gets production IP from coresmd on next DHCP cycle

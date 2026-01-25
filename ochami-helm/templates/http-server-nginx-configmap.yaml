@@ -12,6 +12,14 @@ data:
         listen  [::]:{{ .Values.httpServer.port }};
         server_name  localhost;
 
+        # Serve static boot.ipxe for boot script requests
+        # This bypasses BSS and uses a static boot script for all nodes
+        # In production, this should proxy to BSS for dynamic boot parameters
+        location ~ ^/(boot/v1/bootscript|apis/bss/boot/v1/bootscript) {
+            default_type text/plain;
+            alias /usr/share/nginx/html/boot.ipxe;
+        }
+
         location / {
             root   /usr/share/nginx/html;
             index  index.html index.htm;
