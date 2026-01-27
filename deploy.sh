@@ -16,6 +16,7 @@ PXE_INTERFACE="virbr-pxe"
 PXE_IP="192.168.100.2"
 PXE_CIDR="24"
 PHY_IFACE=""
+DISABLE_DNSMASQ=false
 
 while [[ "$#" -gt 0 ]]; do
     case $1 in
@@ -27,6 +28,7 @@ while [[ "$#" -gt 0 ]]; do
         --ip) PXE_IP="$2"; shift ;;
         --cidr) PXE_CIDR="$2"; shift ;;
         --phy-iface) PHY_IFACE="$2"; shift ;;
+        --no-dnsmasq) DISABLE_DNSMASQ=true ;;
         *) echo "Unknown parameter passed: $1"; exit 1 ;;
     esac
     shift
@@ -161,6 +163,22 @@ done
 
 # 4. Configure Network
 echo -e "${GREEN}--> Configuring PXE network on Minikube...${NC}"
+
+if [ "$DISABLE_DNSMASQ" = true ]; then
+    echo -e "${GREEN}--> Disabling dnsmasq from libvirt...${NC}"
+    if virsh net-info default >/dev/null 2>&1; then
+        if virsh net-info default | grep "Active: *yes" >/dev/null 2>&1; then
+            echo "Stopping libvirt default network..."
+            sudo virsh net-destroy default || echo "Failed to stop default network, maybe not running."
+        fi
+        if virsh net-list --autostart | grep "default" >/dev/null 2>&1; then
+            echo "Disabling autostart for libvirt default network..."
+            sudo virsh net-autostart --disable default || echo "Failed to disable autostart for default network."
+        fi
+    else
+        echo "Libvirt default network not found. No action needed."
+    fi
+fi
 
 if [ "$PXE_INTERFACE" == "virbr-pxe" ]; then
     if ! virsh net-info pxe-net >/dev/null 2>&1; then

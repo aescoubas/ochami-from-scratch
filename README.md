@@ -108,6 +108,11 @@ To boot physical machines, you can bridge a physical interface to the PXE networ
     *   **Note:** The interface will be brought UP and attached to the `virbr-pxe` bridge. Any existing IP configuration on this interface effectively becomes secondary to the bridge configuration.
     *   **Warning:** Ensure this interface is connected to an isolated network switch. Do not connect it to a corporate LAN as it will serve DHCP.
 
+If your host has `libvirt` installed, its `dnsmasq` service may conflict with Kea DHCP. Use the `--no-dnsmasq` flag to automatically stop and disable libvirt's default network.
+```bash
+./deploy.sh --phy-iface eth1 --no-dnsmasq
+```
+
 You can also combine this with custom IP ranges if your physical network requires it:
 
 ```bash
@@ -276,7 +281,7 @@ To remove the VM, Minikube cluster, network artifacts, and generated files, run:
 - Verify Kea pod is running: `kubectl get pods -n ochami`
 - Check Kea logs: `kubectl logs -n ochami ochami-kea -c kea-dhcp4`
 - Ensure the VM is on the `pxe-net` network: `virsh domiflist <vm-name>`
-- **Important**: Kea must bind to the correct interface (`virbr-pxe`). Check logs for `listening on interface virbr-pxe`.
+- **Important**: Kea must bind to the correct interface (`virbr-pxe`). Check logs for `listening on interface virbr-pxe`. If another DHCP server (like `dnsmasq` from `libvirt`'s default network) is running on the host, it may prevent Kea from binding to the port. Use the `--no-dnsmasq` flag during deployment to handle this.
 
 ### Node gets IP but fails TFTP
 - Check TFTP pod status: `kubectl get pods -n ochami -l app.kubernetes.io/component=tftp`
