@@ -69,14 +69,20 @@ if [ "$SKIP_CONFIRM" = false ]; then
     fi
 fi
 
-# 1. Destroy VM (Requires sudo as it was created with sudo)
-echo -e "${GREEN}--> Removing VM '$VM_NAME' (may ask for sudo password)...${NC}"
-if sudo virsh dominfo "$VM_NAME" >/dev/null 2>&1; then
-    sudo virsh destroy "$VM_NAME" >/dev/null 2>&1 || true
-    sudo virsh undefine --nvram "$VM_NAME"
-    echo "VM removed."
+# 1. Destroy VMs (Requires sudo as they were created with sudo)
+echo -e "${GREEN}--> Removing VMs...${NC}"
+# Find all VMs that match the name exactly OR start with NAME-
+VMS_TO_DELETE=$(sudo virsh list --all --name | grep -E "^${VM_NAME}$|^${VM_NAME}-[0-9]+$" || true)
+
+if [ -n "$VMS_TO_DELETE" ]; then
+    for vm in $VMS_TO_DELETE; do
+        echo "Removing VM '$vm'..."
+        sudo virsh destroy "$vm" >/dev/null 2>&1 || true
+        sudo virsh undefine --nvram "$vm"
+        echo "VM '$vm' removed."
+    done
 else
-    echo "VM '$VM_NAME' not found (or access denied)."
+    echo "No VMs matching '$VM_NAME' found."
 fi
 
 # 2. Destroy Network
