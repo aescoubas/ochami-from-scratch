@@ -81,6 +81,11 @@ Run the automated deployment script. This default mode sets up a local bridge (`
 ./deploy.sh
 ```
 
+**Options:**
+*   `--vms N`: Automatically create N test VMs (named `virtual-compute-node-0`, `virtual-compute-node-1`, etc.) after deployment.
+*   `--rebuild`: Force a rebuild of the SLES image.
+*   `--phy-iface IFACE`: Bridge a physical interface for bare-metal testing.
+
 **What this script does:**
 1.  **Checks & Installs Prerequisites**: Automatically installs `cri-dockerd`, CNI plugins, and other tools required for the Minikube `none` driver.
 2.  **Builds SLES Image**: Builds a custom **openSUSE Leap 15.6 (SLES-based)** bootable image (kernel, initramfs, squashfs).
@@ -89,6 +94,8 @@ Run the automated deployment script. This default mode sets up a local bridge (`
     *   Sets up a local bridge (`virbr-pxe`) for local VM testing.
     *   Assigns IP `192.168.100.2` to the bridge.
 5.  **Deploys OpenCHAMI**: Installs the Helm chart configured to serve artifacts via `192.168.100.2`.
+    *   *Note: The script waits (up to 10m) for all services to be fully ready before proceeding to VM creation.*
+6.  **Creates VMs (Optional)**: If `--vms` is specified, it creates the requested number of Libvirt VMs.
 
 **Rebuilding Images:**
 If you want to force a rebuild of the SLES image (e.g., after modifying the build script), run:
@@ -157,11 +164,14 @@ To transition the node to production mode, you must register its MAC address in 
 
 **Option 1: Automated Script (Recommended)**
 
-We have provided a helper script to automate the registration process. It fetches the VM's MAC address and registers it with a specified IP.
+We have provided a helper script to automate the registration process. It fetches the VM's MAC address and registers it with a specified IP. You can optionally specify a Component ID and Node ID (NID).
 
 ```bash
-# Usage: ./register_local_vm.sh <vm-name> <desired-ip>
+# Usage: ./register_local_vm.sh <vm-name> <desired-ip> [COMPONENT_ID] [NID]
 ./register_local_vm.sh virtual-compute-node 192.168.100.50
+
+# Example with custom Component ID and NID:
+# ./register_local_vm.sh virtual-compute-node-1 192.168.100.51 x0c0s0b0n1 2
 ```
 
 **Option 2: Manual Registration (Details)**
