@@ -174,3 +174,13 @@ tftp:
     repository: localhost/tftp
     tag: latest
     pullPolicy: IfNotPresent
+
+# Redfish Emulator configuration
+emulator:
+  enabled: false
+  replicas: 0
+  image:
+    repository: localhost/redfish-emulator
+    tag: latest
+    pullPolicy: IfNotPresent
+  vmPrefix: "virtual-compute-node-"

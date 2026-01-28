@@ -46,6 +46,68 @@ curl -s -X POST "http://${SMD_IP}:27779/hsm/v2/Inventory/EthernetInterfaces" \
   -H "Content-Type: application/json" \
   -d "{ \"Description\": \"Node NIC\", \"MACAddress\": \"${MAC}\", \"IPAddresses\": [{\"IPAddress\": \"${IP_ADDRESS}\"}], \"ComponentID\": \"${COMPONENT_ID}\" }" > /dev/null
 
+# 5. Register Redfish Endpoint (BMC)
+# Extract index from VM Name (assuming format ends in numbers, e.g., virtual-compute-node-0)
+VM_INDEX=$(echo "$VM_NAME" | grep -oE '[0-9]+$')
+
+if [ -n "$VM_INDEX" ]; then
+    # Derive BMC ID from Node ID (e.g., x0c0s0b0n0 -> x0c0s0b0)
+    BMC_ID=${COMPONENT_ID%n*}
+    
+    # Construct Pod Name
+    POD_NAME="ochami-redfish-emulator-${VM_INDEX}"
+    NAMESPACE="ochami"
+    
+    echo "Fetching IP for emulator pod '$POD_NAME'..."
+    EMULATOR_IP=$(minikube kubectl -- get pod -n "$NAMESPACE" "$POD_NAME" -o jsonpath='{.status.podIP}' 2>/dev/null)
+    
+    if [ -n "$EMULATOR_IP" ]; then
+        echo "Registering BMC ($BMC_ID) for Emulator $VM_INDEX..."
+        echo "  IP: $EMULATOR_IP"
+        
+        # Register endpoint. 
+        # RediscoverOnUpdate=true triggers SMD to immediately query the emulator.
+        curl -s -X POST "http://${SMD_IP}:27779/hsm/v2/Inventory/RedfishEndpoints" \
+          -H "Content-Type: application/json" \
+          -d "{ 
+            \"ID\": \"${BMC_ID}\", 
+            \"RediscoverOnUpdate\": true, 
+            \"Hostname\": \"${EMULATOR_IP}\", 
+            \"User\": \"root\", 
+            \"Password\": \"password\" 
+          }" > /dev/null
+    else
+        echo "Warning: Could not find IP for pod '$POD_NAME'. Skipping BMC registration."
+    fi
+else
+    echo "Warning: Could not extract VM index from '$VM_NAME'. Skipping BMC registration."
+fi
+
+# 6. Register Boot Parameters in BSS
+echo "Fetching BSS service IP..."
+BSS_IP=$(minikube kubectl -- get svc ochami-bss -n ochami -o jsonpath='{.spec.clusterIP}')
+if [ -z "$BSS_IP" ]; then
+    echo "Warning: Could not find BSS service IP. Skipping boot parameter registration."
+else
+    echo "BSS IP: $BSS_IP"
+    echo "Registering default boot parameters in BSS for $COMPONENT_ID..."
+    
+    # Artifacts URL base (assumes default setup on 192.168.100.2:30080)
+    # Ideally this should be dynamic, but for this script we match the default deployment.
+    ARTIFACTS_URL="http://192.168.100.2:30080/artifacts"
+    
+    curl -s -X PUT "http://${BSS_IP}:27778/boot/v1/bootparameters" \
+      -H "Content-Type: application/json" \
+      -d "{
+        \"hosts\": [\"${COMPONENT_ID}\"],
+        \"kernel\": \"${ARTIFACTS_URL}/vmlinuz-lts\",
+        \"initrd\": \"${ARTIFACTS_URL}/initramfs-lts\",
+        \"params\": \"console=ttyS0 ip=dhcp rd.neednet=1 root=live:${ARTIFACTS_URL}/rootfs.squashfs\"
+      }" > /dev/null
+      
+    echo "Boot parameters registered."
+fi
+
 echo ""
 echo "Registration complete for $VM_NAME ($COMPONENT_ID)."
 echo "You can now restart the VM to boot into production mode:"

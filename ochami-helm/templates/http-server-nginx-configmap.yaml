@@ -12,12 +12,12 @@ data:
         listen  [::]:{{ .Values.httpServer.port }};
         server_name  localhost;
 
-        # Serve static boot.ipxe for boot script requests
-        # This bypasses BSS and uses a static boot script for all nodes
-        # In production, this should proxy to BSS for dynamic boot parameters
+        # Proxy to BSS for dynamic boot scripts
+        # This allows BSS to generate custom boot scripts per node
         location ~ ^/(boot/v1/bootscript|apis/bss/boot/v1/bootscript) {
-            default_type text/plain;
-            alias /usr/share/nginx/html/boot.ipxe;
+            proxy_pass http://ochami-bss.{{ .Release.Namespace }}.svc.cluster.local:27778;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
         }
 
         location / {

@@ -22,12 +22,12 @@ ensure_apt_update() {
 }
 
 # 2. Install conntrack
-if ! command_exists conntrack; then
-    echo -e "${GREEN}--> Installing conntrack...${NC}"
+if ! command_exists conntrack || ! command_exists socat; then
+    echo -e "${GREEN}--> Installing conntrack and socat...${NC}"
     ensure_apt_update
-    sudo apt-get install -y conntrack
+    sudo apt-get install -y conntrack socat
 else
-    echo "conntrack is installed."
+    echo "conntrack and socat are installed."
 fi
 
 # 3. Install cri-tools (crictl)

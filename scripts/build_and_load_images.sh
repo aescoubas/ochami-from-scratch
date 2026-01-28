@@ -108,4 +108,8 @@ minikube image load localhost/http-server:latest
 # Note: TFTP server is built into coresmd, no separate container needed
 # coresmd includes iPXE binaries (undionly.kpxe, ipxe.efi) for BIOS and UEFI boot
 
+echo "--- Building redfish-emulator ---"
+docker build -t localhost/redfish-emulator:latest ochami-helm/redfish-emulator/
+minikube image load localhost/redfish-emulator:latest
+
 echo "--- Done ---"

@@ -164,11 +164,15 @@ To transition the node to production mode, you must register its MAC address in 
 
 **Option 1: Automated Script (Recommended)**
 
-We have provided a helper script to automate the registration process. It fetches the VM's MAC address and registers it with a specified IP. You can optionally specify a Component ID and Node ID (NID).
+We have provided a helper script to automate the registration process. It:
+1.  Fetches the VM's MAC address.
+2.  Registers the Node Component (with IP) in SMD.
+3.  **Registers the Redfish Endpoint (BMC)** in SMD (linking it to the Emulator).
+4.  Registers Boot Parameters in BSS.
 
 ```bash
 # Usage: ./scripts/register_local_vm.sh <vm-name> <desired-ip> [COMPONENT_ID] [NID]
-./scripts/register_local_vm.sh virtual-compute-node 192.168.100.50
+./scripts/register_local_vm.sh virtual-compute-node-0 192.168.100.50
 
 # Example with custom Component ID and NID:
 # ./scripts/register_local_vm.sh virtual-compute-node-1 192.168.100.51 x0c0s0b0n1 2
@@ -284,6 +288,58 @@ To remove the VM, Minikube cluster, network artifacts, and generated files, run:
 | **SMD** | State Management Daemon - hardware inventory database. |
 | **BSS** | Boot Script Service - provides dynamic boot scripts for known nodes. |
 | **PostgreSQL** | Persistent storage for SMD, BSS, and Kea. |
+| **Redfish Emulator** | Lightweight emulator (StatefulSet) that controls VM power (On/Off/Reboot) via Libvirt, exposing a Redfish API. |
+
+## 5. Using the Redfish Emulator
+
+The deployment includes an optional **Redfish Emulator** that mimics a Baseboard Management Controller (BMC) for each VM. This allows you to control the VM's power state (On, Off, Reboot) via standard Redfish API calls.
+
+### 5a. Enable the Emulator
+The emulator is automatically enabled when you deploy with VMs using the `--vms` flag:
+
+```bash
+./deploy.sh --vms 1
+```
+
+This creates:
+1.  A VM named `virtual-compute-node-0`.
+2.  A corresponding emulator pod `ochami-redfish-emulator-0`.
+
+### 5b. Controlling the VM (Power/Reboot)
+
+We provide a helper script to interact with the Redfish emulator. This script automatically handles port forwarding and sends the appropriate Redfish commands.
+
+**Usage:**
+```bash
+# Reboot VM 0 (Default)
+./scripts/redfish_power_control.sh 0 reboot
+
+# Power Off VM 0
+./scripts/redfish_power_control.sh 0 stop
+
+# Power On VM 0
+./scripts/redfish_power_control.sh 0 start
+```
+
+### 5c. Verifying Functionality
+
+You can verify the emulator works by sending a reboot command and watching the VM status.
+
+1.  **Stop the VM:**
+    ```bash
+    ./scripts/redfish_power_control.sh 0 stop
+    ```
+
+2.  **Verify it stopped:**
+    ```bash
+    sudo virsh domstate virtual-compute-node-0
+    # Output should be: shut off
+    ```
+
+3.  **Start the VM:**
+    ```bash
+    ./scripts/redfish_power_control.sh 0 start
+    ```
 
 ## Troubleshooting
 

@@ -1,0 +1,18 @@
+{{- if .Values.emulator.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "ochami-helm.fullname" . }}-redfish-emulator
+  labels:
+    {{- include "ochami-helm.labels" . | nindent 4 }}
+    app.kubernetes.io/component: emulator
+spec:
+  clusterIP: None
+  selector:
+    {{- include "ochami-helm.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: emulator
+  ports:
+    - port: 443
+      name: https
+      targetPort: 443
+{{- end }}

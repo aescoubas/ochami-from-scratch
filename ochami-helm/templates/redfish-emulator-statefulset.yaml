@@ -1,0 +1,55 @@
+{{- if .Values.emulator.enabled }}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "ochami-helm.fullname" . }}-redfish-emulator
+  labels:
+    {{- include "ochami-helm.labels" . | nindent 4 }}
+    app.kubernetes.io/component: emulator
+spec:
+  serviceName: {{ include "ochami-helm.fullname" . }}-redfish-emulator
+  replicas: {{ .Values.emulator.replicas }}
+  selector:
+    matchLabels:
+      {{- include "ochami-helm.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: emulator
+  template:
+    metadata:
+      labels:
+        {{- include "ochami-helm.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: emulator
+    spec:
+      terminationGracePeriodSeconds: 0
+      containers:
+        - name: emulator
+          image: "{{ .Values.emulator.image.repository }}:{{ .Values.emulator.image.tag }}"
+          imagePullPolicy: {{ .Values.emulator.image.pullPolicy }}
+          env:
+            - name: VM_NAME_PREFIX
+              value: {{ .Values.emulator.vmPrefix | quote }}
+          ports:
+            - containerPort: 443
+              name: https
+          volumeMounts:
+            - name: libvirt-sock
+              mountPath: /var/run/libvirt/libvirt-sock
+          livenessProbe:
+            httpGet:
+              path: /redfish/v1
+              port: https
+              scheme: HTTPS
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /redfish/v1
+              port: https
+              scheme: HTTPS
+            initialDelaySeconds: 5
+            periodSeconds: 5
+      volumes:
+        - name: libvirt-sock
+          hostPath:
+            path: /var/run/libvirt/libvirt-sock
+            type: Socket
+{{- end }}

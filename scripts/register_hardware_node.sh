@@ -75,6 +75,38 @@ else
     echo "  -> Failed ($HTTP_CODE). Interface might already exist."
 fi
 
+# 4. Register Boot Parameters in BSS
+echo "Fetching BSS service IP..."
+# Try to get it from Minikube first
+if command -v minikube >/dev/null 2>&1; then
+    BSS_IP=$(minikube kubectl -- get svc ochami-bss -n ochami -o jsonpath='{.spec.clusterIP}' 2>/dev/null || true)
+fi
+
+if [ -z "$BSS_IP" ]; then
+    echo "Warning: Could not fetch BSS IP. Skipping boot parameter registration."
+else
+    echo "Using BSS Endpoint: http://${BSS_IP}:27778"
+    echo "Registering default boot parameters in BSS for $COMPONENT_ID..."
+    
+    # Artifacts URL base (assumes default setup on 192.168.100.2:30080)
+    ARTIFACTS_URL="http://192.168.100.2:30080/artifacts"
+    
+    HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X PUT "http://${BSS_IP}:27778/boot/v1/bootparameters" \
+      -H "Content-Type: application/json" \
+      -d "{
+        \"hosts\": [\"${COMPONENT_ID}\"],
+        \"kernel\": \"${ARTIFACTS_URL}/vmlinuz-lts\",
+        \"initrd\": \"${ARTIFACTS_URL}/initramfs-lts\",
+        \"params\": \"console=ttyS0 ip=dhcp rd.neednet=1 root=live:${ARTIFACTS_URL}/rootfs.squashfs\"
+      }")
+      
+    if [[ "$HTTP_CODE" -ge 200 && "$HTTP_CODE" -lt 300 ]]; then
+        echo "  -> Success ($HTTP_CODE)"
+    else
+        echo "  -> Failed ($HTTP_CODE)."
+    fi
+fi
+
 echo ""
 echo "Registration Complete."
 echo "The node should now boot successfully on the next PXE cycle."

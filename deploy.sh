@@ -100,11 +100,12 @@ echo -e "${GREEN}--> Building and loading images...${NC}"
 
 # 3.1 HTTP Server and TFTP Server
 HTTP_IMAGE="localhost/http-server:latest"
-if $FORCE_REBUILD || ! image_exists_in_minikube "$HTTP_IMAGE"; then
-    echo "Building http-server (SLES)..."
+EMULATOR_IMAGE="localhost/redfish-emulator:latest"
+if $FORCE_REBUILD || ! image_exists_in_minikube "$HTTP_IMAGE" || ! image_exists_in_minikube "$EMULATOR_IMAGE"; then
+    echo "Building http-server (SLES) and redfish-emulator..."
     ./scripts/build_and_load_images.sh
 else
-    echo "Image $HTTP_IMAGE found in Minikube. Skipping build/load."
+    echo "Images $HTTP_IMAGE and $EMULATOR_IMAGE found in Minikube. Skipping build/load."
 fi
 
 TFTP_IMAGE="localhost/tftp:latest"
@@ -292,8 +293,8 @@ dhcpNetmask: "$DHCP_NETMASK"
 dhcpCidr: "$PXE_CIDR"
 projectRoot: "$(pwd)"
 httpServer:
-  hostNetwork: true
-  port: 30080
+  hostNetwork: false
+  port: 80
 
 bss:
   ipxe:
@@ -308,8 +309,16 @@ kea:
     user: "kea-user"
     password: "CHANGEME" # Ensure this matches values.yaml or is overridden
 
-bootScriptUrl: "http://$HOST_IP:30080/boot.ipxe"
+bootScriptUrl: "http://$HOST_IP:30080/boot/v1/bootscript?mac=\${net0/mac}"
 EOF
+
+if [ "$NUM_VMS" -gt 0 ]; then
+cat <<EOF >> "$VALUES_FILE"
+emulator:
+  enabled: true
+  replicas: $NUM_VMS
+EOF
+fi
 
 
 echo "Deploying Helm chart (waiting for services to become ready)..."
@@ -321,10 +330,33 @@ rm -f "$VALUES_FILE"
 # 6. Create VMs if requested
 if [ "$NUM_VMS" -gt 0 ]; then
     echo -e "${GREEN}--> Creating $NUM_VMS VMs...${NC}"
+    # Start assigning static IPs for registered nodes from .50
+    CURRENT_IP_OCTET=50
+    
     for i in $(seq 0 $((NUM_VMS - 1))); do
         VM_NAME="virtual-compute-node-$i"
+        # Format: x0c0s0b0n{i}
+        COMP_ID="x0c0s0b0n${i}"
+        STATIC_IP="192.168.100.${CURRENT_IP_OCTET}"
+        
         echo "Creating $VM_NAME..."
         sudo ./scripts/create_vm.sh --name "$VM_NAME"
+        
+        echo "Registering $VM_NAME ($COMP_ID) with IP $STATIC_IP..."
+        # Wait a moment for VM to be recognized by libvirt fully if needed, though create_vm usually blocks until start
+        sleep 2
+        
+        # Call the registration script
+        # Usage: ./scripts/register_local_vm.sh <vm-name> <desired-ip> [COMPONENT_ID] [NID]
+        # Run as user (not sudo) because it needs access to minikube kubectl context
+        ./scripts/register_local_vm.sh "$VM_NAME" "$STATIC_IP" "$COMP_ID" "$((i+1))" || echo "Warning: Registration failed for $VM_NAME"
+
+        CURRENT_IP_OCTET=$((CURRENT_IP_OCTET + 1))
+        
+        # Reboot the VM to force a fresh PXE boot now that it's registered
+        echo "Restarting $VM_NAME to pick up new configuration..."
+        sudo virsh destroy "$VM_NAME" >/dev/null 2>&1 || true
+        sudo virsh start "$VM_NAME" >/dev/null 2>&1 || true
     done
 fi
 
