@@ -115,9 +115,9 @@ To boot physical machines, you can bridge a physical interface to the PXE networ
     *   **Note:** The interface will be brought UP and attached to the `virbr-pxe` bridge. Any existing IP configuration on this interface effectively becomes secondary to the bridge configuration.
     *   **Warning:** Ensure this interface is connected to an isolated network switch. Do not connect it to a corporate LAN as it will serve DHCP.
 
-If your host has `libvirt` installed, its `dnsmasq` service may conflict with Kea DHCP. Use the `--no-dnsmasq` flag to automatically stop and disable libvirt's default network.
+If your host has `libvirt` installed, its `dnsmasq` service may conflict with Kea DHCP. Use the `--mode hardware` option to automatically stop and disable libvirt's default network and skip creating the `pxe-net` virtual network (since you are using a physical interface).
 ```bash
-./deploy.sh --phy-iface eth1 --no-dnsmasq
+./deploy.sh --mode hardware --phy-iface eth1
 ```
 
 You can also combine this with custom IP ranges if your physical network requires it:
@@ -146,7 +146,7 @@ When a VM is first created, its MAC address is not in SMD. Kea will assign it a 
 1.  **Create the VM:**
 
     ```bash
-    sudo ./create_vm.sh
+    sudo ./scripts/create_vm.sh
     ```
 
 2.  **Watch the discovery boot:**
@@ -167,11 +167,11 @@ To transition the node to production mode, you must register its MAC address in 
 We have provided a helper script to automate the registration process. It fetches the VM's MAC address and registers it with a specified IP. You can optionally specify a Component ID and Node ID (NID).
 
 ```bash
-# Usage: ./register_local_vm.sh <vm-name> <desired-ip> [COMPONENT_ID] [NID]
-./register_local_vm.sh virtual-compute-node 192.168.100.50
+# Usage: ./scripts/register_local_vm.sh <vm-name> <desired-ip> [COMPONENT_ID] [NID]
+./scripts/register_local_vm.sh virtual-compute-node 192.168.100.50
 
 # Example with custom Component ID and NID:
-# ./register_local_vm.sh virtual-compute-node-1 192.168.100.51 x0c0s0b0n1 2
+# ./scripts/register_local_vm.sh virtual-compute-node-1 192.168.100.51 x0c0s0b0n1 2
 ```
 
 **Option 2: Manual Registration (Details)**
@@ -250,8 +250,8 @@ Ensure your hardware node is connected to the physical interface specified via `
 Locate the MAC address of your hardware node and register it using the hardware-specific script:
 
 ```bash
-# Usage: ./register_hardware_node.sh <MAC_ADDRESS> <IP_ADDRESS> [COMPONENT_ID]
-./register_hardware_node.sh 00:11:22:33:44:55 192.168.50.50 x1000c0s0b0n0
+# Usage: ./scripts/register_hardware_node.sh <MAC_ADDRESS> <IP_ADDRESS> [COMPONENT_ID]
+./scripts/register_hardware_node.sh 00:11:22:33:44:55 192.168.50.50 x1000c0s0b0n0
 ```
 
 ### 4c. Boot the Hardware
@@ -291,7 +291,7 @@ To remove the VM, Minikube cluster, network artifacts, and generated files, run:
 - Verify Kea pod is running: `kubectl get pods -n ochami`
 - Check Kea logs: `kubectl logs -n ochami ochami-kea -c kea-dhcp4`
 - Ensure the VM is on the `pxe-net` network: `virsh domiflist <vm-name>`
-- **Important**: Kea must bind to the correct interface (`virbr-pxe`). Check logs for `listening on interface virbr-pxe`. If another DHCP server (like `dnsmasq` from `libvirt`'s default network) is running on the host, it may prevent Kea from binding to the port. Use the `--no-dnsmasq` flag during deployment to handle this.
+- **Important**: Kea must bind to the correct interface (`virbr-pxe`). Check logs for `listening on interface virbr-pxe`. If another DHCP server (like `dnsmasq` from `libvirt`'s default network) is running on the host, it may prevent Kea from binding to the port. Use the `--mode hardware` option during deployment to handle this.
 
 ### Node gets IP but fails TFTP
 - Check TFTP pod status: `kubectl get pods -n ochami -l app.kubernetes.io/component=tftp`

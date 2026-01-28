@@ -34,8 +34,9 @@ if virsh list --all --name | grep -q "^minikube$"; then
 
     # 2. Run configuration inside Minikube
     echo "Copying configuration script to Minikube..."
-    chmod +x configure_net_inside.sh
-    minikube cp configure_net_inside.sh /tmp/configure_net.sh
+    SCRIPT_DIR=$(dirname "$0")
+    chmod +x "$SCRIPT_DIR/configure_net_inside.sh"
+    minikube cp "$SCRIPT_DIR/configure_net_inside.sh" /tmp/configure_net.sh
 
     echo "Running configuration script inside Minikube..."
     minikube ssh "sudo chmod +x /tmp/configure_net.sh && sudo /tmp/configure_net.sh $MAC_ADDR $MINIKUBE_IP"

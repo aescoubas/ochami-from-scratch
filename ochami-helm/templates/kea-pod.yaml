@@ -11,10 +11,10 @@ spec:
   initContainers:
     - name: wait-for-interface
       image: alpine:3.18
-      command: ["sh", "-c", "until ip link show {{ .Values.pxeInterface }} | grep -q 'state UP'; do echo waiting for {{ .Values.pxeInterface }}; sleep 1; done;"]
+      command: ["sh", "-c", "until ip link show {{ .Values.pxeInterface }} | grep -q 'state UP'; do echo waiting for {{ .Values.pxeInterface }}; sleep 0.2; done;"]
     - name: wait-for-postgres
       image: postgres:11.5-alpine
-      command: ["sh", "-c", "until pg_isready -h ochami-postgres -p 5432; do echo waiting for database; sleep 2; done;"]
+      command: ["sh", "-c", "until pg_isready -t 1 -h ochami-postgres -p 5432; do echo waiting for database; sleep 0.2; done;"]
     - name: init-kea-db
       image: "{{ .Values.kea.adminImage.repository }}:{{ .Values.kea.adminImage.tag }}"
       env:
