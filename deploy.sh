@@ -17,6 +17,7 @@ PXE_IP="192.168.100.2"
 PXE_CIDR="24"
 PHY_IFACE=""
 DISABLE_DNSMASQ=false
+NUM_VMS=0
 
 while [[ "$#" -gt 0 ]]; do
     case $1 in
@@ -29,6 +30,7 @@ while [[ "$#" -gt 0 ]]; do
         --cidr) PXE_CIDR="$2"; shift ;;
         --phy-iface) PHY_IFACE="$2"; shift ;;
         --no-dnsmasq) DISABLE_DNSMASQ=true ;;
+        --vms) NUM_VMS="$2"; shift ;;
         *) echo "Unknown parameter passed: $1"; exit 1 ;;
     esac
     shift
@@ -278,16 +280,33 @@ bootScriptUrl: "http://$HOST_IP:30080/boot.ipxe"
 EOF
 
 
-
-helm upgrade --install ochami ./ochami-helm -n ochami -f ochami-helm/values-pxe.yaml -f "$VALUES_FILE"
+echo "Deploying Helm chart (waiting for services to become ready)..."
+helm upgrade --install ochami ./ochami-helm -n ochami -f ochami-helm/values-pxe.yaml -f "$VALUES_FILE" --wait --timeout 10m0s
 
 rm -f "$VALUES_FILE"
 
-# 6. Final Instructions
+# 6. Create VMs if requested
+if [ "$NUM_VMS" -gt 0 ]; then
+    echo -e "${GREEN}--> Creating $NUM_VMS VMs...${NC}"
+    for i in $(seq 0 $((NUM_VMS - 1))); do
+        VM_NAME="virtual-compute-node-$i"
+        echo "Creating $VM_NAME..."
+        sudo ./create_vm.sh --name "$VM_NAME"
+    done
+fi
+
+# 7. Final Instructions
 echo -e "${GREEN}=== Deployment Complete ===${NC}"
 echo "You can now verify the pods are running:"
 echo " minikube kubectl -- get pods -n ochami"
 echo ""
-echo "To create and boot the VM, run:"
-echo "  sudo ./create_vm.sh"
-echo "  sudo virsh start --console virtual-compute-node"
+if [ "$NUM_VMS" -gt 0 ]; then
+    echo "To start the VMs and connect to the console, run:"
+    for i in $(seq 0 $((NUM_VMS - 1))); do
+        echo "  sudo virsh start --console virtual-compute-node-$i"
+    done
+else
+    echo "To create and boot a VM, run:"
+    echo "  sudo ./create_vm.sh"
+    echo "  sudo virsh start --console virtual-compute-node"
+fi
