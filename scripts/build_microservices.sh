@@ -5,7 +5,7 @@
 #
 # USAGE:
 # 1. Source this script into your shell:
-#    source ./build_microservices.sh
+#    source ./scripts/build_microservices.sh
 #
 # 2. Call the desired build function with an explicit git_ref:
 #    build_smd <git_ref>

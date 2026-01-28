@@ -16,7 +16,7 @@ PXE_INTERFACE="virbr-pxe"
 PXE_IP="192.168.100.2"
 PXE_CIDR="24"
 PHY_IFACE=""
-DISABLE_DNSMASQ=false
+MODE="libvirt"
 NUM_VMS=0
 
 while [[ "$#" -gt 0 ]]; do
@@ -29,12 +29,17 @@ while [[ "$#" -gt 0 ]]; do
         --ip) PXE_IP="$2"; shift ;;
         --cidr) PXE_CIDR="$2"; shift ;;
         --phy-iface) PHY_IFACE="$2"; shift ;;
-        --no-dnsmasq) DISABLE_DNSMASQ=true ;;
+        --mode) MODE="$2"; shift ;;
         --vms) NUM_VMS="$2"; shift ;;
         *) echo "Unknown parameter passed: $1"; exit 1 ;;
     esac
     shift
 done
+
+if [[ "$MODE" != "libvirt" && "$MODE" != "hardware" ]]; then
+    echo "Error: --mode must be 'libvirt' or 'hardware'." >&2
+    exit 1
+fi
 
 # Validate that if one DHCP range parameter is set, the other is too
 if { [ -n "$DHCP_START" ] && [ -z "$DHCP_END" ]; } || { [ -z "$DHCP_START" ] && [ -n "$DHCP_END" ]; }; then
@@ -57,7 +62,7 @@ next_ip() {
 
 
 # 0. Check and Install Prerequisites (System-level for 'none' driver)
-./install_prerequisites.sh
+./scripts/install_prerequisites.sh
 
 # 1. Check Prerequisites
 echo -e "${GREEN}--> Checking prerequisites...${NC}"
@@ -65,7 +70,10 @@ command -v minikube >/dev/null 2>&1 || { echo "minikube is required but not inst
 #command -v kubectl >/dev/null 2>&1 || { echo "kubectl is required but not installed. Aborting." >&2; exit 1; }
 command -v helm >/dev/null 2>&1 || { echo "helm is required but not installed. Aborting." >&2; exit 1; }
 command -v docker >/dev/null 2>&1 || { echo "docker is required but not installed. Aborting." >&2; exit 1; }
-command -v virt-install >/dev/null 2>&1 || { echo "virt-install is required but not installed. Aborting." >&2; exit 1; }
+
+if [ "$MODE" == "libvirt" ]; then
+    command -v virt-install >/dev/null 2>&1 || { echo "virt-install is required for libvirt mode but not installed. Aborting." >&2; exit 1; }
+fi
 
 # 2. Start Minikube
 echo -e "${GREEN}--> Ensuring Minikube is running...${NC}"
@@ -94,7 +102,7 @@ echo -e "${GREEN}--> Building and loading images...${NC}"
 HTTP_IMAGE="localhost/http-server:latest"
 if $FORCE_REBUILD || ! image_exists_in_minikube "$HTTP_IMAGE"; then
     echo "Building http-server (SLES)..."
-    ./build_and_load_images.sh
+    ./scripts/build_and_load_images.sh
 else
     echo "Image $HTTP_IMAGE found in Minikube. Skipping build/load."
 fi
@@ -111,10 +119,10 @@ fi
 
 # 3.2 Microservices
 # Source the build functions
-if [ -f build_microservices.sh ]; then
-    source build_microservices.sh
+if [ -f scripts/build_microservices.sh ]; then
+    source scripts/build_microservices.sh
 else
-    echo "Error: build_microservices.sh not found."
+    echo "Error: scripts/build_microservices.sh not found."
     exit 1
 fi
 
@@ -164,28 +172,49 @@ for img in "${MS_IMAGES[@]}"; do
 done
 
 # 4. Configure Network
-echo -e "${GREEN}--> Configuring PXE network on Minikube...${NC}"
+echo -e "${GREEN}--> Configuring PXE network on Minikube (Mode: $MODE)...${NC}"
 
-if [ "$DISABLE_DNSMASQ" = true ]; then
-    echo -e "${GREEN}--> Disabling dnsmasq from libvirt...${NC}"
-    if virsh net-info default >/dev/null 2>&1; then
-        if virsh net-info default | grep "Active: *yes" >/dev/null 2>&1; then
-            echo "Stopping libvirt default network..."
-            sudo virsh net-destroy default || echo "Failed to stop default network, maybe not running."
-        fi
-        if virsh net-list --autostart | grep "default" >/dev/null 2>&1; then
-            echo "Disabling autostart for libvirt default network..."
-            sudo virsh net-autostart --disable default || echo "Failed to disable autostart for default network."
+if [ "$MODE" == "hardware" ]; then
+    # Disable dnsmasq from libvirt (if present) to avoid conflicts on port 67
+    if command -v virsh >/dev/null 2>&1; then
+        echo -e "${GREEN}--> Checking for conflicting libvirt dnsmasq...${NC}"
+        if virsh net-info default >/dev/null 2>&1; then
+            if virsh net-info default | grep "Active: *yes" >/dev/null 2>&1; then
+                echo "Stopping libvirt default network..."
+                sudo virsh net-destroy default || echo "Failed to stop default network, maybe not running."
+            fi
+            if virsh net-list --autostart | grep "default" >/dev/null 2>&1; then
+                echo "Disabling autostart for libvirt default network..."
+                sudo virsh net-autostart --disable default || echo "Failed to disable autostart for default network."
+            fi
+        else
+            echo "Libvirt default network not found or not active. No action needed."
         fi
     else
-        echo "Libvirt default network not found. No action needed."
+        echo "virsh command not found. Skipping libvirt dnsmasq check."
+    fi
+
+    # Auto-adjust interface if using defaults and phy-iface is provided
+    # In hardware mode, we don't create virbr-pxe, so we should use the physical interface directly
+    if [ "$PXE_INTERFACE" == "virbr-pxe" ] && [ -n "$PHY_IFACE" ]; then
+        echo -e "${GREEN}--> Hardware Mode: Using physical interface $PHY_IFACE directly (replacing virbr-pxe).${NC}"
+        PXE_INTERFACE="$PHY_IFACE"
+        # We don't need to bridge it to itself, so clear PHY_IFACE to avoid setup_minikube_net.sh trying to bridge it
+        PHY_IFACE=""
+    fi
+
+    if [ "$PXE_INTERFACE" == "virbr-pxe" ]; then
+         echo -e "${GREEN}Warning: Mode is hardware but interface is default 'virbr-pxe'.${NC}"
+         echo "Since libvirt network creation is skipped in hardware mode, 'virbr-pxe' will likely not exist."
+         echo "Ensure you provide a valid interface with --interface or that 'virbr-pxe' is created manually."
     fi
 fi
 
-if [ "$PXE_INTERFACE" == "virbr-pxe" ]; then
-    if ! virsh net-info pxe-net >/dev/null 2>&1; then
-        echo "Defining pxe-net network..."
-        virsh net-define <(cat <<EOF
+if [ "$MODE" == "libvirt" ]; then
+    if [ "$PXE_INTERFACE" == "virbr-pxe" ]; then
+        if ! virsh net-info pxe-net >/dev/null 2>&1; then
+            echo "Defining pxe-net network..."
+            virsh net-define <(cat <<EOF
 <network>
   <name>pxe-net</name>
   <uuid>c8f874f7-dd7a-465c-862a-ec30f41ac4bb</uuid>
@@ -196,15 +225,18 @@ if [ "$PXE_INTERFACE" == "virbr-pxe" ]; then
 </network>
 EOF
 )
-        virsh net-start pxe-net
-        virsh net-autostart pxe-net
+            virsh net-start pxe-net
+            virsh net-autostart pxe-net
+        fi
+    else
+        echo "Using custom interface: $PXE_INTERFACE. Skipping libvirt network creation."
     fi
 else
-    echo "Using custom interface: $PXE_INTERFACE. Skipping libvirt network creation."
+    echo "Hardware mode selected. Skipping libvirt network creation."
 fi
 
 # Run the network setup script
-./setup_minikube_net.sh "$PXE_INTERFACE" "$PXE_IP" "$PXE_CIDR" "$PHY_IFACE"
+./scripts/setup_minikube_net.sh "$PXE_INTERFACE" "$PXE_IP" "$PXE_CIDR" "$PHY_IFACE"
 
 # 5. Deploy Helm Chart
 echo -e "${GREEN}--> Deploying OpenCHAMI Helm chart...${NC}"
@@ -281,6 +313,7 @@ EOF
 
 
 echo "Deploying Helm chart (waiting for services to become ready)..."
+echo "Note: This step waits for all pods to be fully ready (status: Running). It may take a few minutes."
 helm upgrade --install ochami ./ochami-helm -n ochami -f ochami-helm/values-pxe.yaml -f "$VALUES_FILE" --wait --timeout 10m0s
 
 rm -f "$VALUES_FILE"
@@ -291,7 +324,7 @@ if [ "$NUM_VMS" -gt 0 ]; then
     for i in $(seq 0 $((NUM_VMS - 1))); do
         VM_NAME="virtual-compute-node-$i"
         echo "Creating $VM_NAME..."
-        sudo ./create_vm.sh --name "$VM_NAME"
+        sudo ./scripts/create_vm.sh --name "$VM_NAME"
     done
 fi
 
@@ -307,6 +340,6 @@ if [ "$NUM_VMS" -gt 0 ]; then
     done
 else
     echo "To create and boot a VM, run:"
-    echo "  sudo ./create_vm.sh"
+    echo "  sudo ./scripts/create_vm.sh"
     echo "  sudo virsh start --console virtual-compute-node"
 fi
