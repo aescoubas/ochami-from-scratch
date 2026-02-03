@@ -29,4 +29,20 @@ data:
     boot
   index.html: |-
 {{ .Files.Get "files/index.html" | indent 4 }}
+  user-data: |-
+    #cloud-config
+    users:
+      - name: local
+        passwd: $6$rounds=4096$eaJ.A3/..$M8t.uM/..
+        lock_passwd: false
+        sudo: ALL=(ALL) NOPASSWD:ALL
+        shell: /bin/bash
+    ssh_pwauth: true
+    chpasswd:
+      list: |
+        local:linux
+      expire: false
+  meta-data: |-
+    instance-id: i-local
+    local-hostname: localhost
 {{- end }}

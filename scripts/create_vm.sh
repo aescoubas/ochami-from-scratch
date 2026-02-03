@@ -17,6 +17,7 @@ while [[ "$#" -gt 0 ]]; do
         --name) VM_NAME="$2"; shift ;;
         --memory) MEMORY="$2"; shift ;;
         --vcpus) VCPUS="$2"; shift ;;
+        --mac) MAC_ADDR="$2"; shift ;;
         --uefi) BOOT_MODE="uefi" ;;
         --bios) BOOT_MODE="bios" ;;
         -h|--help)
@@ -79,7 +80,7 @@ VIRT_INSTALL_ARGS=(
   --memory "$MEMORY"
   --vcpus "$VCPUS"
   --disk none
-  --network network=pxe-net,model=virtio
+  --network network=pxe-net,model=virtio${MAC_ADDR:+,mac=$MAC_ADDR}
   --os-variant centos-stream9
   --graphics none
   --console pty,target_type=serial
