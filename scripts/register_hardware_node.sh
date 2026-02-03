@@ -89,7 +89,7 @@ else
     echo "Registering default boot parameters in BSS for $COMPONENT_ID..."
     
     # Artifacts URL base (assumes default setup on 192.168.100.2:30080)
-    ARTIFACTS_URL="http://192.168.100.2:30080/artifacts"
+    ARTIFACTS_URL="${ARTIFACTS_URL:-http://192.168.100.2:30080/artifacts}"
     
     HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X PUT "http://${BSS_IP}:27778/boot/v1/bootparameters" \
       -H "Content-Type: application/json" \

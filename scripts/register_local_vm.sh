@@ -48,7 +48,7 @@ curl -s -X POST "http://${SMD_IP}:27779/hsm/v2/Inventory/EthernetInterfaces" \
 
 # 5. Register Redfish Endpoint (BMC)
 # Extract index from VM Name (assuming format ends in numbers, e.g., virtual-compute-node-0)
-VM_INDEX=$(echo "$VM_NAME" | grep -oE '[0-9]+$')
+VM_INDEX=$(echo "$VM_NAME" | grep -oE '[0-9]+$' || true)
 
 if [ -n "$VM_INDEX" ]; then
     # Derive BMC ID from Node ID (e.g., x0c0s0b0n0 -> x0c0s0b0)
@@ -67,7 +67,9 @@ if [ -n "$VM_INDEX" ]; then
         
         # Register endpoint. 
         # RediscoverOnUpdate=true triggers SMD to immediately query the emulator.
-        curl -s -X POST "http://${SMD_IP}:27779/hsm/v2/Inventory/RedfishEndpoints" \
+        
+        # Try POST first
+        HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "http://${SMD_IP}:27779/hsm/v2/Inventory/RedfishEndpoints" \
           -H "Content-Type: application/json" \
           -d "{ 
             \"ID\": \"${BMC_ID}\", 
@@ -75,7 +77,24 @@ if [ -n "$VM_INDEX" ]; then
             \"Hostname\": \"${EMULATOR_IP}\", 
             \"User\": \"root\", 
             \"Password\": \"password\" 
-          }" > /dev/null
+          }")
+          
+        if [ "$HTTP_CODE" -eq 409 ]; then
+             echo "  -> Endpoint exists (409). Updating via PUT to trigger rediscovery..."
+             curl -s -X PUT "http://${SMD_IP}:27779/hsm/v2/Inventory/RedfishEndpoints/${BMC_ID}" \
+              -H "Content-Type: application/json" \
+              -d "{ 
+                \"ID\": \"${BMC_ID}\", 
+                \"RediscoverOnUpdate\": true, 
+                \"Hostname\": \"${EMULATOR_IP}\", 
+                \"User\": \"root\", 
+                \"Password\": \"password\" 
+              }" > /dev/null
+        elif [[ "$HTTP_CODE" -ge 200 && "$HTTP_CODE" -lt 300 ]]; then
+             echo "  -> Created ($HTTP_CODE)"
+        else
+             echo "  -> Failed ($HTTP_CODE)"
+        fi
     else
         echo "Warning: Could not find IP for pod '$POD_NAME'. Skipping BMC registration."
     fi
@@ -94,12 +113,13 @@ else
     
     # Artifacts URL base (assumes default setup on 192.168.100.2:30080)
     # Ideally this should be dynamic, but for this script we match the default deployment.
-    ARTIFACTS_URL="http://192.168.100.2:30080/artifacts"
+    ARTIFACTS_URL="${ARTIFACTS_URL:-http://192.168.100.2:30080/artifacts}"
     
     curl -s -X PUT "http://${BSS_IP}:27778/boot/v1/bootparameters" \
       -H "Content-Type: application/json" \
       -d "{
         \"hosts\": [\"${COMPONENT_ID}\"],
+        \"macs\": [\"${MAC}\"],
         \"kernel\": \"${ARTIFACTS_URL}/vmlinuz-lts\",
         \"initrd\": \"${ARTIFACTS_URL}/initramfs-lts\",
         \"params\": \"console=ttyS0 ip=dhcp rd.neednet=1 root=live:${ARTIFACTS_URL}/rootfs.squashfs\"

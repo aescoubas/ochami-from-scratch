@@ -327,16 +327,58 @@ helm upgrade --install ochami ./ochami-helm -n ochami -f ochami-helm/values-pxe.
 
 rm -f "$VALUES_FILE"
 
+# 5b. Configure BSS Default Boot Parameters
+echo -e "${GREEN}--> Configuring BSS Default Boot Parameters...${NC}"
+BSS_IP=""
+for i in {1..30}; do
+    BSS_IP=$(minikube kubectl -- get svc ochami-bss -n ochami -o jsonpath='{.spec.clusterIP}' 2>/dev/null || true)
+    if [ -n "$BSS_IP" ]; then
+        break
+    fi
+    echo "Waiting for BSS service IP..."
+    sleep 2
+done
+
+if [ -z "$BSS_IP" ]; then
+    echo "Error: Could not determine BSS ClusterIP."
+    exit 1
+fi
+
+echo "BSS Service IP: $BSS_IP"
+ARTIFACTS_URL="http://$HOST_IP:30080/artifacts"
+
+echo "Registering 'Default' boot parameters in BSS..."
+# Retry loop for BSS API availability
+for i in {1..30}; do
+    if curl -s -f -X PUT "http://${BSS_IP}:27778/boot/v1/bootparameters" \
+      -H "Content-Type: application/json" \
+      -d "{
+        \"hosts\": [\"Default\"],
+        \"kernel\": \"${ARTIFACTS_URL}/vmlinuz-lts\",
+        \"initrd\": \"${ARTIFACTS_URL}/initramfs-lts\",
+        \"params\": \"console=ttyS0 ip=dhcp rd.neednet=1 root=live:${ARTIFACTS_URL}/rootfs.squashfs\"
+      }" >/dev/null; then
+        echo "Successfully registered Default boot parameters."
+        break
+    else
+        echo "Waiting for BSS API to be ready..."
+        sleep 2
+    fi
+done
+
 # 6. Create VMs if requested
 if [ "$NUM_VMS" -gt 0 ]; then
     echo -e "${GREEN}--> Creating $NUM_VMS VMs...${NC}"
     # Start assigning static IPs for registered nodes from .50
     CURRENT_IP_OCTET=50
     
+    # Export ARTIFACTS_URL for the registration script to use
+    export ARTIFACTS_URL
+    
     for i in $(seq 0 $((NUM_VMS - 1))); do
         VM_NAME="virtual-compute-node-$i"
-        # Format: x0c0s0b0n{i}
-        COMP_ID="x0c0s0b0n${i}"
+        # Format: x0c0s{i}b0n0 (Vary slot to ensure unique BMCs)
+        COMP_ID="x0c0s${i}b0n0"
         STATIC_IP="192.168.100.${CURRENT_IP_OCTET}"
         
         echo "Creating $VM_NAME..."

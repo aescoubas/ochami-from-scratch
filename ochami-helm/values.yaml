@@ -109,6 +109,7 @@ bss:
   bootscript:
     #notify_url: "http://ochami-tpm-manager:27780/Node"
     notify_url: ""
+  nfdUrl: ""
   advertise_address: "localhost" # without this value, the bss microservice doesn't start
 
 serviceAccount:

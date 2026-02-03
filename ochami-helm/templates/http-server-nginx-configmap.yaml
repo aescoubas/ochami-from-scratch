@@ -14,10 +14,24 @@ data:
 
         # Proxy to BSS for dynamic boot scripts
         # This allows BSS to generate custom boot scripts per node
-        location ~ ^/(boot/v1/bootscript|apis/bss/boot/v1/bootscript) {
-            proxy_pass http://ochami-bss.{{ .Release.Namespace }}.svc.cluster.local:27778;
+        
+        # Handle requests prefixed with /apis/bss/ (rewrite/strip prefix)
+        location /apis/bss/ {
+            proxy_pass http://ochami-bss.{{ .Release.Namespace }}.svc.cluster.local:27778/;
             proxy_set_header Host $host;
             proxy_set_header X-Real-IP $remote_addr;
+        }
+
+        # Handle direct requests to /boot/v1/
+        location /boot/v1/ {
+            proxy_pass http://ochami-bss.{{ .Release.Namespace }}.svc.cluster.local:27778/boot/v1/;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+        }
+
+        location /hmi/v1/subscribe {
+            return 200 '{"Components":[]}';
+            add_header Content-Type application/json;
         }
 
         location / {

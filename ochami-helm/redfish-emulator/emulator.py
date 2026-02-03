@@ -92,7 +92,11 @@ class RedfishHandler(BaseHTTPRequestHandler):
         path = self.path.rstrip("/")
         
         if path == "/redfish/v1" or path == "/redfish/v1/":
-            self.send_json({"Systems": {"@odata.id": "/redfish/v1/Systems"}})
+            self.send_json({
+                "Systems": {"@odata.id": "/redfish/v1/Systems"},
+                "Chassis": {"@odata.id": "/redfish/v1/Chassis"},
+                "Managers": {"@odata.id": "/redfish/v1/Managers"}
+            })
         elif path == "/redfish/v1/Systems":
             self.send_json({"Members": [{"@odata.id": "/redfish/v1/Systems/1"}]})
         elif path == "/redfish/v1/Systems/1":
@@ -102,6 +106,15 @@ class RedfishHandler(BaseHTTPRequestHandler):
                 "Id": "1",
                 "Name": VM_NAME,
                 "PowerState": info["State"],
+                "ProcessorSummary": {
+                    "Count": 1,
+                    "Model": "Virtual CPU"
+                },
+                "MemorySummary": {
+                    "TotalSystemMemoryGiB": 8,
+                    "Status": {"State": "Enabled", "Health": "OK"}
+                },
+                "Processors": {"@odata.id": "/redfish/v1/Systems/1/Processors"},
                 "EthernetInterfaces": {"@odata.id": "/redfish/v1/Systems/1/EthernetInterfaces"},
                 "Actions": {
                     "#ComputerSystem.Reset": {
@@ -109,6 +122,19 @@ class RedfishHandler(BaseHTTPRequestHandler):
                         "ResetType@Redfish.AllowableValues": ["On", "ForceOff", "GracefulRestart"]
                     }
                 }
+            })
+        elif path == "/redfish/v1/Systems/1/Processors":
+             self.send_json({"Members": [{"@odata.id": "/redfish/v1/Systems/1/Processors/1"}]})
+        elif path == "/redfish/v1/Systems/1/Processors/1":
+            self.send_json({
+                "@odata.id": "/redfish/v1/Systems/1/Processors/1",
+                "Id": "1",
+                "Name": "Processor 1",
+                "Socket": "CPU 1",
+                "ProcessorType": "CPU",
+                "ProcessorArchitecture": "x86",
+                "InstructionSet": "x86-64",
+                "TotalCores": 4
             })
         elif path == "/redfish/v1/Systems/1/EthernetInterfaces":
              self.send_json({"Members": [{"@odata.id": "/redfish/v1/Systems/1/EthernetInterfaces/1"}]})
@@ -118,6 +144,27 @@ class RedfishHandler(BaseHTTPRequestHandler):
                 "@odata.id": "/redfish/v1/Systems/1/EthernetInterfaces/1",
                 "MACAddress": info["MAC"]
             })
+        elif path == "/redfish/v1/Chassis":
+            self.send_json({"Members": [{"@odata.id": "/redfish/v1/Chassis/1"}]})
+        elif path == "/redfish/v1/Chassis/1":
+            self.send_json({
+                "@odata.id": "/redfish/v1/Chassis/1",
+                "Id": "1",
+                "Name": "Chassis 1",
+                "PowerState": "On"
+            })
+        elif path == "/redfish/v1/Managers":
+            self.send_json({"Members": [{"@odata.id": "/redfish/v1/Managers/1"}]})
+        elif path == "/redfish/v1/Managers/1":
+            self.send_json({
+                "@odata.id": "/redfish/v1/Managers/1",
+                "Id": "1",
+                "Name": "Manager 1",
+                "ManagerType": "BMC",
+                "EthernetInterfaces": {"@odata.id": "/redfish/v1/Managers/1/EthernetInterfaces"}
+            })
+        elif path == "/redfish/v1/Managers/1/EthernetInterfaces":
+             self.send_json({"Members": []})
         else:
             self.send_response(404)
             self.end_headers()

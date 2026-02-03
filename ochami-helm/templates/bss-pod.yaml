@@ -81,6 +81,8 @@ spec:
           value: {{ .Values.bss.bootscript.notify_url | quote }}
         - name: BSS_ADVERTISE_ADDRESS
           value: {{ .Values.bss.advertise_address | quote }}
+        - name: NFD_URL
+          value: {{ .Values.bss.nfdUrl | default "" | quote }}
       livenessProbe:
         httpGet:
           path: /boot/v1/service/status
