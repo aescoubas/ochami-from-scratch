@@ -126,6 +126,15 @@ else
       }" > /dev/null
       
     echo "Boot parameters registered."
+
+    # WORKAROUND: BSS currently fails to save the boot_mac in the nodes table.
+    # We manually update it here to ensure the node can look up its boot script by MAC.
+    echo "Applying workaround: Updating boot_mac in BSS database for $COMPONENT_ID..."
+    if minikube kubectl -- exec -n ochami ochami-postgres -- psql -U bss-user -d bssdb -c "UPDATE nodes SET boot_mac = '$MAC' WHERE xname = '$COMPONENT_ID';" >/dev/null 2>&1; then
+         echo "  -> Database updated successfully."
+    else
+         echo "  -> Warning: Failed to update database. Boot might fail."
+    fi
 fi
 
 echo ""
