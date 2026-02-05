@@ -99,6 +99,13 @@ fi
 
 # 2.1 Clean up host networking (for 'none' driver)
 HOST_IFACE="virbr-pxe"
+
+if systemctl is-active --quiet firewalld; then
+    echo "Restoring firewall rules..."
+    sudo firewall-cmd --zone=trusted --remove-interface="$HOST_IFACE" --permanent || true
+    sudo firewall-cmd --reload
+fi
+
 if ip link show ochami-dummy >/dev/null 2>&1; then
     echo -e "${GREEN}--> Removing dummy interface ochami-dummy...${NC}"
     sudo ip link delete ochami-dummy
@@ -108,6 +115,20 @@ MINIKUBE_IP="192.168.100.2"
 if ip addr show "$HOST_IFACE" 2>/dev/null | grep -q "inet $MINIKUBE_IP/"; then
     echo -e "${GREEN}--> Removing IP $MINIKUBE_IP from $HOST_IFACE...${NC}"
     sudo ip addr del "$MINIKUBE_IP/24" dev "$HOST_IFACE"
+fi
+
+# 2.5 Clean up Podman Quadlet
+echo -e "${GREEN}--> Checking for Podman Quadlet deployment...${NC}"
+if systemctl list-units --full -all | grep -q "ochami.service"; then
+    echo "Stopping ochami.service..."
+    sudo systemctl stop ochami.service
+fi
+
+if [ -f "/etc/containers/systemd/ochami.kube" ] || [ -f "/etc/containers/systemd/ochami.yaml" ]; then
+    echo "Removing Podman Quadlet files..."
+    sudo rm -f /etc/containers/systemd/ochami.kube /etc/containers/systemd/ochami.yaml
+    sudo systemctl daemon-reload
+    echo "Podman Quadlet removed."
 fi
 
 # 3. Delete Minikube
@@ -133,6 +154,13 @@ if [ "$REMOVE_IMAGES" = true ]; then
     for img in "${IMAGES[@]}"; do
         if docker image inspect "$img" >/dev/null 2>&1; then
             docker rmi "$img" || echo "Failed to remove $img (might be in use or dependent)"
+        fi
+        
+        # Also try podman
+        if command -v podman >/dev/null 2>&1; then
+             if sudo podman image exists "$img"; then
+                 sudo podman rmi "$img" || echo "Failed to remove $img from Podman"
+             fi
         fi
     done
 else

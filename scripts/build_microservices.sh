@@ -15,6 +15,8 @@
 # Base URL for the GitHub organization where the forks reside
 readonly ORG_URL="https://github.com/aescoubas"
 readonly REPO_BASE_DIR="/tmp"
+CONTAINER_TOOL=${CONTAINER_TOOL:-docker}
+CONTAINER_TOOL=${CONTAINER_TOOL:-docker}
 
 # Associative array mapping logical service names to their forked repository names
 declare -A REPO_FORK_NAMES
@@ -76,7 +78,7 @@ prepare_repo() {
 
 
 # --- Service-Specific Build Functions ---
-# TODO: Modify the 'docker build' command within each function as needed.
+# TODO: Modify the '$CONTAINER_TOOL build' command within each function as needed.
 
 build_smd() {
     local original_dir=$(pwd)
@@ -91,7 +93,7 @@ build_smd() {
     
     local tag="${ref//\//-}"
     make clean && make binaries
-    docker build -t "localhost/smd:$tag" .
+    $CONTAINER_TOOL build -t "localhost/smd:$tag" .
     
     echo "--- Finished smd ---"
     cd "$original_dir"
@@ -110,7 +112,7 @@ build_bss() {
     
     local tag="${ref//\//-}"
     make clean && make binaries
-    docker build -t "localhost/bss:$tag" .
+    $CONTAINER_TOOL build -t "localhost/bss:$tag" .
     
     echo "--- Finished bss ---"
     cd "$original_dir"
@@ -139,7 +141,7 @@ build_coresmd() {
     ~/go/bin/goreleaser release --snapshot --clean
 
     #local tag="${ref//\//-}"
-    docker tag "ghcr.io/openchami/coresmd:${DOCKER_TAG}-amd64" "localhost/coresmd:$DOCKER_TAG"
+    $CONTAINER_TOOL tag "ghcr.io/openchami/coresmd:${DOCKER_TAG}-amd64" "localhost/coresmd:$DOCKER_TAG"
 
     
     echo "--- Finished coresmd ---"
@@ -158,7 +160,7 @@ build_coresmd() {
 #    prepare_repo "configurator" "$ref"
 #
 #    local tag="${ref//\//-}"
-#    docker build -t "localhost/configurator:$tag" .
+#    $CONTAINER_TOOL build -t "localhost/configurator:$tag" .
 #
 #    echo "--- Finished configurator ---"
 #    cd "$original_dir"
@@ -176,7 +178,7 @@ build_cloud-init() {
     prepare_repo "cloud-init" "$ref"
 
     local tag="${ref//\//-}"
-    docker build -t "localhost/cloud-init:$tag" .
+    $CONTAINER_TOOL build -t "localhost/cloud-init:$tag" .
 
     echo "--- Finished cloud-init ---"
     cd "$original_dir"
@@ -194,7 +196,7 @@ build_cloud-init() {
 #    prepare_repo "opaal" "$ref"
 #
 #    local tag="${ref//\//-}"
-#    docker build -t "localhost/opaal:$tag" .
+#    $CONTAINER_TOOL build -t "localhost/opaal:$tag" .
 #
 #    echo "--- Finished opaal ---"
 #    cd "$original_dir"
@@ -212,7 +214,7 @@ build_cloud-init() {
 #    prepare_repo "tpm-manager" "$ref"
 #
 #    local tag="${ref//\//-}"
-#    docker build -t "localhost/tpm-manager:$tag" .
+#    $CONTAINER_TOOL build -t "localhost/tpm-manager:$tag" .
 #
 #    echo "--- Finished tpm-manager ---"
 #    cd "$original_dir"

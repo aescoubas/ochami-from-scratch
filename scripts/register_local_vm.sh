@@ -14,6 +14,10 @@ IP_ADDRESS="$2"
 COMPONENT_ID="${3:-x0c0s0b0n0}"
 NID="${4:-1}"
 
+ORCHESTRATOR=${ORCHESTRATOR:-minikube}
+# Default HOST_IP if not set (used for Podman mode)
+HOST_IP=${HOST_IP:-"192.168.100.2"}
+
 # 1. Get MAC address from the VM
 echo "Fetching MAC address for '$VM_NAME'..."
 MAC=$(sudo virsh domiflist "$VM_NAME" | awk '/pxe-net/ {print $5}')
@@ -27,7 +31,12 @@ echo "Found MAC: $MAC"
 
 # 2. Get SMD Service IP
 echo "Fetching SMD service IP..."
-SMD_IP=$(minikube kubectl -- get svc ochami-smd -n ochami -o jsonpath='{.spec.clusterIP}')
+if [ "$ORCHESTRATOR" == "podman" ]; then
+    SMD_IP="$HOST_IP"
+else
+    SMD_IP=$(minikube kubectl -- get svc ochami-smd -n ochami -o jsonpath='{.spec.clusterIP}')
+fi
+
 if [ -z "$SMD_IP" ]; then
     echo "Error: Could not find SMD service IP."
     exit 1
@@ -59,7 +68,11 @@ if [ -n "$VM_INDEX" ]; then
     NAMESPACE="ochami"
     
     echo "Fetching IP for emulator pod '$POD_NAME'..."
-    EMULATOR_IP=$(minikube kubectl -- get pod -n "$NAMESPACE" "$POD_NAME" -o jsonpath='{.status.podIP}' 2>/dev/null)
+    if [ "$ORCHESTRATOR" == "podman" ]; then
+        EMULATOR_IP="$HOST_IP"
+    else
+        EMULATOR_IP=$(minikube kubectl -- get pod -n "$NAMESPACE" "$POD_NAME" -o jsonpath='{.status.podIP}' 2>/dev/null)
+    fi
     
     if [ -n "$EMULATOR_IP" ]; then
         echo "Registering BMC ($BMC_ID) for Emulator $VM_INDEX..."
@@ -104,7 +117,12 @@ fi
 
 # 6. Register Boot Parameters in BSS
 echo "Fetching BSS service IP..."
-BSS_IP=$(minikube kubectl -- get svc ochami-bss -n ochami -o jsonpath='{.spec.clusterIP}')
+if [ "$ORCHESTRATOR" == "podman" ]; then
+    BSS_IP="$HOST_IP"
+else
+    BSS_IP=$(minikube kubectl -- get svc ochami-bss -n ochami -o jsonpath='{.spec.clusterIP}')
+fi
+
 if [ -z "$BSS_IP" ]; then
     echo "Warning: Could not find BSS service IP. Skipping boot parameter registration."
 else
@@ -130,10 +148,27 @@ else
     # WORKAROUND: BSS currently fails to save the boot_mac in the nodes table.
     # We manually update it here to ensure the node can look up its boot script by MAC.
     echo "Applying workaround: Updating boot_mac in BSS database for $COMPONENT_ID..."
-    if minikube kubectl -- exec -n ochami ochami-postgres -- psql -U bss-user -d bssdb -c "UPDATE nodes SET boot_mac = '$MAC' WHERE xname = '$COMPONENT_ID';" >/dev/null 2>&1; then
-         echo "  -> Database updated successfully."
+    
+    UPDATE_CMD="psql -U bss-user -d bssdb -c \"UPDATE nodes SET boot_mac = '$MAC' WHERE xname = '$COMPONENT_ID';\""
+    
+    if [ "$ORCHESTRATOR" == "podman" ]; then
+        # Find postgres container
+        PG_CONTAINER=$(sudo podman ps --format "{{.Names}}" | grep postgres | head -n 1)
+        if [ -n "$PG_CONTAINER" ]; then
+             if sudo podman exec "$PG_CONTAINER" bash -c "$UPDATE_CMD" >/dev/null 2>&1; then
+                 echo "  -> Database updated successfully (Podman)."
+             else
+                 echo "  -> Warning: Failed to update database (Podman). Boot might fail."
+             fi
+        else
+            echo "  -> Warning: Postgres container not found (Podman). Boot might fail."
+        fi
     else
-         echo "  -> Warning: Failed to update database. Boot might fail."
+        if minikube kubectl -- exec -n ochami ochami-postgres -- $UPDATE_CMD >/dev/null 2>&1; then
+             echo "  -> Database updated successfully."
+        else
+             echo "  -> Warning: Failed to update database. Boot might fail."
+        fi
     fi
 fi
 

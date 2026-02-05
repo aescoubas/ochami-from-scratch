@@ -25,6 +25,11 @@ spec:
     - name: kea-dhcp4
       image: "{{ .Values.kea.image.repository }}:{{ .Values.kea.image.tag }}"
       imagePullPolicy: "{{ .Values.kea.image.pullPolicy }}"
+      securityContext:
+        capabilities:
+          add:
+            - NET_RAW
+            - NET_ADMIN
       args: ["-c", "/etc/kea/kea-dhcp4.conf"]
       volumeMounts:
         - name: kea-config

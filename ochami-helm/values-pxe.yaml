@@ -18,8 +18,8 @@ dhcpNetmask: "255.255.255.0"
 tftpServerIp: "192.168.100.2"
 
 # Boot script URL that iPXE will chainload to (after getting iPXE via TFTP)
-# We use the BSS dynamic endpoint which requires the MAC address
-bootScriptUrl: "http://192.168.100.2:30080/boot/v1/bootscript?mac=${net0/mac}"
+# We use the static boot script served by nginx to avoid initial BSS complexity/panics
+bootScriptUrl: "http://192.168.100.2/boot.ipxe"
 
 # CoreDHCP/CoreSMD configuration
 coredhcp:
