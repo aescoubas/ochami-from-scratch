@@ -377,7 +377,7 @@ elif [ "$ORCHESTRATOR" == "podman" ]; then
     # Reorder pods for Quadlet dependencies
     if [ -f scripts/quadlet_reorder.py ]; then
         echo "Reordering Quadlet YAML..."
-        python3 scripts/quadlet_reorder.py "$TEMPLATE_OUT" "$TEMPLATE_OUT"
+        /usr/bin/python3 scripts/quadlet_reorder.py "$TEMPLATE_OUT" "$TEMPLATE_OUT"
     fi
     
     echo "Installing Quadlet files to /etc/containers/systemd/..."
