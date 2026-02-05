@@ -30,6 +30,15 @@ else
     echo "conntrack and socat are installed."
 fi
 
+# 2b. Install Python dependencies (PyYAML)
+if ! python3 -c "import yaml" >/dev/null 2>&1; then
+    echo -e "${GREEN}--> Installing python3-yaml...${NC}"
+    ensure_apt_update
+    sudo apt-get install -y python3-yaml
+else
+    echo "python3-yaml is installed."
+fi
+
 # 3. Install cri-tools (crictl)
 if ! command_exists crictl; then
     echo -e "${GREEN}--> Installing cri-tools...${NC}"
