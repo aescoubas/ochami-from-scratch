@@ -304,6 +304,7 @@ bss:
   ipxe:
     server: "$HOST_IP"
   advertise_address: "$HOST_IP"
+  nfdUrl: "http://$HOST_IP/hmi/v1/subscribe"
 
 kea:
   db:
@@ -312,9 +313,21 @@ kea:
     name: "kea"
     user: "kea-user"
     password: "CHANGEME" # Ensure this matches values.yaml or is overridden
-
-bootScriptUrl: "http://$HOST_IP/boot.ipxe"
 EOF
+
+# Configure boot script URL based on orchestrator
+# - Minikube: Use BSS for dynamic boot scripts (Redfish emulator works, ComponentEndpoints available)
+# - Podman: Use static boot.ipxe (BSS requires ComponentEndpoints which need working Redfish discovery,
+#           but StatefulSets don't work well with podman kube play)
+if [ "$ORCHESTRATOR" == "minikube" ]; then
+    cat <<EOF >> "$VALUES_FILE"
+bootScriptUrl: "http://$HOST_IP/boot/v1/bootscript?mac=\${net0/mac}"
+EOF
+else
+    cat <<EOF >> "$VALUES_FILE"
+bootScriptUrl: "http://$HOST_IP:80/boot.ipxe"
+EOF
+fi
 
 if [ "$NUM_VMS" -gt 0 ]; then
 cat <<EOF >> "$VALUES_FILE"
@@ -439,7 +452,7 @@ if [ -z "$BSS_IP" ]; then
 fi
 
 echo "BSS Service IP: $BSS_IP"
-ARTIFACTS_URL="http://$HOST_IP:30080/artifacts"
+ARTIFACTS_URL="http://$HOST_IP:80/artifacts"
 
 echo "Registering 'Default' boot parameters in BSS..."
 # Retry loop for BSS API availability

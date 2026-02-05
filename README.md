@@ -1,6 +1,30 @@
 # Advanced Tutorial: Booting a Custom Image with OpenCHAMI
 
-This tutorial demonstrates a more advanced scenario where a custom-built Linux image is served via a web server and a VM (or physical node) is network-booted using iPXE provided by a DHCP server. All services run within a Minikube cluster and are managed by a single Helm chart.
+This tutorial demonstrates a more advanced scenario where a custom-built Linux image is served via a web server and a VM (or physical node) is network-booted using iPXE provided by a DHCP server. Services can be deployed using either **Minikube** (Kubernetes) or **Podman Quadlets** (systemd-managed containers).
+
+## Quick Start (Podman)
+
+Deploy OpenCHAMI with Podman and create a test VM in one command:
+
+```bash
+./deploy.sh --orchestrator podman --vms 1
+```
+
+Verify the deployment:
+```bash
+# Check services are running
+sudo podman ps
+
+# Check VM booted successfully (wait ~30 seconds after deploy)
+ping -c 3 192.168.100.100
+
+# View boot logs
+sudo podman logs ochami-http-server-http-server | grep -E "(vmlinuz|rootfs)"
+```
+
+For detailed instructions, see the sections below.
+
+---
 
 ## Architecture Overview
 
@@ -66,41 +90,81 @@ The deployment replaces the legacy `coresmd` plugin with a **Sidecar Pattern**:
 
 ## 1. Prerequisites
 
+### For Minikube Deployment
 *   **Minikube** with the **`none` (bare-metal)** driver.
     *   *Note: The deployment script will automatically install necessary system dependencies (like `conntrack`, `cri-dockerd`, `cri-tools`, and CNI plugins) for Debian/Ubuntu systems.*
 *   [Helm](https://helm.sh/docs/intro/install/)
 *   [Docker](https://docs.docker.com/get-docker/) (Required for building images and running the `none` driver)
+
+### For Podman Deployment
+*   **Podman** (version 4.0+)
+*   [Helm](https://helm.sh/docs/intro/install/) (Used to template the Kubernetes YAML)
+*   *Note: Podman deployment uses Quadlets (systemd integration) with `podman kube play`*
+
+### Common Requirements
 *   Libvirt & `virt-install` (For local VM testing)
-*   `sudo` privileges (Required for `none` driver networking and artifact cleanup)
+*   `sudo` privileges (Required for networking and container management)
 
-## Step 1: Deployment (Local VM Mode)
+## Step 1: Deployment
 
-Run the automated deployment script. This default mode sets up a local bridge (`virbr-pxe`) for testing with VMs.
+### Option A: Minikube Deployment (Default)
+
+Run the automated deployment script with Minikube (Kubernetes). This is the default mode.
 
 ```bash
 ./deploy.sh
 ```
 
-**Options:**
-*   `--vms N`: Automatically create N test VMs (named `virtual-compute-node-0`, `virtual-compute-node-1`, etc.) after deployment.
-*   `--rebuild`: Force a rebuild of the SLES image.
-*   `--phy-iface IFACE`: Bridge a physical interface for bare-metal testing.
+Or explicitly:
+```bash
+./deploy.sh --orchestrator minikube
+```
 
-**What this script does:**
-1.  **Checks & Installs Prerequisites**: Automatically installs `cri-dockerd`, CNI plugins, and other tools required for the Minikube `none` driver.
-2.  **Builds SLES Image**: Builds a custom **openSUSE Leap 15.6 (SLES-based)** bootable image (kernel, initramfs, squashfs).
-3.  **Starts Minikube**: Launches Minikube using the `none` driver directly on the host.
-4.  **Configures Networking**:
-    *   Sets up a local bridge (`virbr-pxe`) for local VM testing.
-    *   Assigns IP `192.168.100.2` to the bridge.
-5.  **Deploys OpenCHAMI**: Installs the Helm chart configured to serve artifacts via `192.168.100.2`.
-    *   *Note: The script waits (up to 10m) for all services to be fully ready before proceeding to VM creation.*
-6.  **Creates VMs (Optional)**: If `--vms` is specified, it creates the requested number of Libvirt VMs.
+### Option B: Podman Deployment (Recommended for simplicity)
+
+Deploy using Podman Quadlets, which runs containers as systemd services with host networking:
+
+```bash
+./deploy.sh --orchestrator podman
+```
+
+To deploy with test VMs:
+```bash
+./deploy.sh --orchestrator podman --vms 1
+```
+
+**Common Options:**
+*   `--orchestrator [minikube|podman]`: Choose the container orchestrator (default: minikube)
+*   `--vms N`: Automatically create N test VMs (named `virtual-compute-node-0`, `virtual-compute-node-1`, etc.)
+*   `--rebuild`: Force a rebuild of container images
+*   `--phy-iface IFACE`: Bridge a physical interface for bare-metal testing
+*   `--ip ADDRESS`: Set the PXE server IP (default: 192.168.100.2)
+*   `--cidr CIDR`: Set the network CIDR (default: 24)
+
+### What the deployment script does:
+
+| Step | Minikube | Podman |
+|------|----------|--------|
+| 1. Prerequisites | Installs cri-dockerd, CNI plugins | Checks for podman, helm |
+| 2. Build Images | Builds with Docker, loads into Minikube | Builds with Podman |
+| 3. Start Orchestrator | Starts Minikube with `none` driver | N/A (uses systemd) |
+| 4. Configure Network | Creates `virbr-pxe` bridge, assigns 192.168.100.2 | Same |
+| 5. Deploy Services | Helm install to Kubernetes | Helm template → Quadlet YAML |
+| 6. Create VMs | Creates Libvirt VMs if `--vms` specified | Same |
+
+### Key Differences Between Orchestrators
+
+| Feature | Minikube | Podman |
+|---------|----------|--------|
+| Boot Script | BSS dynamic (per-node) | Static boot.ipxe (all nodes same) |
+| Service Discovery | Kubernetes DNS | Host networking (localhost) |
+| StatefulSets | Supported | Limited support |
+| Redfish Emulator | Works | Does not start (StatefulSet issue) |
+| Management | `kubectl` commands | `systemctl` + `podman` commands |
 
 **Rebuilding Images:**
-If you want to force a rebuild of the SLES image (e.g., after modifying the build script), run:
 ```bash
-./deploy.sh --rebuild
+./deploy.sh --orchestrator podman --rebuild
 ```
 
 ## Step 1b: Deployment (Bare Metal Mode)
@@ -129,13 +193,70 @@ You can also combine this with custom IP ranges if your physical network require
 
 ## Step 2: Verify the Deployment
 
+### For Minikube
+
 Check that all the pods are running and the services are created.
 
 ```bash
 minikube kubectl -- get pods -n ochami
 minikube kubectl -- get services -n ochami
 ```
+
 You should see pods for `ochami-kea`, `ochami-tftp`, `ochami-http-server`, `smd`, `bss`, and `postgres` running.
+
+### For Podman
+
+Check the systemd service and running containers:
+
+```bash
+# Check systemd service status
+sudo systemctl status ochami
+
+# List running containers
+sudo podman ps
+
+# Expected containers:
+# - localhost-postgres
+# - ochami-smd-smd
+# - ochami-bss-bss
+# - ochami-http-server-http-server
+# - ochami-kea-kea-dhcp4
+# - ochami-kea-sidecar
+# - ochami-tftp-tftp
+```
+
+### Verify Services are Responding
+
+Test that the core services are accessible:
+
+```bash
+# Check SMD is ready
+curl -s http://localhost:27779/hsm/v2/service/ready
+# Expected: {"code":0,"message":"HSM is healthy"}
+
+# Check BSS is ready
+curl -s http://localhost:27778/boot/v1/service/status
+# Expected: {"status":"running"}
+
+# Check HTTP server is serving boot artifacts
+curl -s -I http://localhost:80/boot.ipxe
+# Expected: HTTP/1.1 200 OK
+
+# Check TFTP is listening (from another machine or VM)
+# tftp 192.168.100.2 -c get undionly.kpxe
+```
+
+### Verify Boot Script Content
+
+```bash
+# For Podman (static boot script):
+curl -s http://localhost:80/boot.ipxe
+# Should show iPXE script with kernel, initrd, and boot commands
+
+# For Minikube (BSS dynamic):
+curl -s "http://localhost:80/boot/v1/bootscript?mac=00:00:00:00:00:00"
+# Should return a boot script (may be a chain script for unknown MACs)
+```
 
 ## Step 3: Create and Boot the VM (Local Mode)
 
@@ -234,11 +355,50 @@ The VM should now receive the production IP (`192.168.100.50`).
 ### 3d. Verify the Boot
 
 ```bash
-# Ping the production IP
-ping 192.168.100.50
+# Ping the VM (it will get an IP from DHCP pool, typically 192.168.100.100+)
+ping 192.168.100.100
 
+# Or ping the registered static IP if configured
+ping 192.168.100.50
+```
+
+**For Minikube:**
+```bash
 # Check HTTP server logs for boot artifact downloads
 minikube kubectl -- logs -n ochami ochami-http-server | tail -10
+```
+
+**For Podman:**
+```bash
+# Check HTTP server logs
+sudo podman logs ochami-http-server-http-server | tail -10
+
+# You should see requests for:
+# - /boot.ipxe (or /boot/v1/bootscript for Minikube)
+# - /artifacts/vmlinuz-lts
+# - /artifacts/initramfs-lts
+# - /artifacts/rootfs.squashfs
+```
+
+### 3e. Full Boot Verification Checklist
+
+Run these commands to verify a successful boot:
+
+```bash
+# 1. Check VM is running
+sudo virsh domstate virtual-compute-node-0
+
+# 2. Check DHCP lease was issued (Podman)
+sudo podman logs ochami-kea-kea-dhcp4 2>&1 | grep -i "lease"
+
+# 3. Check boot artifacts were downloaded (Podman)
+sudo podman logs ochami-http-server-http-server 2>&1 | grep -E "(vmlinuz|initramfs|rootfs)"
+
+# 4. Verify VM is reachable
+ping -c 3 192.168.100.100
+
+# 5. (Optional) SSH to VM if configured
+ssh local@192.168.100.100  # password: linux
 ```
 
 ## 4. Booting Hardware Nodes
@@ -263,7 +423,9 @@ Power on the node. Once registered and synced, Kea will assign the static produc
 
 ## Cleanup
 
-To remove the VM, Minikube cluster, network artifacts, and generated files, run:
+### Using the Teardown Script
+
+To remove the VM, cluster/services, network artifacts, and generated files:
 
 ```bash
 ./teardown.sh
@@ -272,10 +434,38 @@ To remove the VM, Minikube cluster, network artifacts, and generated files, run:
 **Available options:**
 | Option | Description |
 | :--- | :--- |
-| `--remove-images` | Also delete Docker images and CNI plugins |
+| `--remove-images` | Also delete Docker/Podman images and CNI plugins |
 | `--vm-name NAME` | Specify VM name to remove (default: virtual-compute-node) |
 | `-y, --yes` | Skip confirmation prompt |
 | `-h, --help` | Show help |
+
+### Manual Cleanup (Podman)
+
+If you need to manually clean up a Podman deployment:
+
+```bash
+# Stop and remove VMs
+sudo virsh destroy virtual-compute-node-0
+sudo virsh undefine virtual-compute-node-0
+
+# Stop the ochami service
+sudo systemctl stop ochami
+
+# Remove Quadlet files
+sudo rm -f /etc/containers/systemd/ochami.yaml
+sudo rm -f /etc/containers/systemd/ochami.kube
+sudo systemctl daemon-reload
+
+# Remove all pods/containers
+sudo podman pod rm -f -a
+
+# Clean up libvirt network
+virsh net-destroy pxe-net
+virsh net-undefine pxe-net
+
+# Remove network interface
+sudo ip link delete ochami-dummy 2>/dev/null || true
+```
 
 ## Components Overview
 
@@ -343,27 +533,98 @@ You can verify the emulator works by sending a reboot command and watching the V
 
 ## Troubleshooting
 
-### VM doesn't get DHCP response
+### General Issues
+
+#### VM doesn't get DHCP response
+
+**For Minikube:**
 - Verify Kea pod is running: `kubectl get pods -n ochami`
 - Check Kea logs: `kubectl logs -n ochami ochami-kea -c kea-dhcp4`
+
+**For Podman:**
+- Verify Kea container is running: `sudo podman ps | grep kea`
+- Check Kea logs: `sudo podman logs ochami-kea-kea-dhcp4`
+
+**Common checks:**
 - Ensure the VM is on the `pxe-net` network: `virsh domiflist <vm-name>`
-- **Important**: Kea must bind to the correct interface (`virbr-pxe`). Check logs for `listening on interface virbr-pxe`. If another DHCP server (like `dnsmasq` from `libvirt`'s default network) is running on the host, it may prevent Kea from binding to the port. Use the `--mode hardware` option during deployment to handle this.
+- **Important**: Kea must bind to the correct interface (`virbr-pxe`). Check logs for `listening on interface virbr-pxe`. If another DHCP server (like `dnsmasq` from `libvirt`'s default network) is running on the host, it may prevent Kea from binding. Use `--mode hardware` to handle this.
 
-### Node gets IP but fails TFTP
+#### Node gets IP but fails TFTP
+
+**For Minikube:**
 - Check TFTP pod status: `kubectl get pods -n ochami -l app.kubernetes.io/component=tftp`
-- Verify TFTP service logs (if any, usually standard output/error).
-- Ensure port 69/UDP is not blocked or used by another process on the host (e.g., `dnsmasq`).
 
-### Node registered but still getting temporary IP
-- Check Sidecar logs: `kubectl logs -n ochami ochami-kea -c sidecar`
-- Verify the sync script found the interface in SMD and inserted it into Postgres.
-- Verify node is in SMD: `curl http://<SMD_IP>:27779/hsm/v2/Inventory/EthernetInterfaces`
+**For Podman:**
+- Check TFTP container: `sudo podman ps | grep tftp`
+- Check TFTP logs: `sudo podman logs ochami-tftp-tftp`
 
-### iPXE loads but fails to download boot.ipxe
-- Verify HTTP server is running: `kubectl logs -n ochami ochami-http-server`
-- Test HTTP manually: `curl http://192.168.100.2:30080/boot.ipxe`
+**Common checks:**
+- Ensure port 69/UDP is not blocked or used by another process (e.g., `dnsmasq`)
+- Test TFTP manually: `tftp 192.168.100.2 -c get undionly.kpxe`
 
-### Checking the full boot flow
+#### iPXE loads but fails to download boot script
+
+**For Minikube:**
+- Verify HTTP server: `kubectl logs -n ochami ochami-http-server`
+- Test HTTP: `curl http://192.168.100.2:30080/boot.ipxe`
+
+**For Podman:**
+- Verify HTTP server: `sudo podman logs ochami-http-server-http-server`
+- Test HTTP: `curl http://192.168.100.2:80/boot.ipxe`
+
+### Podman-Specific Issues
+
+#### Services not starting
+
+```bash
+# Check systemd service status
+sudo systemctl status ochami
+
+# View service logs
+sudo journalctl -u ochami -f
+
+# Restart the service
+sudo systemctl restart ochami
+```
+
+#### Container startup failures
+
+```bash
+# Check all containers (including failed)
+sudo podman ps -a
+
+# Check logs for failed container
+sudo podman logs <container-name>
+
+# Common issue: Port already in use
+sudo ss -tlnp | grep -E "(67|69|80|27778|27779)"
+```
+
+#### BSS returns "Unknown node" (Podman only)
+
+This is expected with Podman deployment. BSS requires ComponentEndpoints from SMD (populated via Redfish discovery), but the Redfish emulator doesn't work with Podman Quadlets due to StatefulSet limitations.
+
+**Solution**: Podman deployment uses static `boot.ipxe` which bypasses BSS entirely. All VMs boot with the same kernel/initrd/parameters.
+
+If you see this in BSS logs:
+```
+DEBUG: Unknown/disabled node, ID: 'x0c0s0b0n0'
+```
+This is normal for Podman - the static boot script will still work.
+
+#### Quadlet YAML issues
+
+```bash
+# View the generated YAML
+cat /etc/containers/systemd/ochami.yaml
+
+# Check for sed replacement issues (should show localhost, not K8s DNS names)
+grep -E "(ochami-postgres|ochami-smd|ochami-bss)" /etc/containers/systemd/ochami.yaml
+```
+
+### Checking the Full Boot Flow
+
+**For Minikube:**
 ```bash
 # Watch DHCP logs
 kubectl logs -n ochami ochami-kea -c kea-dhcp4 -f &
@@ -372,5 +633,36 @@ kubectl logs -n ochami ochami-kea -c kea-dhcp4 -f &
 kubectl logs -n ochami ochami-http-server -f &
 
 # Start the VM
-sudo virsh start virtual-compute-node
+sudo virsh start virtual-compute-node-0
+```
+
+**For Podman:**
+```bash
+# Watch DHCP logs
+sudo podman logs -f ochami-kea-kea-dhcp4 &
+
+# Watch HTTP logs
+sudo podman logs -f ochami-http-server-http-server &
+
+# Start the VM
+sudo virsh start virtual-compute-node-0
+
+# You should see:
+# 1. DHCP DISCOVER/OFFER/REQUEST/ACK in Kea logs
+# 2. GET /boot.ipxe in HTTP logs
+# 3. GET /artifacts/vmlinuz-lts
+# 4. GET /artifacts/initramfs-lts
+# 5. GET /artifacts/rootfs.squashfs
+```
+
+### Quick Diagnostic Commands (Podman)
+
+```bash
+# Full system status
+echo "=== Systemd Service ===" && sudo systemctl status ochami --no-pager
+echo "=== Running Containers ===" && sudo podman ps
+echo "=== SMD Health ===" && curl -s http://localhost:27779/hsm/v2/service/ready
+echo "=== BSS Health ===" && curl -s http://localhost:27778/boot/v1/service/status
+echo "=== HTTP Server ===" && curl -s -o /dev/null -w "%{http_code}" http://localhost:80/boot.ipxe
+echo "=== VM Status ===" && sudo virsh list --all
 ```
