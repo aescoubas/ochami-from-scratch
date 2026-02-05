@@ -10,6 +10,9 @@ data:
     #!ipxe
 
     {{- $httpPort := int (.Values.httpServer.service.nodePort | default 30080) }}
+    {{- if .Values.httpServer.hostNetwork }}
+    {{- $httpPort = .Values.httpServer.port }}
+    {{- end }}
     {{- $externalIp := .Values.externalIp | default "192.168.100.2" }}
 
     echo "=============================================="
