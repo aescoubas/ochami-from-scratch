@@ -89,7 +89,7 @@ export SMD_DB_NAME SMD_DB_USER SMD_DB_PASSWORD
 export BSS_DB_NAME BSS_DB_USER BSS_DB_PASSWORD
 export KEA_DB_NAME KEA_DB_USER KEA_DB_PASSWORD
 export HYDRA_DB_PASSWORD
-export HTTP_PORT SMD_PORT BSS_PORT POSTGRES_PORT
+export HTTP_PORT SMD_PORT BSS_PORT POSTGRES_PORT CLOUD_INIT_PORT
 
 # Generate .env file
 cat > "$COMPOSE_DIR/.env" <<EOF
@@ -116,6 +116,7 @@ KEA_DB_NAME=$KEA_DB_NAME
 KEA_DB_USER=$KEA_DB_USER
 KEA_DB_PASSWORD=$KEA_DB_PASSWORD
 HYDRA_DB_PASSWORD=$HYDRA_DB_PASSWORD
+CLOUD_INIT_PORT=$CLOUD_INIT_PORT
 NUM_VMS=$NUM_VMS
 PROJECT_ROOT=$PROJECT_ROOT
 EOF
@@ -131,7 +132,7 @@ if [ -f "$COMPOSE_DIR/configs/kea-dhcp4.conf.template" ]; then
 fi
 
 if [ -f "$COMPOSE_DIR/configs/nginx-default.conf.template" ]; then
-    envsubst '${HTTP_PORT} ${BSS_PORT}' < "$COMPOSE_DIR/configs/nginx-default.conf.template" > "$COMPOSE_DIR/configs/nginx-default.conf"
+    envsubst '${HTTP_PORT} ${BSS_PORT} ${CLOUD_INIT_PORT}' < "$COMPOSE_DIR/configs/nginx-default.conf.template" > "$COMPOSE_DIR/configs/nginx-default.conf"
     echo "Generated nginx-default.conf"
 fi
 
@@ -157,10 +158,11 @@ $COMPOSE_CMD -f "$COMPOSE_DIR/docker-compose.yml" --env-file "$COMPOSE_DIR/.env"
 step "Waiting for services to be ready..."
 wait_for_url "http://localhost:${SMD_PORT}/hsm/v2/service/ready" "SMD"
 wait_for_url "http://localhost:${BSS_PORT}/boot/v1/bootparameters" "BSS"
+wait_for_url "http://localhost:${CLOUD_INIT_PORT}/cloud-init/version" "cloud-init"
 
 # 8. Configure BSS
 step "Configuring BSS Default Boot Parameters..."
-register_bss_defaults "localhost" "$HOST_IP"
+register_bss_defaults "localhost" "$HOST_IP" "ds=nocloud-net;s=http://${HOST_IP}:${HTTP_PORT}/cloud-init/"
 
 # 9. Create VMs
 if [ "$NUM_VMS" -gt 0 ]; then

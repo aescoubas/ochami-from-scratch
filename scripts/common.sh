@@ -56,6 +56,7 @@ BSS_PORT=27778
 POSTGRES_PORT=5432
 HTTP_PORT=80
 TFTP_PORT=69
+CLOUD_INIT_PORT=27777
 
 # --- Logging ---
 
@@ -383,7 +384,12 @@ configure_firewall() {
 register_bss_defaults() {
     local bss_ip="$1"
     local host_ip="$2"
+    local extra_params="${3:-}"
     local artifacts_url="http://${host_ip}:${HTTP_PORT}/artifacts"
+    local params="console=ttyS0 ip=dhcp rd.neednet=1 root=live:${artifacts_url}/rootfs.squashfs"
+    if [ -n "$extra_params" ]; then
+        params="$params $extra_params"
+    fi
 
     echo "BSS Service IP: $bss_ip"
     echo "Registering 'Default' boot parameters in BSS..."
@@ -395,7 +401,7 @@ register_bss_defaults() {
             \"hosts\": [\"Default\"],
             \"kernel\": \"${artifacts_url}/vmlinuz-lts\",
             \"initrd\": \"${artifacts_url}/initramfs-lts\",
-            \"params\": \"console=ttyS0 ip=dhcp rd.neednet=1 root=live:${artifacts_url}/rootfs.squashfs\"
+            \"params\": \"${params}\"
           }" >/dev/null; then
             echo "Successfully registered Default boot parameters."
             return 0
