@@ -1,194 +1,75 @@
 #!/bin/bash
+set -e
 
-# Colors
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-NC='\033[0m'
+# teardown.sh — Thin dispatcher for OpenCHAMI teardown
+# Delegates to scripts/teardown/<method>.sh based on --method argument.
 
-# Defaults
-REMOVE_IMAGES=false
-VM_NAME="virtual-compute-node"
-SKIP_CONFIRM=false
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+VALID_METHODS="minikube, podman, docker-compose"
 
-# Parse arguments
+show_help() {
+    echo "Usage: $0 --method <METHOD> [OPTIONS...]"
+    echo ""
+    echo "Teardown an OpenCHAMI deployment."
+    echo ""
+    echo "Methods:"
+    echo "  minikube         Teardown Minikube deployment"
+    echo "  podman           Teardown Podman Quadlet deployment"
+    echo "  docker-compose   Teardown Docker Compose deployment"
+    echo ""
+    echo "Options:"
+    echo "  --method METHOD        Deployment method ($VALID_METHODS)"
+    echo "  --orchestrator METHOD  Backward-compatible alias for --method"
+    echo "  -h, --help             Show this help (or method-specific help with --method)"
+    echo ""
+    echo "Pass --help after --method for method-specific options:"
+    echo "  $0 --method minikube --help"
+}
+
+METHOD=""
+PASSTHROUGH_ARGS=()
+
 while [[ "$#" -gt 0 ]]; do
     case $1 in
-        --remove-images)
-            REMOVE_IMAGES=true
+        --method)
+            METHOD="$2"
+            shift 2
             ;;
-        --vm-name)
-            VM_NAME="$2"
-            shift
-            ;;
-        -y|--yes)
-            SKIP_CONFIRM=true
+        --orchestrator)
+            echo "Warning: --orchestrator is deprecated, use --method instead." >&2
+            case "$2" in
+                minikube|podman) METHOD="$2" ;;
+                *) METHOD="$2" ;;
+            esac
+            shift 2
             ;;
         -h|--help)
-            echo "Usage: $0 [OPTIONS]"
-            echo ""
-            echo "Options:"
-            echo "  --remove-images   Also remove Docker images and CNI plugins"
-            echo "  --vm-name NAME    Specify VM name to remove (default: virtual-compute-node)"
-            echo "  -y, --yes         Skip confirmation prompt"
-            echo "  -h, --help        Show this help"
-            echo ""
-            echo "This script removes:"
-            echo "  - The test VM (virtual-compute-node or specified name)"
-            echo "  - The pxe-net libvirt network"
-            echo "  - The Minikube cluster"
-            echo "  - Build artifacts (kernels, initramfs, rootfs)"
-            exit 0
+            if [ -z "$METHOD" ]; then
+                show_help
+                exit 0
+            fi
+            PASSTHROUGH_ARGS+=("$1")
+            shift
             ;;
         *)
-            echo "Unknown parameter: $1"
-            exit 1
+            PASSTHROUGH_ARGS+=("$1")
+            shift
             ;;
     esac
-    shift
 done
 
-echo -e "${RED}=== OpenCHAMI Teardown Script ===${NC}"
-echo "This script will PERMANENTLY DELETE:"
-echo "  - VM: $VM_NAME"
-echo "  - Network: pxe-net"
-echo "  - Minikube Cluster"
-echo "  - Build Artifacts (kernels, initramfs, rootfs)"
-if [ "$REMOVE_IMAGES" = true ]; then
-    echo "  - Docker Images (ochami related) [ENABLED]"
-else
-    echo "  - Docker Images (ochami related) [SKIPPED - use --remove-images to delete]"
-fi
-echo ""
-
-if [ "$SKIP_CONFIRM" = false ]; then
-    read -p "Are you sure you want to proceed? (y/N) " -n 1 -r
-    echo
-    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-        echo "Aborted."
-        exit 1
-    fi
+if [ -z "$METHOD" ]; then
+    echo "Error: --method is required." >&2
+    echo "" >&2
+    show_help >&2
+    exit 1
 fi
 
-# 1. Destroy VMs (Requires sudo as they were created with sudo)
-echo -e "${GREEN}--> Removing VMs...${NC}"
-# Find all VMs that match the name exactly OR start with NAME-
-VMS_TO_DELETE=$(sudo virsh list --all --name | grep -E "^${VM_NAME}$|^${VM_NAME}-[0-9]+$" || true)
+TEARDOWN_SCRIPT="$SCRIPT_DIR/scripts/teardown/${METHOD}.sh"
 
-if [ -n "$VMS_TO_DELETE" ]; then
-    for vm in $VMS_TO_DELETE; do
-        echo "Removing VM '$vm'..."
-        sudo virsh destroy "$vm" >/dev/null 2>&1 || true
-        sudo virsh undefine --nvram "$vm"
-        echo "VM '$vm' removed."
-    done
-else
-    echo "No VMs matching '$VM_NAME' found."
+if [ ! -f "$TEARDOWN_SCRIPT" ]; then
+    echo "Error: Unknown method '$METHOD'. Valid methods: $VALID_METHODS" >&2
+    exit 1
 fi
 
-# 2. Destroy Network
-NET_NAME="pxe-net"
-echo -e "${GREEN}--> Removing Network '$NET_NAME'...${NC}"
-# Try with sudo first as it's likely root-owned
-if sudo virsh net-info "$NET_NAME" >/dev/null 2>&1; then
-    sudo virsh net-destroy "$NET_NAME" >/dev/null 2>&1 || true
-    sudo virsh net-undefine "$NET_NAME"
-    echo "Network removed."
-else
-    echo "Network '$NET_NAME' not found."
-fi
-
-# 2.1 Clean up host networking (for 'none' driver)
-HOST_IFACE="virbr-pxe"
-
-if systemctl is-active --quiet firewalld; then
-    echo "Restoring firewall rules..."
-    sudo firewall-cmd --zone=trusted --remove-interface="$HOST_IFACE" --permanent || true
-    sudo firewall-cmd --reload
-fi
-
-if ip link show ochami-dummy >/dev/null 2>&1; then
-    echo -e "${GREEN}--> Removing dummy interface ochami-dummy...${NC}"
-    sudo ip link delete ochami-dummy
-fi
-
-MINIKUBE_IP="192.168.100.2"
-if ip addr show "$HOST_IFACE" 2>/dev/null | grep -q "inet $MINIKUBE_IP/"; then
-    echo -e "${GREEN}--> Removing IP $MINIKUBE_IP from $HOST_IFACE...${NC}"
-    sudo ip addr del "$MINIKUBE_IP/24" dev "$HOST_IFACE"
-fi
-
-# 2.5 Clean up Podman Quadlet
-echo -e "${GREEN}--> Checking for Podman Quadlet deployment...${NC}"
-if systemctl list-units --full -all | grep -q "ochami.service"; then
-    echo "Stopping ochami.service..."
-    sudo systemctl stop ochami.service
-fi
-
-if [ -f "/etc/containers/systemd/ochami.kube" ] || [ -f "/etc/containers/systemd/ochami.yaml" ]; then
-    echo "Removing Podman Quadlet files..."
-    sudo rm -f /etc/containers/systemd/ochami.kube /etc/containers/systemd/ochami.yaml
-    sudo systemctl daemon-reload
-    echo "Podman Quadlet removed."
-fi
-
-# 3. Delete Minikube
-echo -e "${GREEN}--> Deleting Minikube cluster...${NC}"
-# Check if using 'none' driver
-if minikube profile list -o json | grep -q '"Driver": "none"'; then
-    echo "Detected 'none' driver. Running delete with sudo to clean up root-owned artifacts..."
-    sudo -E minikube delete
-else
-    minikube delete
-fi
-
-# 4. Remove Docker Images (Optional)
-if [ "$REMOVE_IMAGES" = true ]; then
-    echo -e "${GREEN}--> Removing Docker images...${NC}"
-    # List of images to remove (HTTP server, TFTP server, and microservices)
-    IMAGES=(
-        "localhost/http-server:latest"
-        "localhost/tftp:latest"
-        "localhost/smd:local-smd"
-        "localhost/bss:local-bss"
-    )
-    for img in "${IMAGES[@]}"; do
-        if docker image inspect "$img" >/dev/null 2>&1; then
-            docker rmi "$img" || echo "Failed to remove $img (might be in use or dependent)"
-        fi
-        
-        # Also try podman
-        if command -v podman >/dev/null 2>&1; then
-             if sudo podman image exists "$img"; then
-                 sudo podman rmi "$img" || echo "Failed to remove $img from Podman"
-             fi
-        fi
-    done
-else
-    echo -e "${GREEN}--> Skipping Docker image removal.${NC}"
-fi
-
-# 5. Remove Artifacts
-echo -e "${GREEN}--> Cleaning up build artifacts...${NC}"
-# TFTP artifacts (iPXE binaries are kept as they're checked into git)
-# HTTP server artifacts (kernel, initramfs, rootfs)
-rm -f ochami-helm/http-server/artifacts/vmlinuz-lts
-rm -f ochami-helm/http-server/artifacts/initramfs-lts
-rm -f ochami-helm/http-server/artifacts/rootfs.squashfs
-# Temporary files
-rm -f /tmp/configure_net.sh 2>/dev/null || true
-
-# 6. Clean up System Modifications (Optional/Aggressive)
-if [ "$REMOVE_IMAGES" = true ]; then
-    echo -e "${GREEN}--> Removing CNI plugins (/opt/cni)...${NC}"
-    if [ -d "/opt/cni" ]; then
-        sudo rm -rf "/opt/cni"
-    fi
-fi
-
-# Revert sysctl change (if it was changed to 0)
-if [ "$(sysctl -n fs.protected_regular)" = "0" ]; then
-    echo -e "${GREEN}--> Reverting fs.protected_regular to 1...${NC}"
-    sudo sysctl -w fs.protected_regular=1 >/dev/null 2>&1 || true
-fi
-
-echo -e "${GREEN}=== Teardown Complete ===${NC}"
+exec bash "$TEARDOWN_SCRIPT" "${PASSTHROUGH_ARGS[@]}"

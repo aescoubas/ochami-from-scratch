@@ -1,0 +1,38 @@
+server {
+    listen       ${HTTP_PORT};
+    listen  [::]:${HTTP_PORT};
+    server_name  localhost;
+
+    # Proxy to BSS for dynamic boot scripts
+    # This allows BSS to generate custom boot scripts per node
+
+    # Handle requests prefixed with /apis/bss/ (rewrite/strip prefix)
+    location /apis/bss/ {
+        proxy_pass http://localhost:${BSS_PORT}/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
+
+    # Handle direct requests to /boot/v1/
+    location /boot/v1/ {
+        proxy_pass http://localhost:${BSS_PORT}/boot/v1/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
+
+    location /hmi/v1/subscribe {
+        return 200 '{"Components":[]}';
+        add_header Content-Type application/json;
+    }
+
+    location / {
+        root   /usr/share/nginx/html;
+        index  index.html index.htm;
+        autoindex on;
+    }
+
+    error_page   500 502 503 504  /50x.html;
+    location = /50x.html {
+        root   /usr/share/nginx/html;
+    }
+}

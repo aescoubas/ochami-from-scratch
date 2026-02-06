@@ -7,4 +7,10 @@ ochami-bss/
 ochami-coresmd/
 ochami-cloud-init/
 
+# Docker Compose generated files
+ochami-docker-compose/.env
+ochami-docker-compose/configs/kea-dhcp4.conf
+ochami-docker-compose/configs/nginx-default.conf
+ochami-docker-compose/configs/boot.ipxe
+
 
