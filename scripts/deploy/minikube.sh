@@ -139,6 +139,7 @@ minikube kubectl -- delete pod -n ochami -l app.kubernetes.io/component=kea 2>/d
 minikube kubectl -- delete pod -n ochami -l app.kubernetes.io/component=postgres 2>/dev/null || true
 minikube kubectl -- delete pod -n ochami -l app.kubernetes.io/component=smd 2>/dev/null || true
 minikube kubectl -- delete pod -n ochami -l app.kubernetes.io/component=bss 2>/dev/null || true
+minikube kubectl -- delete pod -n ochami -l app.kubernetes.io/component=cloud-init 2>/dev/null || true
 
 echo "Deploying Helm chart (waiting for services to become ready)..."
 helm upgrade --install ochami "$PROJECT_ROOT/ochami-helm" -n ochami -f "$PROJECT_ROOT/ochami-helm/values-pxe.yaml" -f "$VALUES_FILE" --wait --timeout 10m0s
@@ -162,7 +163,7 @@ if [ -z "$BSS_IP" ]; then
     exit 1
 fi
 
-register_bss_defaults "$BSS_IP" "$HOST_IP"
+register_bss_defaults "$BSS_IP" "$HOST_IP" "ds=nocloud-net;s=http://${HOST_IP}:${HTTP_PORT}/cloud-init/"
 
 # 6. Create VMs
 if [ "$NUM_VMS" -gt 0 ]; then

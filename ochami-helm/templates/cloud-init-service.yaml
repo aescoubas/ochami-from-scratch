@@ -1,0 +1,19 @@
+{{- if .Values.cloudInit.enabled -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "ochami-helm.fullname" . }}-cloud-init
+  labels:
+    {{- include "ochami-helm.labels" . | nindent 4 }}
+    app.kubernetes.io/component: cloud-init
+spec:
+  type: {{ .Values.service.cloudInit.type }}
+  ports:
+    - port: {{ .Values.service.cloudInit.port }}
+      targetPort: http
+      protocol: TCP
+      name: http
+  selector:
+    {{- include "ochami-helm.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: cloud-init
+{{- end }}

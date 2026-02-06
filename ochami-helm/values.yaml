@@ -33,6 +33,9 @@ service:
   kea:
     type: ClusterIP
     port: 67
+  cloudInit:
+    type: ClusterIP
+    port: 27777
 
 postgres:
   user: ochami
