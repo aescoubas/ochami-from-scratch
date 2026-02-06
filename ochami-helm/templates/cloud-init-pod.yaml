@@ -1,0 +1,71 @@
+{{- if .Values.cloudInit.enabled -}}
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ochami-cloud-init
+  labels:
+    {{- include "ochami-helm.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: cloud-init
+spec:
+  terminationGracePeriodSeconds: 0
+  initContainers:
+    - name: wait-for-dependencies
+      image: "{{ .Values.cloudInit.image.repository }}:{{ .Values.cloudInit.image.tag }}"
+      imagePullPolicy: {{ .Values.cloudInit.image.pullPolicy }}
+      command:
+        - 'sh'
+        - '-c'
+        - |
+          until /usr/bin/curl -m 1 -s -o /dev/null http://ochami-smd.{{ .Release.Namespace }}.svc.cluster.local:{{ .Values.service.smd.port }}/hsm/v2/service/ready; do
+            echo "waiting for SMD to be ready..."
+            sleep 0.2
+          done
+          echo "SMD is ready!"
+  containers:
+    - name: cloud-init
+      image: "{{ .Values.cloudInit.image.repository }}:{{ .Values.cloudInit.image.tag }}"
+      imagePullPolicy: {{ .Values.cloudInit.image.pullPolicy }}
+      ports:
+        - name: http
+          containerPort: {{ .Values.cloudInit.port }}
+          protocol: TCP
+      command:
+        - "/usr/local/bin/cloud-init-server"
+        - "--listen"
+        - "0.0.0.0:{{ .Values.cloudInit.port }}"
+        - "--smd-url"
+        - "http://ochami-smd.{{ .Release.Namespace }}.svc.cluster.local:{{ .Values.service.smd.port }}"
+        - "--cluster-name"
+        - {{ .Values.cloudInit.clusterName | quote }}
+        - "--insecure"
+      livenessProbe:
+        httpGet:
+          path: /cloud-init/version
+          port: http
+        initialDelaySeconds: 20
+        periodSeconds: 10
+        timeoutSeconds: 5
+        failureThreshold: 6
+      readinessProbe:
+        httpGet:
+          path: /cloud-init/version
+          port: http
+        initialDelaySeconds: 20
+        periodSeconds: 10
+        timeoutSeconds: 5
+        failureThreshold: 6
+      resources:
+        {{- toYaml .Values.resources | nindent 8 }}
+  {{- with .Values.nodeSelector }}
+  nodeSelector:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- with .Values.affinity }}
+  affinity:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- with .Values.tolerations }}
+  tolerations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+{{- end }}

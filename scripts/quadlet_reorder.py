@@ -29,7 +29,9 @@ def reorder_yaml(input_file, output_file):
             return 1
         if name == 'ochami-bss':
             return 2 # BSS waits for SMD
-        return 3
+        if name == 'ochami-cloud-init':
+            return 3 # cloud-init waits for SMD
+        return 4
 
     pods.sort(key=pod_sorter)
 

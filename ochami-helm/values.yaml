@@ -185,3 +185,13 @@ emulator:
     tag: latest
     pullPolicy: IfNotPresent
   vmPrefix: "virtual-compute-node-"
+
+# Cloud-init configuration
+cloudInit:
+  enabled: true
+  image:
+    repository: ghcr.io/openchami/cloud-init
+    tag: "v1.2.3"
+    pullPolicy: IfNotPresent
+  port: 27777
+  clusterName: "ochami"

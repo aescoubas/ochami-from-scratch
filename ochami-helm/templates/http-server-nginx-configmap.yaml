@@ -29,6 +29,14 @@ data:
             proxy_set_header X-Real-IP $remote_addr;
         }
 
+        # Proxy to cloud-init service
+        location /cloud-init/ {
+            proxy_pass http://ochami-cloud-init.{{ .Release.Namespace }}.svc.cluster.local:{{ .Values.cloudInit.port }}/cloud-init/;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        }
+
         location /hmi/v1/subscribe {
             return 200 '{"Components":[]}';
             add_header Content-Type application/json;

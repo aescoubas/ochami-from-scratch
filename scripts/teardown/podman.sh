@@ -74,6 +74,7 @@ if [ "$REMOVE_IMAGES" = true ]; then
         "localhost/tftp:latest"
         "localhost/smd:local-smd"
         "localhost/bss:local-bss"
+        "ghcr.io/openchami/cloud-init:v1.2.3"
     )
     if command_exists podman; then
         remove_images "sudo podman" "${IMAGES[@]}"

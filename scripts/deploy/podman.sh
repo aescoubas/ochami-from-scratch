@@ -121,6 +121,7 @@ helm template ochami "$PROJECT_ROOT/ochami-helm" -n ochami -f "$PROJECT_ROOT/och
 sed -i 's/ochami-postgres/localhost/g' "$TEMPLATE_OUT"
 sed -i 's/ochami-smd.ochami.svc.cluster.local/localhost/g' "$TEMPLATE_OUT"
 sed -i 's/ochami-bss.ochami.svc.cluster.local/localhost/g' "$TEMPLATE_OUT"
+sed -i 's/ochami-cloud-init.ochami.svc.cluster.local/localhost/g' "$TEMPLATE_OUT"
 
 # Reorder pods for Quadlet dependencies
 if [ -f "$PROJECT_ROOT/scripts/quadlet_reorder.py" ]; then
@@ -156,10 +157,11 @@ rm -f "$VALUES_FILE"
 echo "Waiting for services to start..."
 wait_for_url "http://localhost:${SMD_PORT}/hsm/v2/service/ready" "SMD"
 wait_for_url "http://localhost:${BSS_PORT}/boot/v1/bootparameters" "BSS"
+wait_for_url "http://localhost:${CLOUD_INIT_PORT}/cloud-init/version" "cloud-init"
 
 # 5. Configure BSS
 step "Configuring BSS Default Boot Parameters..."
-register_bss_defaults "$HOST_IP" "$HOST_IP"
+register_bss_defaults "$HOST_IP" "$HOST_IP" "ds=nocloud-net;s=http://${HOST_IP}:${HTTP_PORT}/cloud-init/"
 
 # 6. Create VMs
 if [ "$NUM_VMS" -gt 0 ]; then
