@@ -62,7 +62,7 @@ destroy_vms "$VM_NAME"
 # 2. Stop and remove Docker Compose services
 step "Stopping Docker Compose services..."
 if [ -f "$COMPOSE_DIR/docker-compose.yml" ]; then
-    $COMPOSE_CMD -f "$COMPOSE_DIR/docker-compose.yml" down -v --remove-orphans 2>/dev/null || echo "Docker Compose services already stopped or not found."
+    $COMPOSE_CMD -p ochami -f "$COMPOSE_DIR/docker-compose.yml" down -v --remove-orphans 2>/dev/null || echo "Docker Compose services already stopped or not found."
 fi
 
 # 3. Destroy Network
@@ -86,6 +86,7 @@ if [ "$REMOVE_IMAGES" = true ]; then
         "localhost/smd:local-smd"
         "localhost/bss:local-bss"
         "localhost/redfish-emulator:latest"
+        "localhost/pcs:local-pcs"
     )
     if command_exists docker; then
         remove_images "docker" "${IMAGES[@]}"

@@ -34,7 +34,7 @@ DEFAULT_VM_NAME="virtual-compute-node"
 IMAGE_HTTP="localhost/http-server:latest"
 IMAGE_TFTP="localhost/tftp:latest"
 IMAGE_EMULATOR="localhost/redfish-emulator:latest"
-MS_IMAGES=("localhost/smd:local-smd" "localhost/bss:local-bss")
+MS_IMAGES=("localhost/smd:local-smd" "localhost/bss:local-bss" "localhost/pcs:local-pcs")
 
 # Database credentials (from ochami-helm/values.yaml)
 POSTGRES_USER="ochami"
@@ -48,6 +48,9 @@ BSS_DB_PASSWORD="CHANGEME"
 KEA_DB_NAME="kea"
 KEA_DB_USER="kea-user"
 KEA_DB_PASSWORD="CHANGEME"
+PCS_DB_NAME="pcsdb"
+PCS_DB_USER="pcs-user"
+PCS_DB_PASSWORD="CHANGEME"
 HYDRA_DB_PASSWORD="CHANGEME"
 
 # Service ports
@@ -57,6 +60,7 @@ POSTGRES_PORT=5432
 HTTP_PORT=80
 TFTP_PORT=69
 CLOUD_INIT_PORT=27777
+PCS_PORT=28007
 
 # --- Logging ---
 

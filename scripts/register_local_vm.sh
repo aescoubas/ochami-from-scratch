@@ -108,6 +108,13 @@ if [ -n "$VM_INDEX" ]; then
         else
              echo "  -> Failed ($HTTP_CODE)"
         fi
+
+        # Trigger SMD Redfish discovery to populate ComponentEndpoints
+        # (needed for PCS power control to resolve Redfish URIs)
+        echo "  Triggering SMD Redfish discovery for ${BMC_ID}..."
+        curl -s -X POST "http://${SMD_IP}:27779/hsm/v2/Inventory/Discover" \
+          -H "Content-Type: application/json" \
+          -d "{\"xnames\":[\"${BMC_ID}\"]}" > /dev/null
     else
         echo "Warning: Could not find IP for pod '$POD_NAME'. Skipping BMC registration."
     fi

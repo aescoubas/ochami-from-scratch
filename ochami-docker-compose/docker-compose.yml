@@ -5,7 +5,7 @@ services:
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-ochami}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-CHANGEME}
-      POSTGRES_MULTIPLE_DATABASES: "${SMD_DB_NAME:-hmsds}:${SMD_DB_USER:-smd-user}:${SMD_DB_PASSWORD:-CHANGEME},${BSS_DB_NAME:-bssdb}:${BSS_DB_USER:-bss-user}:${BSS_DB_PASSWORD:-CHANGEME},${KEA_DB_NAME:-kea}:${KEA_DB_USER:-kea-user}:${KEA_DB_PASSWORD:-CHANGEME}"
+      POSTGRES_MULTIPLE_DATABASES: "${SMD_DB_NAME:-hmsds}:${SMD_DB_USER:-smd-user}:${SMD_DB_PASSWORD:-CHANGEME},${BSS_DB_NAME:-bssdb}:${BSS_DB_USER:-bss-user}:${BSS_DB_PASSWORD:-CHANGEME},${KEA_DB_NAME:-kea}:${KEA_DB_USER:-kea-user}:${KEA_DB_PASSWORD:-CHANGEME},${PCS_DB_NAME:-pcsdb}:${PCS_DB_USER:-pcs-user}:${PCS_DB_PASSWORD:-CHANGEME}"
     volumes:
       - postgres-data:/var/lib/postgresql/data
       - ./pg-init/multi-psql-db.sh:/docker-entrypoint-initdb.d/multi-psql-db.sh:ro
@@ -121,6 +121,48 @@ services:
       timeout: 5s
       retries: 30
 
+  power-control-init:
+    image: localhost/pcs:local-pcs
+    network_mode: host
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      POSTGRES_HOST: "localhost"
+      POSTGRES_PORT: "${POSTGRES_PORT:-5432}"
+      POSTGRES_USER: "${PCS_DB_USER:-pcs-user}"
+      POSTGRES_PASSWORD: "${PCS_DB_PASSWORD:-CHANGEME}"
+      POSTGRES_DBNAME: "${PCS_DB_NAME:-pcsdb}"
+      POSTGRES_INSECURE: "true"
+    command: ["power-control", "init-postgres"]
+    restart: "no"
+
+  power-control:
+    image: localhost/pcs:local-pcs
+    network_mode: host
+    depends_on:
+      postgres:
+        condition: service_healthy
+      smd:
+        condition: service_healthy
+      power-control-init:
+        condition: service_completed_successfully
+    environment:
+      STORAGE: "POSTGRES"
+      SMS_SERVER: "http://localhost:${SMD_PORT:-27779}"
+      POSTGRES_HOST: "localhost"
+      POSTGRES_PORT: "${POSTGRES_PORT:-5432}"
+      POSTGRES_USER: "${PCS_DB_USER:-pcs-user}"
+      POSTGRES_PASSWORD: "${PCS_DB_PASSWORD:-CHANGEME}"
+      POSTGRES_DBNAME: "${PCS_DB_NAME:-pcsdb}"
+      POSTGRES_INSECURE: "true"
+      TRS_IMPLEMENTATION: "LOCAL"
+      HSMLOCK_ENABLED: "true"
+      VAULT_ENABLED: "false"
+      FAKE_VAULT_ENABLED: "false"
+      LOG_LEVEL: "INFO"
+    command: ["power-control", "--run-control"]
+
   kea-init:
     image: jonasal/kea-admin:3.1.4
     network_mode: host
@@ -190,6 +232,11 @@ services:
     network_mode: host
     profiles:
       - emulator
+    environment:
+      VM_INDEX: "0"
+    command: ["python", "-u", "-c", "import os; idx=os.environ.get('VM_INDEX','0'); script=open('/emulator.py').read(); script=script.replace('INDEX = int(HOSTNAME.split(\"-\")[-1])', f'INDEX = {idx}'); exec(script)"]
+    volumes:
+      - /var/run/libvirt/libvirt-sock:/var/run/libvirt/libvirt-sock
 
 volumes:
   postgres-data:

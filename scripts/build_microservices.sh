@@ -40,6 +40,7 @@ usage() {
     echo "  build_bss <git_ref>"
     echo "  build_coresmd <git_ref>"
     echo "  build_cloud-init <git_ref>"
+    echo "  build_pcs <git_ref>"
     echo "  build_all <git_ref>"
     echo
     echo "  <git_ref>: The git branch or tag to build from. This argument is now mandatory."
@@ -184,6 +185,36 @@ build_cloud-init() {
     cd "$original_dir"
 }
 
+build_pcs() {
+    local original_dir=$(pwd)
+    local ref=$1
+    if [ -z "${ref}" ]; then
+        echo "Error: ${FUNCNAME[0]} requires a git_ref argument." >&2
+        return 1
+    fi
+    echo "--- Building pcs (ref: $ref) ---"
+
+    local repo_url="https://github.com/OpenCHAMI/power-control.git"
+    local repo_dir="$REPO_BASE_DIR/power-control"
+
+    if [ ! -d "$repo_dir" ]; then
+        echo "Cloning upstream repository: $repo_url into $REPO_BASE_DIR"
+        git clone "$repo_url" "$repo_dir"
+    fi
+
+    cd "$repo_dir"
+    echo "Fetching updates and checking out 'main' from upstream..."
+    git fetch --all --tags
+    git checkout main
+    git pull || true
+
+    local tag="${ref//\//-}"
+    $CONTAINER_TOOL build -f Dockerfile.build -t "localhost/pcs:$tag" .
+
+    echo "--- Finished pcs ---"
+    cd "$original_dir"
+}
+
 #build_opaal() {
 #    local original_dir=$(pwd)
 #    set -euo pipefail
@@ -237,6 +268,7 @@ build_all() {
     build_bss "$git_ref"
     build_coresmd "$git_ref"
     build_cloud-init "$git_ref"
+    build_pcs "$git_ref"
     #build_configurator "$git_ref"
     #build_opaal "$git_ref"
     #build_tpm-manager "$git_ref"

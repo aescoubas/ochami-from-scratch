@@ -88,8 +88,9 @@ export POSTGRES_USER POSTGRES_PASSWORD
 export SMD_DB_NAME SMD_DB_USER SMD_DB_PASSWORD
 export BSS_DB_NAME BSS_DB_USER BSS_DB_PASSWORD
 export KEA_DB_NAME KEA_DB_USER KEA_DB_PASSWORD
+export PCS_DB_NAME PCS_DB_USER PCS_DB_PASSWORD
 export HYDRA_DB_PASSWORD
-export HTTP_PORT SMD_PORT BSS_PORT POSTGRES_PORT CLOUD_INIT_PORT
+export HTTP_PORT SMD_PORT BSS_PORT POSTGRES_PORT CLOUD_INIT_PORT PCS_PORT
 
 # Generate .env file
 cat > "$COMPOSE_DIR/.env" <<EOF
@@ -117,6 +118,10 @@ KEA_DB_USER=$KEA_DB_USER
 KEA_DB_PASSWORD=$KEA_DB_PASSWORD
 HYDRA_DB_PASSWORD=$HYDRA_DB_PASSWORD
 CLOUD_INIT_PORT=$CLOUD_INIT_PORT
+PCS_DB_NAME=$PCS_DB_NAME
+PCS_DB_USER=$PCS_DB_USER
+PCS_DB_PASSWORD=$PCS_DB_PASSWORD
+PCS_PORT=$PCS_PORT
 NUM_VMS=$NUM_VMS
 PROJECT_ROOT=$PROJECT_ROOT
 EOF
@@ -132,7 +137,7 @@ if [ -f "$COMPOSE_DIR/configs/kea-dhcp4.conf.template" ]; then
 fi
 
 if [ -f "$COMPOSE_DIR/configs/nginx-default.conf.template" ]; then
-    envsubst '${HTTP_PORT} ${BSS_PORT} ${CLOUD_INIT_PORT}' < "$COMPOSE_DIR/configs/nginx-default.conf.template" > "$COMPOSE_DIR/configs/nginx-default.conf"
+    envsubst '${HTTP_PORT} ${BSS_PORT} ${CLOUD_INIT_PORT} ${PCS_PORT}' < "$COMPOSE_DIR/configs/nginx-default.conf.template" > "$COMPOSE_DIR/configs/nginx-default.conf"
     echo "Generated nginx-default.conf"
 fi
 
@@ -152,13 +157,14 @@ if [ "$NUM_VMS" -gt 0 ]; then
     COMPOSE_PROFILES=(--profile emulator)
 fi
 
-$COMPOSE_CMD -f "$COMPOSE_DIR/docker-compose.yml" --env-file "$COMPOSE_DIR/.env" "${COMPOSE_PROFILES[@]}" up -d --wait
+$COMPOSE_CMD -p ochami -f "$COMPOSE_DIR/docker-compose.yml" --env-file "$COMPOSE_DIR/.env" "${COMPOSE_PROFILES[@]}" up -d --wait
 
 # 7. Wait for services
 step "Waiting for services to be ready..."
 wait_for_url "http://localhost:${SMD_PORT}/hsm/v2/service/ready" "SMD"
 wait_for_url "http://localhost:${BSS_PORT}/boot/v1/bootparameters" "BSS"
 wait_for_url "http://localhost:${CLOUD_INIT_PORT}/cloud-init/version" "cloud-init"
+wait_for_url "http://localhost:${PCS_PORT}/liveness" "PCS (Power Control)"
 
 # 8. Configure BSS
 step "Configuring BSS Default Boot Parameters..."
