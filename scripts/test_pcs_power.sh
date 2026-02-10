@@ -80,6 +80,10 @@ if [ "$METHOD" = "minikube" ]; then
 
     PCS_URL="http://${PCS_IP}:${PCS_PORT}"
     SMD_URL="http://${SMD_IP}:${SMD_PORT}"
+elif [ "$METHOD" = "podman" ]; then
+    # Podman Quadlet uses host networking — services are on localhost
+    PCS_URL="http://localhost:${PCS_PORT}"
+    SMD_URL="http://localhost:${SMD_PORT}"
 else
     PCS_URL="http://${HOST_IP}:${PCS_PORT}"
     SMD_URL="http://${HOST_IP}:${SMD_PORT}"

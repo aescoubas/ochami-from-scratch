@@ -125,6 +125,7 @@ sed -i 's/ochami-postgres/localhost/g' "$TEMPLATE_OUT"
 sed -i 's/ochami-smd.ochami.svc.cluster.local/localhost/g' "$TEMPLATE_OUT"
 sed -i 's/ochami-bss.ochami.svc.cluster.local/localhost/g' "$TEMPLATE_OUT"
 sed -i 's/ochami-cloud-init.ochami.svc.cluster.local/localhost/g' "$TEMPLATE_OUT"
+sed -i 's/ochami-pcs.ochami.svc.cluster.local/localhost/g' "$TEMPLATE_OUT"
 
 # Reorder pods for Quadlet dependencies
 if [ -f "$PROJECT_ROOT/scripts/quadlet_reorder.py" ]; then
@@ -161,6 +162,7 @@ echo "Waiting for services to start..."
 wait_for_url "http://localhost:${SMD_PORT}/hsm/v2/service/ready" "SMD"
 wait_for_url "http://localhost:${BSS_PORT}/boot/v1/bootparameters" "BSS"
 wait_for_url "http://localhost:${CLOUD_INIT_PORT}/cloud-init/version" "cloud-init"
+wait_for_url "http://localhost:${PCS_PORT}/liveness" "PCS (Power Control)"
 
 # 5. Configure BSS
 step "Configuring BSS Default Boot Parameters..."

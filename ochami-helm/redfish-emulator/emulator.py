@@ -9,13 +9,18 @@ import xml.etree.ElementTree as ET
 
 # Configuration
 VM_NAME_PREFIX = os.environ.get("VM_NAME_PREFIX", "virtual-compute-node-")
-# Hostname expected format: ochami-redfish-emulator-0 -> index 0
-HOSTNAME = socket.gethostname()
-try:
-    INDEX = int(HOSTNAME.split("-")[-1])
-except Exception as e:
-    print(f"Warning: Could not determine index from hostname {HOSTNAME}, defaulting to 0. Error: {e}")
-    INDEX = 0
+# VM_INDEX env var overrides hostname-based detection (needed for podman host networking
+# where the container inherits the host's hostname instead of a StatefulSet pod name)
+if os.environ.get("VM_INDEX") is not None:
+    INDEX = int(os.environ["VM_INDEX"])
+else:
+    # Hostname expected format: ochami-redfish-emulator-0 -> index 0
+    HOSTNAME = socket.gethostname()
+    try:
+        INDEX = int(HOSTNAME.split("-")[-1])
+    except Exception as e:
+        print(f"Warning: Could not determine index from hostname {HOSTNAME}, defaulting to 0. Error: {e}")
+        INDEX = 0
 
 VM_NAME = f"{VM_NAME_PREFIX}{INDEX}"
 print(f"Emulator for VM: {VM_NAME}")

@@ -10,6 +10,36 @@ def reorder_yaml(input_file, output_file):
         if not doc: return 'None', 'None'
         return doc.get('kind'), doc.get('metadata', {}).get('name')
 
+    # Convert StatefulSets to Pods (podman kube play doesn't support StatefulSets)
+    def statefulset_to_pods(doc):
+        replicas = doc.get('spec', {}).get('replicas', 1)
+        template = doc.get('spec', {}).get('template', {})
+        base_name = doc.get('metadata', {}).get('name', 'unknown')
+        labels = template.get('metadata', {}).get('labels', {})
+        pod_spec = template.get('spec', {})
+
+        converted = []
+        for i in range(replicas):
+            pod_name = f"{base_name}-{i}" if replicas > 1 else base_name
+            spec = dict(pod_spec)
+            # Inject VM_INDEX env var into containers so the emulator knows
+            # which VM it manages (hostname-based detection fails with host networking)
+            for container in spec.get('containers', []):
+                env = container.get('env', [])
+                env.append({'name': 'VM_INDEX', 'value': str(i)})
+                container['env'] = env
+            pod = {
+                'apiVersion': 'v1',
+                'kind': 'Pod',
+                'metadata': {
+                    'name': pod_name,
+                    'labels': dict(labels),
+                },
+                'spec': spec,
+            }
+            converted.append(pod)
+        return converted
+
     pods = []
     others = []
 
@@ -17,6 +47,8 @@ def reorder_yaml(input_file, output_file):
         kind, name = get_info(doc)
         if kind == 'Pod':
             pods.append(doc)
+        elif kind == 'StatefulSet':
+            pods.extend(statefulset_to_pods(doc))
         else:
             others.append(doc)
 
