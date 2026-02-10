@@ -75,6 +75,9 @@ fi
 
 "$PROJECT_ROOT/scripts/setup_minikube_net.sh" "$PXE_INTERFACE" "$PXE_IP" "$PXE_CIDR" "$PHY_IFACE"
 
+# 4b. Check for DHCP port conflicts (e.g. dnsmasq from libvirt)
+check_dhcp_port_conflict "$PXE_INTERFACE"
+
 # 5. Deploy
 step "Deploying OpenCHAMI (Minikube)..."
 HOST_IP="$PXE_IP"
@@ -140,6 +143,7 @@ minikube kubectl -- delete pod -n ochami -l app.kubernetes.io/component=postgres
 minikube kubectl -- delete pod -n ochami -l app.kubernetes.io/component=smd 2>/dev/null || true
 minikube kubectl -- delete pod -n ochami -l app.kubernetes.io/component=bss 2>/dev/null || true
 minikube kubectl -- delete pod -n ochami -l app.kubernetes.io/component=cloud-init 2>/dev/null || true
+minikube kubectl -- delete pod -n ochami -l app.kubernetes.io/component=pcs 2>/dev/null || true
 
 echo "Deploying Helm chart (waiting for services to become ready)..."
 helm upgrade --install ochami "$PROJECT_ROOT/ochami-helm" -n ochami -f "$PROJECT_ROOT/ochami-helm/values-pxe.yaml" -f "$VALUES_FILE" --wait --timeout 10m0s

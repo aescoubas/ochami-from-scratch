@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "ochami-helm.fullname" . }}-pcs
+  labels:
+    {{- include "ochami-helm.labels" . | nindent 4 }}
+    app.kubernetes.io/component: pcs
+spec:
+  type: {{ .Values.service.pcs.type }}
+  ports:
+    - port: {{ .Values.service.pcs.port }}
+      targetPort: http
+      protocol: TCP
+      name: http
+      {{- if (and (eq .Values.service.pcs.type "NodePort") (not (empty .Values.service.pcs.nodePort))) }}
+      nodePort: {{ .Values.service.pcs.nodePort }}
+      {{- end }}
+  selector:
+    {{- include "ochami-helm.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: pcs

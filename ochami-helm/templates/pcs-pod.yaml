@@ -1,0 +1,105 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ochami-pcs
+  labels:
+    {{- include "ochami-helm.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: pcs
+spec:
+  terminationGracePeriodSeconds: 0  # TODO: remove this line for production
+  initContainers:
+    - name: wait-for-dependencies
+      image: busybox:latest
+      imagePullPolicy: IfNotPresent
+      command:
+        - 'sh'
+        - '-c'
+        - |
+          until wget -q -T 1 -O /dev/null http://ochami-smd.{{ .Release.Namespace }}.svc.cluster.local:{{ .Values.service.smd.port }}/hsm/v2/service/ready; do
+            echo "waiting for SMD (and postgres) to be ready..."
+            sleep 0.2
+          done
+          echo "Dependencies ready!"
+    - name: pcs-init-run
+      image: "{{ .Values.pcsInit.image.repository }}:{{ .Values.pcsInit.image.tag }}"
+      imagePullPolicy: {{ .Values.pcsInit.image.pullPolicy }}
+      env:
+        - name: POSTGRES_HOST
+          value: "{{ include "ochami-helm.fullname" . }}-postgres"
+        - name: POSTGRES_PORT
+          value: {{ .Values.pcs.db.port | quote }}
+        - name: POSTGRES_USER
+          value: {{ .Values.pcs.db.user | quote }}
+        - name: POSTGRES_PASSWORD
+          value: {{ .Values.postgres.pcs_password | quote }}
+        - name: POSTGRES_DBNAME
+          value: {{ .Values.pcs.db.name | quote }}
+        - name: POSTGRES_INSECURE
+          value: "true"
+      command: ["power-control", "init-postgres"]
+  containers:
+    - name: pcs
+      image: "{{ .Values.pcs.image.repository }}:{{ .Values.pcs.image.tag }}"
+      imagePullPolicy: {{ .Values.pcs.image.pullPolicy }}
+      ports:
+        - name: http
+          containerPort: 28007
+          protocol: TCP
+      env:
+        - name: STORAGE
+          value: "POSTGRES"
+        - name: SMS_SERVER
+          value: "http://{{ include "ochami-helm.fullname" . }}-smd.{{ .Release.Namespace }}.svc.cluster.local:{{ .Values.service.smd.port }}"
+        - name: POSTGRES_HOST
+          value: "{{ include "ochami-helm.fullname" . }}-postgres"
+        - name: POSTGRES_PORT
+          value: {{ .Values.pcs.db.port | quote }}
+        - name: POSTGRES_USER
+          value: {{ .Values.pcs.db.user | quote }}
+        - name: POSTGRES_PASSWORD
+          value: {{ .Values.postgres.pcs_password | quote }}
+        - name: POSTGRES_DBNAME
+          value: {{ .Values.pcs.db.name | quote }}
+        - name: POSTGRES_INSECURE
+          value: "true"
+        - name: TRS_IMPLEMENTATION
+          value: "LOCAL"
+        - name: HSMLOCK_ENABLED
+          value: "true"
+        - name: VAULT_ENABLED
+          value: "false"
+        - name: FAKE_VAULT_ENABLED
+          value: "false"
+        - name: LOG_LEVEL
+          value: "INFO"
+      command: ["power-control", "--run-control"]
+      livenessProbe:
+        httpGet:
+          path: /liveness
+          port: http
+        initialDelaySeconds: 20
+        periodSeconds: 10
+        timeoutSeconds: 5
+        failureThreshold: 6
+      readinessProbe:
+        httpGet:
+          path: /liveness
+          port: http
+        initialDelaySeconds: 20
+        periodSeconds: 10
+        timeoutSeconds: 5
+        failureThreshold: 6
+      resources:
+        {{- toYaml .Values.resources | nindent 8 }}
+  {{- with .Values.nodeSelector }}
+  nodeSelector:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- with .Values.affinity }}
+  affinity:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- with .Values.tolerations }}
+  tolerations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}

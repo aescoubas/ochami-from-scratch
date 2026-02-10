@@ -36,6 +36,9 @@ service:
   cloudInit:
     type: ClusterIP
     port: 27777
+  pcs:
+    type: ClusterIP
+    port: 28007
 
 postgres:
   user: ochami
@@ -44,6 +47,26 @@ postgres:
   bss_password: "CHANGEME"
   hydra_password: "CHANGEME"
   kea_password: "CHANGEME"
+  pcs_password: "CHANGEME"
+
+# pcsInit job configuration
+pcsInit:
+  image:
+    repository: localhost/pcs
+    tag: "local-pcs"
+    pullPolicy: IfNotPresent
+
+pcs:
+  image:
+    repository: localhost/pcs
+    tag: "local-pcs"
+    pullPolicy: IfNotPresent
+  db:
+    host: "ochami-postgres"
+    port: 5432
+    name: "pcsdb"
+    user: "pcs-user"
+    opts: "sslmode=disable"
 
 # smdInit job configuration
 smdInit:

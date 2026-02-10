@@ -64,6 +64,9 @@ fi
 
 "$PROJECT_ROOT/scripts/setup_minikube_net.sh" "$PXE_INTERFACE" "$PXE_IP" "$PXE_CIDR" "$PHY_IFACE"
 
+# 3b. Check for DHCP port conflicts (e.g. dnsmasq from libvirt)
+check_dhcp_port_conflict "$PXE_INTERFACE"
+
 # 4. Deploy
 step "Deploying OpenCHAMI (Podman)..."
 HOST_IP="$PXE_IP"

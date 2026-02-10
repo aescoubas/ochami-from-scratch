@@ -29,6 +29,14 @@ data:
             proxy_set_header X-Real-IP $remote_addr;
         }
 
+        # Proxy to PCS (Power Control Service)
+        location /power-control/ {
+            proxy_pass http://ochami-pcs.{{ .Release.Namespace }}.svc.cluster.local:{{ .Values.service.pcs.port }}/power-control/;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        }
+
         # Proxy to cloud-init service
         location /cloud-init/ {
             proxy_pass http://ochami-cloud-init.{{ .Release.Namespace }}.svc.cluster.local:{{ .Values.cloudInit.port }}/cloud-init/;

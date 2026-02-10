@@ -4,7 +4,8 @@ set -euo pipefail
 # test_pcs_power.sh — End-to-end test for the PCS power-control chain:
 #   PCS (port 28007) -> SMD (port 27779) -> Redfish Emulator (port 443)
 #
-# Usage: ./scripts/test_pcs_power.sh [COMPONENT_ID] [--verbose]
+# Usage: ./scripts/test_pcs_power.sh [--method METHOD] [COMPONENT_ID] [--verbose]
+#   --method      Deployment method: minikube, docker-compose, podman (default: docker-compose)
 #   COMPONENT_ID  Node xname to test (default: x0c0s0b0n0)
 #   --verbose     Show raw JSON output on failure
 
@@ -15,28 +16,41 @@ source "$SCRIPT_DIR/common.sh"
 # --- Argument Parsing ---
 COMPONENT_ID="x0c0s0b0n0"
 VERBOSE=false
+METHOD="docker-compose"
 
-for arg in "$@"; do
-    case "$arg" in
+while [[ "$#" -gt 0 ]]; do
+    case "$1" in
         --verbose) VERBOSE=true ;;
+        --method) METHOD="$2"; shift ;;
         -h|--help)
-            echo "Usage: $0 [COMPONENT_ID] [--verbose]"
+            echo "Usage: $0 [--method METHOD] [COMPONENT_ID] [--verbose]"
             echo ""
             echo "End-to-end test for PCS power-control chain."
             echo ""
+            echo "Options:"
+            echo "  --method METHOD  Deployment method: minikube, docker-compose, podman"
+            echo "                   (default: docker-compose)"
+            echo "  --verbose        Show raw JSON output on failure"
+            echo ""
             echo "Arguments:"
             echo "  COMPONENT_ID  Node xname to test (default: x0c0s0b0n0)"
-            echo "  --verbose     Show raw JSON output on failure"
             echo ""
             echo "Prerequisites:"
-            echo "  - Deployment running via: ./deploy.sh --method docker-compose --vms N"
+            echo "  - Deployment running via: ./deploy.sh --method <METHOD> --vms N"
             echo "  - curl and jq installed"
             exit 0
             ;;
-        -*) error "Unknown option: $arg"; exit 1 ;;
-        *) COMPONENT_ID="$arg" ;;
+        -*) error "Unknown option: $1"; exit 1 ;;
+        *) COMPONENT_ID="$1" ;;
     esac
+    shift
 done
+
+# Validate method
+case "$METHOD" in
+    minikube|docker-compose|podman) ;;
+    *) error "Unknown method: $METHOD (expected minikube, docker-compose, or podman)"; exit 1 ;;
+esac
 
 # Derive BMC ID from component ID (e.g., x0c0s0b0n0 -> x0c0s0b0)
 BMC_ID="${COMPONENT_ID%n*}"
@@ -46,8 +60,30 @@ require_command curl
 require_command jq
 
 HOST_IP="${HOST_IP:-192.168.100.2}"
-PCS_URL="http://${HOST_IP}:${PCS_PORT}"
-SMD_URL="http://${HOST_IP}:${SMD_PORT}"
+
+# --- Resolve service URLs based on deployment method ---
+if [ "$METHOD" = "minikube" ]; then
+    require_command minikube
+    echo "Resolving service IPs from Kubernetes (minikube)..."
+
+    PCS_IP=$(minikube kubectl -- get svc ochami-pcs -n ochami -o jsonpath='{.spec.clusterIP}' 2>/dev/null || true)
+    SMD_IP=$(minikube kubectl -- get svc ochami-smd -n ochami -o jsonpath='{.spec.clusterIP}' 2>/dev/null || true)
+
+    if [ -z "$PCS_IP" ]; then
+        error "Could not determine PCS ClusterIP. Is the deployment running?"
+        exit 1
+    fi
+    if [ -z "$SMD_IP" ]; then
+        error "Could not determine SMD ClusterIP. Is the deployment running?"
+        exit 1
+    fi
+
+    PCS_URL="http://${PCS_IP}:${PCS_PORT}"
+    SMD_URL="http://${SMD_IP}:${SMD_PORT}"
+else
+    PCS_URL="http://${HOST_IP}:${PCS_PORT}"
+    SMD_URL="http://${HOST_IP}:${SMD_PORT}"
+fi
 
 # --- Test Framework ---
 TESTS_RUN=0
@@ -256,6 +292,7 @@ echo "======================================"
 echo " PCS Power Control — End-to-End Tests"
 echo "======================================"
 echo ""
+echo "  Method:       $METHOD"
 echo "  Target node:  $COMPONENT_ID"
 echo "  BMC ID:       $BMC_ID"
 echo "  PCS URL:      $PCS_URL"

@@ -73,6 +73,7 @@ if [ "$REMOVE_IMAGES" = true ]; then
         "localhost/tftp:latest"
         "localhost/smd:local-smd"
         "localhost/bss:local-bss"
+        "localhost/pcs:local-pcs"
         "ghcr.io/openchami/cloud-init:v1.2.3"
     )
     if command_exists docker; then

@@ -361,6 +361,7 @@ configure_libvirt_network() {
   <uuid>c8f874f7-dd7a-465c-862a-ec30f41ac4bb</uuid>
   <bridge name='virbr-pxe' stp='on' delay='0'/>
   <mac address='52:54:00:d8:3f:37'/>
+  <dns enable='no'/>
   <ip address='192.168.100.1' netmask='255.255.255.0'>
   </ip>
 </network>
@@ -381,6 +382,58 @@ configure_firewall() {
         sudo firewall-cmd --zone=trusted --add-interface="$pxe_interface" --permanent
         sudo firewall-cmd --reload
     fi
+}
+
+check_dhcp_port_conflict() {
+    local pxe_interface="$1"
+    step "Checking for DHCP port conflicts on $pxe_interface..."
+
+    # Find any process bound to UDP port 67
+    # ss -ulnp with UDP-only filter uses "State" as header (no Netid column)
+    local conflict
+    conflict=$(sudo ss -ulnp 'sport = :67' 2>/dev/null | grep -v "^State" || true)
+
+    if [ -z "$conflict" ]; then
+        echo "No DHCP port conflict detected."
+        return 0
+    fi
+
+    warn "Another process is already bound to UDP port 67 (DHCP):"
+    echo "$conflict"
+
+    # Extract PID(s) from ss output (format: pid=NNNN)
+    # Fall back to fuser if ss doesn't report process info (requires root)
+    local pids
+    pids=$(echo "$conflict" | grep -oP 'pid=\K[0-9]+' | sort -u || true)
+
+    if [ -z "$pids" ]; then
+        pids=$(sudo fuser 67/udp 2>/dev/null | tr -s ' ' '\n' | grep -E '^[0-9]+$' | sort -u || true)
+    fi
+
+    if [ -z "$pids" ]; then
+        warn "Could not determine the conflicting PID. Please free port 67/UDP manually before deploying."
+        return 1
+    fi
+
+    for pid in $pids; do
+        local proc_name
+        proc_name=$(ps -p "$pid" -o comm= 2>/dev/null || echo "unknown")
+        echo ""
+        echo "Conflicting process: $proc_name (PID $pid)"
+
+        read -r -p "Kill $proc_name (PID $pid) to free port 67? (y/N) " answer
+        if [[ "$answer" =~ ^[Yy]$ ]]; then
+            sudo kill "$pid"
+            echo "Killed $proc_name (PID $pid)."
+            sleep 1
+        else
+            warn "Port 67/UDP is still in use. Kea DHCP may fail to start."
+            return 1
+        fi
+    done
+
+    echo "DHCP port conflict resolved."
+    return 0
 }
 
 # --- BSS Registration ---
