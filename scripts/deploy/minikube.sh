@@ -144,6 +144,7 @@ minikube kubectl -- delete pod -n ochami -l app.kubernetes.io/component=smd 2>/d
 minikube kubectl -- delete pod -n ochami -l app.kubernetes.io/component=bss 2>/dev/null || true
 minikube kubectl -- delete pod -n ochami -l app.kubernetes.io/component=cloud-init 2>/dev/null || true
 minikube kubectl -- delete pod -n ochami -l app.kubernetes.io/component=pcs 2>/dev/null || true
+minikube kubectl -- delete pod -n ochami -l app.kubernetes.io/component=stork-server 2>/dev/null || true
 
 echo "Deploying Helm chart (waiting for services to become ready)..."
 helm upgrade --install ochami "$PROJECT_ROOT/ochami-helm" -n ochami -f "$PROJECT_ROOT/ochami-helm/values-pxe.yaml" -f "$VALUES_FILE" --wait --timeout 10m0s
@@ -177,6 +178,8 @@ fi
 
 # 7. Final Instructions
 info "=== Deployment Complete ==="
+echo "  Stork DHCP Monitor: http://localhost:${STORK_PORT}/ (login: admin/admin)"
+echo ""
 echo "You can now verify the pods are running:"
 echo "  minikube kubectl -- get pods -n ochami"
 echo ""

@@ -3,6 +3,10 @@
     "interfaces-config": {
       "interfaces": ["${PXE_INTERFACE}"]
     },
+    "control-socket": {
+        "socket-type": "unix",
+        "socket-name": "/kea/sockets/kea4-ctrl-socket"
+    },
     "hooks-libraries": [
       {
         "library": "/usr/local/lib/kea/hooks/libdhcp_pgsql.so"

@@ -75,6 +75,8 @@ if [ "$REMOVE_IMAGES" = true ]; then
         "localhost/bss:local-bss"
         "localhost/pcs:local-pcs"
         "ghcr.io/openchami/cloud-init:v1.2.3"
+        "localhost/stork-agent:latest"
+        "signalorange/stork:ubuntu24.04-1.19.0"
     )
     if command_exists docker; then
         remove_images "docker" "${IMAGES[@]}"

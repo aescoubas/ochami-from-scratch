@@ -20,7 +20,7 @@ spec:
         - name: POSTGRES_PASSWORD
           value: {{ .Values.postgres.password | quote }}
         - name: POSTGRES_MULTIPLE_DATABASES
-          value: "hmsds:smd-user:{{ .Values.postgres.smd_password }},bssdb:bss-user:{{ .Values.postgres.bss_password }},hydradb:hydra-user:{{ .Values.postgres.hydra_password }},kea:kea-user:{{ .Values.postgres.kea_password }},pcsdb:pcs-user:{{ .Values.postgres.pcs_password }}"
+          value: "hmsds:smd-user:{{ .Values.postgres.smd_password }},bssdb:bss-user:{{ .Values.postgres.bss_password }},hydradb:hydra-user:{{ .Values.postgres.hydra_password }},kea:kea-user:{{ .Values.postgres.kea_password }},pcsdb:pcs-user:{{ .Values.postgres.pcs_password }},stork:stork-user:{{ .Values.postgres.stork_password }}"
       readinessProbe:
         exec:
           command:

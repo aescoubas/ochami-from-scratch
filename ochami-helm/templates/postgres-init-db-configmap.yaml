@@ -24,6 +24,10 @@ data:
     	    CREATE DATABASE "$database";
     	    GRANT ALL PRIVILEGES ON DATABASE "$database" TO "$username";
     EOSQL
+    	# Create pgcrypto extension (needed by Stork, harmless for others)
+    	psql -v ON_ERROR_STOP=0 --username "$POSTGRES_USER" -d "$database" <<-EOSQL
+    	    CREATE EXTENSION IF NOT EXISTS pgcrypto;
+    EOSQL
     }
 
     if [ -n "$POSTGRES_MULTIPLE_DATABASES" ]; then

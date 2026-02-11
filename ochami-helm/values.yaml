@@ -39,6 +39,9 @@ service:
   pcs:
     type: ClusterIP
     port: 28007
+  stork:
+    type: ClusterIP
+    port: 28010
 
 postgres:
   user: ochami
@@ -48,6 +51,7 @@ postgres:
   hydra_password: "CHANGEME"
   kea_password: "CHANGEME"
   pcs_password: "CHANGEME"
+  stork_password: "CHANGEME"
 
 # pcsInit job configuration
 pcsInit:
@@ -102,6 +106,11 @@ kea:
     repository: jonasal/kea-admin
     tag: "3.1.4"
     pullPolicy: IfNotPresent
+  ctrlAgent:
+    image:
+      repository: jonasal/kea-ctrl-agent
+      tag: "3.1.4"
+      pullPolicy: IfNotPresent
   sidecar:
     image:
       repository: python
@@ -221,3 +230,24 @@ cloudInit:
     pullPolicy: IfNotPresent
   port: 27777
   clusterName: "ochami"
+
+# Stork (Kea DHCP monitoring UI) configuration
+stork:
+  enabled: true
+  server:
+    image:
+      repository: signalorange/stork
+      tag: "ubuntu24.04-1.19.0"
+      pullPolicy: IfNotPresent
+    port: 28010
+  agent:
+    image:
+      repository: localhost/stork-agent
+      tag: "latest"
+      pullPolicy: IfNotPresent
+    port: 28011
+  db:
+    host: "ochami-postgres"
+    port: 5432
+    name: "stork"
+    user: "stork-user"

@@ -8,6 +8,7 @@ metadata:
 spec:
   hostNetwork: true
   dnsPolicy: ClusterFirstWithHostNet
+  shareProcessNamespace: true
   initContainers:
     - name: wait-for-interface
       image: alpine:3.18
@@ -21,6 +22,12 @@ spec:
         - name: KEA_DB_PASSWORD
           value: "{{ .Values.postgres.kea_password }}"
       command: ["/bin/bash", "-c", "kea-admin db-init pgsql -u {{ .Values.kea.db.user }} -p $KEA_DB_PASSWORD -n {{ .Values.kea.db.name }} -h {{ .Values.kea.db.host }} || echo 'Database already initialized'"]
+    - name: fix-socket-dir
+      image: alpine:3.18
+      command: ["sh", "-c", "chmod 750 /kea/sockets"]
+      volumeMounts:
+        - name: kea-run-dir
+          mountPath: /kea/sockets
   containers:
     - name: kea-dhcp4
       image: "{{ .Values.kea.image.repository }}:{{ .Values.kea.image.tag }}"
@@ -35,6 +42,8 @@ spec:
         - name: kea-config
           mountPath: /etc/kea/kea-dhcp4.conf
           subPath: kea-dhcp4.conf
+        - name: kea-run-dir
+          mountPath: /kea/sockets
     - name: sidecar
       image: "{{ .Values.kea.sidecar.image.repository }}:{{ .Values.kea.sidecar.image.tag }}"
       imagePullPolicy: "{{ .Values.kea.sidecar.image.pullPolicy }}"
@@ -57,7 +66,44 @@ spec:
         - name: kea-config
           mountPath: /scripts/smd_sync.py
           subPath: smd_sync.py
+    {{- if .Values.stork.enabled }}
+    - name: kea-ctrl-agent
+      image: "{{ .Values.kea.ctrlAgent.image.repository }}:{{ .Values.kea.ctrlAgent.image.tag }}"
+      imagePullPolicy: {{ .Values.kea.ctrlAgent.image.pullPolicy }}
+      args: ["-c", "/etc/kea/kea-ctrl-agent.conf"]
+      volumeMounts:
+        - name: kea-config
+          mountPath: /etc/kea/kea-ctrl-agent.conf
+          subPath: kea-ctrl-agent.conf
+        - name: kea-run-dir
+          mountPath: /kea/sockets
+    - name: stork-agent
+      image: "{{ .Values.stork.agent.image.repository }}:{{ .Values.stork.agent.image.tag }}"
+      imagePullPolicy: {{ .Values.stork.agent.image.pullPolicy }}
+      securityContext:
+        capabilities:
+          add:
+            - SYS_PTRACE
+      env:
+        - name: STORK_AGENT_SERVER_URL
+          value: "http://ochami-stork-server.{{ .Release.Namespace }}.svc.cluster.local:{{ .Values.stork.server.port }}"
+        - name: STORK_AGENT_HOST
+          value: "{{ .Values.externalIp }}"
+        - name: STORK_AGENT_PORT
+          value: "{{ .Values.stork.agent.port }}"
+      volumeMounts:
+        - name: kea-config
+          mountPath: /etc/kea/kea-dhcp4.conf
+          subPath: kea-dhcp4.conf
+        - name: kea-config
+          mountPath: /etc/kea/kea-ctrl-agent.conf
+          subPath: kea-ctrl-agent.conf
+        - name: kea-run-dir
+          mountPath: /kea/sockets
+    {{- end }}
   volumes:
     - name: kea-config
       configMap:
         name: {{ include "ochami-helm.fullname" . }}-kea-config
+    - name: kea-run-dir
+      emptyDir: {}

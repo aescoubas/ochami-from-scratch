@@ -92,8 +92,9 @@ export SMD_DB_NAME SMD_DB_USER SMD_DB_PASSWORD
 export BSS_DB_NAME BSS_DB_USER BSS_DB_PASSWORD
 export KEA_DB_NAME KEA_DB_USER KEA_DB_PASSWORD
 export PCS_DB_NAME PCS_DB_USER PCS_DB_PASSWORD
+export STORK_DB_NAME STORK_DB_USER STORK_DB_PASSWORD
 export HYDRA_DB_PASSWORD
-export HTTP_PORT SMD_PORT BSS_PORT POSTGRES_PORT CLOUD_INIT_PORT PCS_PORT
+export HTTP_PORT SMD_PORT BSS_PORT POSTGRES_PORT CLOUD_INIT_PORT PCS_PORT STORK_PORT STORK_AGENT_PORT
 
 # Generate .env file
 cat > "$COMPOSE_DIR/.env" <<EOF
@@ -125,6 +126,11 @@ PCS_DB_NAME=$PCS_DB_NAME
 PCS_DB_USER=$PCS_DB_USER
 PCS_DB_PASSWORD=$PCS_DB_PASSWORD
 PCS_PORT=$PCS_PORT
+STORK_DB_NAME=$STORK_DB_NAME
+STORK_DB_USER=$STORK_DB_USER
+STORK_DB_PASSWORD=$STORK_DB_PASSWORD
+STORK_PORT=$STORK_PORT
+STORK_AGENT_PORT=$STORK_AGENT_PORT
 NUM_VMS=$NUM_VMS
 PROJECT_ROOT=$PROJECT_ROOT
 EOF
@@ -140,13 +146,18 @@ if [ -f "$COMPOSE_DIR/configs/kea-dhcp4.conf.template" ]; then
 fi
 
 if [ -f "$COMPOSE_DIR/configs/nginx-default.conf.template" ]; then
-    envsubst '${HTTP_PORT} ${BSS_PORT} ${CLOUD_INIT_PORT} ${PCS_PORT}' < "$COMPOSE_DIR/configs/nginx-default.conf.template" > "$COMPOSE_DIR/configs/nginx-default.conf"
+    envsubst '${HTTP_PORT} ${BSS_PORT} ${CLOUD_INIT_PORT} ${PCS_PORT} ${STORK_PORT}' < "$COMPOSE_DIR/configs/nginx-default.conf.template" > "$COMPOSE_DIR/configs/nginx-default.conf"
     echo "Generated nginx-default.conf"
 fi
 
 if [ -f "$COMPOSE_DIR/configs/boot.ipxe.template" ]; then
     envsubst '${HOST_IP} ${HTTP_PORT}' < "$COMPOSE_DIR/configs/boot.ipxe.template" > "$COMPOSE_DIR/configs/boot.ipxe"
     echo "Generated boot.ipxe"
+fi
+
+if [ -f "$COMPOSE_DIR/configs/stork-server.env.template" ]; then
+    envsubst < "$COMPOSE_DIR/configs/stork-server.env.template" > "$COMPOSE_DIR/configs/stork-server.env"
+    echo "Generated stork-server.env"
 fi
 
 # 5. Configure firewall
@@ -168,6 +179,7 @@ wait_for_url "http://localhost:${SMD_PORT}/hsm/v2/service/ready" "SMD"
 wait_for_url "http://localhost:${BSS_PORT}/boot/v1/bootparameters" "BSS"
 wait_for_url "http://localhost:${CLOUD_INIT_PORT}/cloud-init/version" "cloud-init"
 wait_for_url "http://localhost:${PCS_PORT}/liveness" "PCS (Power Control)"
+wait_for_url "http://localhost:${STORK_PORT}/api/version" "Stork (Kea DHCP Monitor)"
 
 # 8. Configure BSS
 step "Configuring BSS Default Boot Parameters..."
@@ -182,6 +194,8 @@ fi
 
 # 10. Final Instructions
 info "=== Deployment Complete ==="
+echo "  Stork DHCP Monitor: http://localhost:${STORK_PORT}/ (login: admin/admin)"
+echo ""
 echo "You can now verify the services are running:"
 echo "  $COMPOSE_CMD -f $COMPOSE_DIR/docker-compose.yml ps"
 echo ""

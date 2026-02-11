@@ -77,6 +77,7 @@ rm -f "$COMPOSE_DIR/.env"
 rm -f "$COMPOSE_DIR/configs/kea-dhcp4.conf"
 rm -f "$COMPOSE_DIR/configs/nginx-default.conf"
 rm -f "$COMPOSE_DIR/configs/boot.ipxe"
+rm -f "$COMPOSE_DIR/configs/stork-server.env"
 
 # 6. Remove Docker Images (Optional)
 if [ "$REMOVE_IMAGES" = true ]; then
@@ -87,6 +88,8 @@ if [ "$REMOVE_IMAGES" = true ]; then
         "localhost/bss:local-bss"
         "localhost/redfish-emulator:latest"
         "localhost/pcs:local-pcs"
+        "localhost/stork-agent:latest"
+        "signalorange/stork:ubuntu24.04-1.19.0"
     )
     if command_exists docker; then
         remove_images "docker" "${IMAGES[@]}"

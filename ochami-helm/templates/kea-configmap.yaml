@@ -11,6 +11,10 @@ data:
         "interfaces-config": {
           "interfaces": ["{{ .Values.pxeInterface }}"]
         },
+        "control-socket": {
+            "socket-type": "unix",
+            "socket-name": "/kea/sockets/kea4-ctrl-socket"
+        },
         "hooks-libraries": [
           {
             "library": "/usr/local/lib/kea/hooks/libdhcp_pgsql.so"
@@ -80,6 +84,20 @@ data:
             ]
           }
         ]
+      }
+    }
+
+  kea-ctrl-agent.conf: |
+    {
+      "Control-agent": {
+        "http-host": "127.0.0.1",
+        "http-port": 8000,
+        "control-sockets": {
+          "dhcp4": {
+            "socket-type": "unix",
+            "socket-name": "/kea/sockets/kea4-ctrl-socket"
+          }
+        }
       }
     }
 

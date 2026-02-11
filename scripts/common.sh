@@ -34,6 +34,7 @@ DEFAULT_VM_NAME="virtual-compute-node"
 IMAGE_HTTP="localhost/http-server:latest"
 IMAGE_TFTP="localhost/tftp:latest"
 IMAGE_EMULATOR="localhost/redfish-emulator:latest"
+IMAGE_STORK_AGENT="localhost/stork-agent:latest"
 MS_IMAGES=("localhost/smd:local-smd" "localhost/bss:local-bss" "localhost/pcs:local-pcs")
 
 # Database credentials (from ochami-helm/values.yaml)
@@ -51,6 +52,9 @@ KEA_DB_PASSWORD="CHANGEME"
 PCS_DB_NAME="pcsdb"
 PCS_DB_USER="pcs-user"
 PCS_DB_PASSWORD="CHANGEME"
+STORK_DB_NAME="stork"
+STORK_DB_USER="stork-user"
+STORK_DB_PASSWORD="CHANGEME"
 HYDRA_DB_PASSWORD="CHANGEME"
 
 # Service ports
@@ -61,6 +65,8 @@ HTTP_PORT=80
 TFTP_PORT=69
 CLOUD_INIT_PORT=27777
 PCS_PORT=28007
+STORK_PORT=28010
+STORK_AGENT_PORT=28011
 
 # --- Logging ---
 
@@ -245,6 +251,35 @@ build_images_if_needed() {
         fi
     else
         echo "Image $IMAGE_TFTP found. Skipping build."
+    fi
+
+    # Build Stork Agent
+    local need_stork_agent=false
+    if [ "$force_rebuild" = true ]; then
+        need_stork_agent=true
+    elif [ "$orchestrator" == "docker-compose" ]; then
+        if ! docker image inspect "$IMAGE_STORK_AGENT" >/dev/null 2>&1; then
+            need_stork_agent=true
+        fi
+    elif [ "$orchestrator" == "podman" ]; then
+        if ! $container_tool image exists "$IMAGE_STORK_AGENT"; then
+            need_stork_agent=true
+        fi
+    else
+        if ! image_exists_in_minikube "$IMAGE_STORK_AGENT"; then
+            need_stork_agent=true
+        fi
+    fi
+
+    if [ "$need_stork_agent" = true ]; then
+        echo "Building stork-agent..."
+        $container_tool build -t "$IMAGE_STORK_AGENT" "$PROJECT_ROOT/ochami-helm/stork-agent/"
+        if [ "$orchestrator" == "minikube" ]; then
+            echo "Loading $IMAGE_STORK_AGENT into Minikube..."
+            minikube image load "$IMAGE_STORK_AGENT"
+        fi
+    else
+        echo "Image $IMAGE_STORK_AGENT found. Skipping build."
     fi
 
     # Build Microservices

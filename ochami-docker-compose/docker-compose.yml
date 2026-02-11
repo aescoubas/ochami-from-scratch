@@ -5,7 +5,7 @@ services:
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-ochami}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-CHANGEME}
-      POSTGRES_MULTIPLE_DATABASES: "${SMD_DB_NAME:-hmsds}:${SMD_DB_USER:-smd-user}:${SMD_DB_PASSWORD:-CHANGEME},${BSS_DB_NAME:-bssdb}:${BSS_DB_USER:-bss-user}:${BSS_DB_PASSWORD:-CHANGEME},${KEA_DB_NAME:-kea}:${KEA_DB_USER:-kea-user}:${KEA_DB_PASSWORD:-CHANGEME},${PCS_DB_NAME:-pcsdb}:${PCS_DB_USER:-pcs-user}:${PCS_DB_PASSWORD:-CHANGEME}"
+      POSTGRES_MULTIPLE_DATABASES: "${SMD_DB_NAME:-hmsds}:${SMD_DB_USER:-smd-user}:${SMD_DB_PASSWORD:-CHANGEME},${BSS_DB_NAME:-bssdb}:${BSS_DB_USER:-bss-user}:${BSS_DB_PASSWORD:-CHANGEME},${KEA_DB_NAME:-kea}:${KEA_DB_USER:-kea-user}:${KEA_DB_PASSWORD:-CHANGEME},${PCS_DB_NAME:-pcsdb}:${PCS_DB_USER:-pcs-user}:${PCS_DB_PASSWORD:-CHANGEME},${STORK_DB_NAME:-stork}:${STORK_DB_USER:-stork-user}:${STORK_DB_PASSWORD:-CHANGEME}"
     volumes:
       - postgres-data:/var/lib/postgresql/data
       - ./pg-init/multi-psql-db.sh:/docker-entrypoint-initdb.d/multi-psql-db.sh:ro
@@ -195,6 +195,7 @@ services:
         condition: service_completed_successfully
     volumes:
       - ./configs/kea-dhcp4.conf:/etc/kea/kea-dhcp4.conf:ro
+      - kea-run:/kea/sockets
     command: ["-c", "/etc/kea/kea-dhcp4.conf"]
 
   kea-sidecar:
@@ -238,5 +239,55 @@ services:
     volumes:
       - /var/run/libvirt/libvirt-sock:/var/run/libvirt/libvirt-sock
 
+  kea-ctrl-agent:
+    image: jonasal/kea-ctrl-agent:3.1.4
+    network_mode: host
+    pid: "service:kea"
+    depends_on:
+      kea:
+        condition: service_started
+    volumes:
+      - ./configs/kea-ctrl-agent.conf:/etc/kea/kea-ctrl-agent.conf:ro
+      - kea-run:/kea/sockets
+    command: ["-c", "/etc/kea/kea-ctrl-agent.conf"]
+
+  stork-server:
+    image: signalorange/stork:ubuntu24.04-1.19.0
+    network_mode: host
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./configs/stork-server.env:/etc/stork/server.env:ro
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:${STORK_PORT:-28010}/api/version || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+
+  stork-agent:
+    image: localhost/stork-agent:latest
+    network_mode: host
+    pid: "service:kea"
+    cap_add:
+      - SYS_PTRACE
+    depends_on:
+      kea:
+        condition: service_started
+      kea-ctrl-agent:
+        condition: service_started
+      stork-server:
+        condition: service_healthy
+    environment:
+      STORK_AGENT_SERVER_URL: "http://localhost:${STORK_PORT:-28010}"
+      STORK_AGENT_HOST: "${HOST_IP:-127.0.0.1}"
+      STORK_AGENT_PORT: "${STORK_AGENT_PORT:-28011}"
+    volumes:
+      - ./configs/kea-dhcp4.conf:/etc/kea/kea-dhcp4.conf:ro
+      - ./configs/kea-ctrl-agent.conf:/etc/kea/kea-ctrl-agent.conf:ro
+      - kea-run:/kea/sockets
+
 volumes:
   postgres-data:
+  kea-run:

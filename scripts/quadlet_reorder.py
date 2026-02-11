@@ -63,6 +63,8 @@ def reorder_yaml(input_file, output_file):
             return 2 # BSS waits for SMD
         if name == 'ochami-cloud-init':
             return 3 # cloud-init waits for SMD
+        if name == 'ochami-stork-server':
+            return 5 # After postgres, before generic pods
         return 4
 
     pods.sort(key=pod_sorter)

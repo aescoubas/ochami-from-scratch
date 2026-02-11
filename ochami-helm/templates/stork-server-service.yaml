@@ -1,0 +1,19 @@
+{{- if .Values.stork.enabled -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "ochami-helm.fullname" . }}-stork-server
+  labels:
+    {{- include "ochami-helm.labels" . | nindent 4 }}
+    app.kubernetes.io/component: stork-server
+spec:
+  type: {{ .Values.service.stork.type }}
+  ports:
+    - port: {{ .Values.service.stork.port }}
+      targetPort: http
+      protocol: TCP
+      name: http
+  selector:
+    {{- include "ochami-helm.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: stork-server
+{{- end }}

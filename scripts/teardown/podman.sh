@@ -75,6 +75,8 @@ if [ "$REMOVE_IMAGES" = true ]; then
         "localhost/smd:local-smd"
         "localhost/bss:local-bss"
         "ghcr.io/openchami/cloud-init:v1.2.3"
+        "localhost/stork-agent:latest"
+        "signalorange/stork:ubuntu24.04-1.19.0"
     )
     if command_exists podman; then
         remove_images "sudo podman" "${IMAGES[@]}"

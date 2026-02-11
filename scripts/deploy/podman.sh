@@ -126,6 +126,7 @@ sed -i 's/ochami-smd.ochami.svc.cluster.local/localhost/g' "$TEMPLATE_OUT"
 sed -i 's/ochami-bss.ochami.svc.cluster.local/localhost/g' "$TEMPLATE_OUT"
 sed -i 's/ochami-cloud-init.ochami.svc.cluster.local/localhost/g' "$TEMPLATE_OUT"
 sed -i 's/ochami-pcs.ochami.svc.cluster.local/localhost/g' "$TEMPLATE_OUT"
+sed -i 's/ochami-stork-server.ochami.svc.cluster.local/localhost/g' "$TEMPLATE_OUT"
 
 # Reorder pods for Quadlet dependencies
 if [ -f "$PROJECT_ROOT/scripts/quadlet_reorder.py" ]; then
@@ -163,6 +164,7 @@ wait_for_url "http://localhost:${SMD_PORT}/hsm/v2/service/ready" "SMD"
 wait_for_url "http://localhost:${BSS_PORT}/boot/v1/bootparameters" "BSS"
 wait_for_url "http://localhost:${CLOUD_INIT_PORT}/cloud-init/version" "cloud-init"
 wait_for_url "http://localhost:${PCS_PORT}/liveness" "PCS (Power Control)"
+wait_for_url "http://localhost:${STORK_PORT}/api/version" "Stork (Kea DHCP Monitor)"
 
 # 5. Configure BSS
 step "Configuring BSS Default Boot Parameters..."
@@ -176,6 +178,8 @@ fi
 
 # 7. Final Instructions
 info "=== Deployment Complete ==="
+echo "  Stork DHCP Monitor: http://localhost:${STORK_PORT}/ (login: admin/admin)"
+echo ""
 echo "You can now verify the services are running:"
 echo "  sudo systemctl status ochami"
 echo "  sudo podman ps"
