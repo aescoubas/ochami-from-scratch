@@ -22,7 +22,7 @@ if [ -n "$PHY_IFACE" ]; then
 fi
 
 # Check if Minikube is running as a libvirt VM
-if virsh list --all --name | grep -q "^minikube$"; then
+if command -v virsh >/dev/null 2>&1 && virsh list --all --name 2>/dev/null | grep -q "^minikube$"; then
     echo "Detected Minikube running as a VM (libvirt)."
 
     # 1. Attach Interface (if needed)

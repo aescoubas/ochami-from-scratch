@@ -371,36 +371,40 @@ configure_hardware_network() {
     local pxe_interface="$1"
     local phy_iface="$2"
 
+    # NOTE: This function is called via command substitution (stdout is captured).
+    # All informational messages MUST go to stderr (>&2).
+    # Only the final interface name should go to stdout.
+
     # Disable dnsmasq from libvirt (if present) to avoid conflicts on port 67
     if command_exists virsh; then
-        step "Checking for conflicting libvirt dnsmasq..."
+        step "Checking for conflicting libvirt dnsmasq..." >&2
         if virsh net-info default >/dev/null 2>&1; then
             if virsh net-info default | grep "Active: *yes" >/dev/null 2>&1; then
-                echo "Stopping libvirt default network..."
-                sudo virsh net-destroy default || echo "Failed to stop default network, maybe not running."
+                echo "Stopping libvirt default network..." >&2
+                sudo virsh net-destroy default >&2 || echo "Failed to stop default network, maybe not running." >&2
             fi
             if virsh net-list --autostart | grep "default" >/dev/null 2>&1; then
-                echo "Disabling autostart for libvirt default network..."
-                sudo virsh net-autostart --disable default || echo "Failed to disable autostart for default network."
+                echo "Disabling autostart for libvirt default network..." >&2
+                sudo virsh net-autostart --disable default >&2 || echo "Failed to disable autostart for default network." >&2
             fi
         else
-            echo "Libvirt default network not found or not active. No action needed."
+            echo "Libvirt default network not found or not active. No action needed." >&2
         fi
     else
-        echo "virsh command not found. Skipping libvirt dnsmasq check."
+        echo "virsh command not found. Skipping libvirt dnsmasq check." >&2
     fi
 
     # Auto-adjust interface if using defaults and phy-iface is provided
     if [ "$pxe_interface" == "virbr-pxe" ] && [ -n "$phy_iface" ]; then
-        step "Hardware Mode: Using physical interface $phy_iface directly (replacing virbr-pxe)."
+        step "Hardware Mode: Using physical interface $phy_iface directly (replacing virbr-pxe)." >&2
         echo "$phy_iface"
         return 0
     fi
 
     if [ "$pxe_interface" == "virbr-pxe" ]; then
-        warn "Mode is hardware but interface is default 'virbr-pxe'."
-        echo "Since libvirt network creation is skipped in hardware mode, 'virbr-pxe' will likely not exist."
-        echo "Ensure you provide a valid interface with --interface or that 'virbr-pxe' is created manually."
+        warn "Mode is hardware but interface is default 'virbr-pxe'." >&2
+        echo "Since libvirt network creation is skipped in hardware mode, 'virbr-pxe' will likely not exist." >&2
+        echo "Ensure you provide a valid interface with --interface or that 'virbr-pxe' is created manually." >&2
     fi
 
     echo "$pxe_interface"
