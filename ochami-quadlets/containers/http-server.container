@@ -1,0 +1,18 @@
+[Unit]
+Description=OpenCHAMI HTTP Server (nginx)
+
+[Container]
+Image=localhost/http-server:latest
+Network=host
+Volume=/etc/openchami/configs/nginx-default.conf:/etc/nginx/conf.d/default.conf:ro
+Volume=/etc/openchami/configs/boot.ipxe:/usr/share/nginx/html/boot.ipxe:ro
+Volume=/etc/openchami/configs/index.html:/usr/share/nginx/html/index.html:ro
+Volume=/etc/openchami/configs/user-data:/usr/share/nginx/html/cloud-init/user-data:ro
+Volume=/etc/openchami/configs/meta-data:/usr/share/nginx/html/cloud-init/meta-data:ro
+
+[Service]
+Restart=on-failure
+TimeoutStartSec=60
+
+[Install]
+WantedBy=openchami.target

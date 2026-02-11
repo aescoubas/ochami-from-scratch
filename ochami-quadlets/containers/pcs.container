@@ -1,0 +1,29 @@
+[Unit]
+Description=OpenCHAMI Power Control Service (PCS)
+After=pcs-init.service smd.service
+Requires=pcs-init.service smd.service
+
+[Container]
+Image=localhost/pcs:local-pcs
+Network=host
+Exec=power-control --run-control
+EnvironmentFile=/etc/openchami/openchami.env
+Environment=STORAGE=POSTGRES
+Environment=POSTGRES_HOST=localhost
+Environment=POSTGRES_PORT=5432
+Environment=POSTGRES_USER=pcs-user
+Environment=POSTGRES_PASSWORD=CHANGEME
+Environment=POSTGRES_DBNAME=pcsdb
+Environment=POSTGRES_INSECURE=true
+Environment=TRS_IMPLEMENTATION=LOCAL
+Environment=HSMLOCK_ENABLED=true
+Environment=VAULT_ENABLED=false
+Environment=FAKE_VAULT_ENABLED=false
+Environment=LOG_LEVEL=INFO
+
+[Service]
+Restart=on-failure
+TimeoutStartSec=120
+
+[Install]
+WantedBy=openchami.target

@@ -6,6 +6,9 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/../common.sh"
 
+QUADLETS_INSTALL_DIR="/etc/containers/systemd"
+OPENCHAMI_CONFIG_DIR="/etc/openchami"
+
 # --- Help ---
 show_help() {
     echo "Usage: $0 [OPTIONS]"
@@ -14,7 +17,8 @@ show_help() {
     echo ""
     echo "This script removes:"
     echo "  - Test VMs (virtual-compute-node or specified name)"
-    echo "  - Podman Quadlet services and files"
+    echo "  - Podman Quadlet services (openchami.target + individual .container units)"
+    echo "  - OpenCHAMI configuration files (/etc/openchami/)"
     echo "  - The pxe-net libvirt network"
     echo "  - Host networking configuration"
     echo "  - Build artifacts (kernels, initramfs, rootfs)"
@@ -34,7 +38,8 @@ fi
 
 # --- Confirmation ---
 confirm_teardown "Quadlets"
-echo "  - Quadlet services"
+echo "  - Quadlet services (openchami.target + individual containers)"
+echo "  - OpenCHAMI config directory ($OPENCHAMI_CONFIG_DIR)"
 echo "  - Build artifacts (kernels, initramfs, rootfs)"
 if [ "$REMOVE_IMAGES" = true ]; then
     echo "  - Podman images (ochami related) [ENABLED]"
@@ -47,36 +52,79 @@ prompt_confirmation
 # 1. Destroy VMs
 destroy_vms "$VM_NAME"
 
-# 2. Stop and remove Quadlet
+# 2. Stop and remove Quadlet services
 step "Removing Quadlet deployment..."
+
+# Stop openchami.target (stops all dependent services)
+if systemctl list-units --full -all | grep -q "openchami.target"; then
+    echo "Stopping openchami.target..."
+    sudo systemctl stop openchami.target || true
+fi
+
+# Also stop the legacy ochami.service if it exists (backward compat)
 if systemctl list-units --full -all | grep -q "ochami.service"; then
-    echo "Stopping ochami.service..."
-    sudo systemctl stop ochami.service
+    echo "Stopping legacy ochami.service..."
+    sudo systemctl stop ochami.service || true
 fi
 
-if [ -f "/etc/containers/systemd/ochami.kube" ] || [ -f "/etc/containers/systemd/ochami.yaml" ]; then
-    echo "Removing Podman Quadlet files..."
-    sudo rm -f /etc/containers/systemd/ochami.kube /etc/containers/systemd/ochami.yaml
-    sudo systemctl daemon-reload
-    echo "Podman Quadlet removed."
+# Stop any individual quadlet-generated services that may still be running
+echo "Stopping any remaining OpenCHAMI container services..."
+for unit in $(systemctl list-units --full -all --no-legend 'postgres.service' 'smd*.service' 'bss*.service' 'cloud-init*.service' 'pcs*.service' 'kea*.service' 'stork*.service' 'http-server.service' 'tftp.service' 'redfish-emulator*.service' 2>/dev/null | awk '{print $1}'); do
+    sudo systemctl stop "$unit" 2>/dev/null || true
+done
+
+# Remove quadlet container files
+echo "Removing Quadlet files from $QUADLETS_INSTALL_DIR..."
+sudo rm -f "$QUADLETS_INSTALL_DIR"/*.container
+
+# Remove target from systemd directory (targets are plain systemd units, not quadlets)
+echo "Removing openchami.target from /etc/systemd/system/..."
+sudo rm -f /etc/systemd/system/openchami.target
+
+# Also clean up legacy monolithic files
+sudo rm -f "$QUADLETS_INSTALL_DIR"/ochami.kube "$QUADLETS_INSTALL_DIR"/ochami.yaml
+
+sudo systemctl daemon-reload
+echo "Quadlet services removed."
+
+# 3. Remove OpenCHAMI config directory
+if [ -d "$OPENCHAMI_CONFIG_DIR" ]; then
+    step "Removing OpenCHAMI config directory..."
+    sudo rm -rf "$OPENCHAMI_CONFIG_DIR"
+    echo "Config directory removed."
 fi
 
-# 3. Destroy Network
+# 4. Remove podman volumes
+step "Removing Podman volumes..."
+for vol in postgres-data kea-sockets; do
+    if sudo podman volume exists "systemd-$vol" 2>/dev/null; then
+        sudo podman volume rm "systemd-$vol" 2>/dev/null || echo "Failed to remove volume systemd-$vol (might be in use)"
+    fi
+done
+
+# 5. Destroy Network
 destroy_pxe_network
 
-# 4. Clean up host networking
+# 6. Clean up host networking
 cleanup_host_networking
 
-# 5. Remove Podman Images (Optional)
+# 7. Remove Podman Images (Optional)
 if [ "$REMOVE_IMAGES" = true ]; then
     IMAGES=(
         "localhost/http-server:latest"
         "localhost/tftp:latest"
         "localhost/smd:local-smd"
         "localhost/bss:local-bss"
+        "localhost/pcs:local-pcs"
         "ghcr.io/openchami/cloud-init:v1.2.3"
         "localhost/stork-agent:latest"
+        "localhost/redfish-emulator:latest"
         "signalorange/stork:ubuntu24.04-1.19.0"
+        "postgres:11.5-alpine"
+        "jonasal/kea-admin:3.1.4"
+        "jonasal/kea-dhcp4:3.1.4"
+        "jonasal/kea-ctrl-agent:3.1.4"
+        "python:3.9-slim"
     )
     if command_exists podman; then
         remove_images "sudo podman" "${IMAGES[@]}"
@@ -85,7 +133,7 @@ else
     step "Skipping image removal."
 fi
 
-# 6. Remove Artifacts
+# 8. Remove Artifacts
 cleanup_build_artifacts
 
 info "=== Teardown Complete ==="

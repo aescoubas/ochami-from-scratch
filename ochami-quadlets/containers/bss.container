@@ -1,0 +1,24 @@
+[Unit]
+Description=OpenCHAMI Boot Script Service (BSS)
+After=bss-init.service
+Requires=bss-init.service
+
+[Container]
+Image=localhost/bss:local-bss
+Network=host
+Environment=BSS_USESQL=true
+Environment=BSS_INSECURE=true
+Environment=BSS_DEBUG=true
+Environment=BSS_DBHOST=localhost
+Environment=BSS_DBOPTS=sslmode=disable
+Environment=BSS_JWKS_URL=
+Environment=BSS_CHAIN_PROTO=http
+Environment=BSS_ENDPOINT=localhost
+EnvironmentFile=/etc/openchami/openchami.env
+
+[Service]
+Restart=on-failure
+TimeoutStartSec=120
+
+[Install]
+WantedBy=openchami.target

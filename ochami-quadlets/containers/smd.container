@@ -1,0 +1,20 @@
+[Unit]
+Description=OpenCHAMI State Manager (SMD)
+After=smd-init.service
+Requires=smd-init.service
+
+[Container]
+Image=localhost/smd:local-smd
+Network=host
+Environment=SMD_DBHOST=localhost
+Environment=SMD_DBOPTS=sslmode=disable
+Environment=SMD_JWKS_URL=
+Environment=ENABLE_DISCOVERY=true
+EnvironmentFile=/etc/openchami/openchami.env
+
+[Service]
+Restart=on-failure
+TimeoutStartSec=120
+
+[Install]
+WantedBy=openchami.target

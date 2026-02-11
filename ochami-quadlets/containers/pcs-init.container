@@ -1,0 +1,24 @@
+[Unit]
+Description=OpenCHAMI Power Control Service Database Initialization
+After=postgres.service
+Requires=postgres.service
+
+[Container]
+Image=localhost/pcs:local-pcs
+Network=host
+Exec=power-control init-postgres
+EnvironmentFile=/etc/openchami/openchami.env
+Environment=POSTGRES_HOST=localhost
+Environment=POSTGRES_PORT=5432
+Environment=POSTGRES_USER=pcs-user
+Environment=POSTGRES_PASSWORD=CHANGEME
+Environment=POSTGRES_DBNAME=pcsdb
+Environment=POSTGRES_INSECURE=true
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+TimeoutStartSec=120
+
+[Install]
+WantedBy=openchami.target

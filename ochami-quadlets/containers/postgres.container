@@ -1,0 +1,21 @@
+[Unit]
+Description=OpenCHAMI PostgreSQL Database
+
+[Container]
+Image=postgres:11.5-alpine
+Network=host
+EnvironmentFile=/etc/openchami/openchami.env
+Volume=/etc/openchami/configs/postgres-init-db.sh:/docker-entrypoint-initdb.d/multi-psql-db.sh:ro,z
+Volume=postgres-data:/var/lib/postgresql/data
+HealthCmd=pg_isready -U ochami
+HealthInterval=5s
+HealthTimeout=5s
+HealthRetries=30
+Notify=healthy
+
+[Service]
+Restart=on-failure
+TimeoutStartSec=300
+
+[Install]
+WantedBy=openchami.target

@@ -93,9 +93,10 @@ build_smd() {
     prepare_repo "smd" "$ref"
     
     local tag="${ref//\//-}"
-    make clean && make binaries
+    make clean || echo "Warning: make clean failed (non-fatal, continuing...)"
+    make binaries
     $CONTAINER_TOOL build -t "localhost/smd:$tag" .
-    
+
     echo "--- Finished smd ---"
     cd "$original_dir"
 }
@@ -112,9 +113,10 @@ build_bss() {
     prepare_repo "bss" "$ref"
     
     local tag="${ref//\//-}"
-    make clean && make binaries
+    make clean || echo "Warning: make clean failed (non-fatal, continuing...)"
+    make binaries
     $CONTAINER_TOOL build -t "localhost/bss:$tag" .
-    
+
     echo "--- Finished bss ---"
     cd "$original_dir"
 }

@@ -1,0 +1,20 @@
+[Unit]
+Description=OpenCHAMI Kea DHCP Database Initialization
+After=postgres.service
+Requires=postgres.service
+
+[Container]
+Image=jonasal/kea-admin:3.1.4
+Network=host
+# Args passed to the kea-admin entrypoint; values substituted by envsubst at deploy time
+Exec=db-init pgsql -h localhost -P ${POSTGRES_PORT} -u ${KEA_DB_USER} -p ${KEA_DB_PASSWORD} -n ${KEA_DB_NAME}
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+TimeoutStartSec=120
+# kea-admin db-init returns exit code 2 if schema already exists
+SuccessExitStatus=2
+
+[Install]
+WantedBy=openchami.target

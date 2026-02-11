@@ -1,0 +1,79 @@
+{
+  "Dhcp4": {
+    "interfaces-config": {
+      "interfaces": ["${PXE_INTERFACE}"]
+    },
+    "control-socket": {
+        "socket-type": "unix",
+        "socket-name": "/kea/sockets/kea4-ctrl-socket"
+    },
+    "hooks-libraries": [
+      {
+        "library": "/usr/local/lib/kea/hooks/libdhcp_pgsql.so"
+      }
+    ],
+    "lease-database": {
+      "type": "postgresql",
+      "name": "${KEA_DB_NAME}",
+      "user": "${KEA_DB_USER}",
+      "password": "${KEA_DB_PASSWORD}",
+      "host": "localhost",
+      "port": ${POSTGRES_PORT}
+    },
+    "hosts-database": {
+      "type": "postgresql",
+      "name": "${KEA_DB_NAME}",
+      "user": "${KEA_DB_USER}",
+      "password": "${KEA_DB_PASSWORD}",
+      "host": "localhost",
+      "port": ${POSTGRES_PORT}
+    },
+    "valid-lifetime": 300,
+    "renew-timer": 150,
+    "rebind-timer": 225,
+
+    "client-classes": [
+      {
+        "name": "iPXE",
+        "test": "substring(option[77].hex,0,4) == 'iPXE'",
+        "boot-file-name": "http://${HOST_IP}:${HTTP_PORT}/boot/v1/bootscript?mac=${net0/mac}"
+      },
+      {
+        "name": "BIOS",
+        "test": "option[93].hex == 0x0000",
+        "boot-file-name": "undionly.kpxe"
+      },
+      {
+        "name": "UEFI-64",
+        "test": "option[93].hex == 0x0007 or option[93].hex == 0x0009",
+        "boot-file-name": "ipxe.efi"
+      }
+    ],
+
+    "subnet4": [
+      {
+        "id": 1,
+        "subnet": "${HOST_IP}/${PXE_CIDR}",
+        "pools": [
+          {
+            "pool": "${DHCP_START} - ${DHCP_END}"
+          }
+        ],
+        "option-data": [
+          {
+            "name": "routers",
+            "data": "${HOST_IP}"
+          },
+          {
+            "name": "domain-name-servers",
+            "data": "8.8.8.8"
+          },
+          {
+             "name": "tftp-server-name",
+             "data": "${HOST_IP}"
+          }
+        ]
+      }
+    ]
+  }
+}

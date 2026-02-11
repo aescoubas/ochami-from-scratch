@@ -12,14 +12,14 @@ Deploy OpenCHAMI with Quadlets and create a test VM in one command:
 
 Verify the deployment:
 ```bash
-# Check services are running
+# Check all services are running under openchami.target
+systemctl list-dependencies openchami.target
+
+# List running containers
 sudo podman ps
 
 # Check VM booted successfully (wait ~30 seconds after deploy)
 ping -c 3 192.168.100.100
-
-# View boot logs
-sudo podman logs ochami-http-server-http-server | grep -E "(vmlinuz|rootfs)"
 ```
 
 For detailed instructions, see the sections below.
@@ -97,9 +97,9 @@ The deployment replaces the legacy `coresmd` plugin with a **Sidecar Pattern**:
 *   [Docker](https://docs.docker.com/get-docker/) (Required for building images and running the `none` driver)
 
 ### For Quadlets Deployment
-*   **Podman** (version 4.0+)
-*   [Helm](https://helm.sh/docs/intro/install/) (Used to template the Kubernetes YAML)
-*   *Note: Quadlets deployment uses systemd integration with `podman kube play`*
+*   **Podman** (version 4.0+, with quadlet support)
+*   `envsubst` (from the `gettext` package — used to process config templates)
+*   *Note: Quadlets deployment uses native podman `.container` files managed by systemd, with each service running as an independent unit under `openchami.target`*
 
 ### For Docker Compose Deployment
 *   [Docker](https://docs.docker.com/get-docker/) with the **Compose plugin** (or standalone `docker-compose`)
@@ -157,11 +157,11 @@ To deploy with test VMs:
 
 | Step | Minikube | Quadlets | Docker Compose |
 |------|----------|----------|----------------|
-| 1. Prerequisites | Installs cri-dockerd, CNI plugins | Checks for podman, helm | Checks for docker compose |
+| 1. Prerequisites | Installs cri-dockerd, CNI plugins | Checks for podman, envsubst | Checks for docker compose |
 | 2. Build Images | Builds with Docker, loads into Minikube | Builds with Podman | Builds with Docker |
 | 3. Start Orchestrator | Starts Minikube with `none` driver | N/A (uses systemd) | N/A (uses Docker daemon) |
 | 4. Configure Network | Creates `virbr-pxe` bridge, assigns 192.168.100.2 | Same | Same |
-| 5. Deploy Services | Helm install to Kubernetes | Helm template → Quadlet YAML | Docker Compose up |
+| 5. Deploy Services | Helm install to Kubernetes | Installs `.container` quadlet files + `openchami.target` | Docker Compose up |
 | 6. Create VMs | Creates Libvirt VMs if `--vms` specified | Same | Same |
 
 ### Key Differences Between Methods
@@ -170,8 +170,8 @@ To deploy with test VMs:
 |---------|----------|----------|----------------|
 | Boot Script | BSS dynamic (per-node) | Static boot.ipxe (all nodes same) | Static boot.ipxe (all nodes same) |
 | Service Discovery | Kubernetes DNS | Host networking (localhost) | Docker networking (localhost) |
-| StatefulSets | Supported | Limited support | N/A (uses profiles) |
-| Redfish Emulator | Works | Does not start (StatefulSet issue) | Works (via `--profile emulator`) |
+| Service Lifecycle | Kubernetes pods | Individual systemd services | Docker Compose services |
+| Redfish Emulator | Works | Works (individual containers per VM) | Works (via `--profile emulator`) |
 | Management | `kubectl` commands | `systemctl` + `podman` commands | `docker compose` commands |
 
 **Rebuilding Images:**
@@ -219,23 +219,26 @@ You should see pods for `ochami-kea`, `ochami-tftp`, `ochami-http-server`, `smd`
 
 ### For Quadlets
 
-Check the systemd service and running containers:
+Check the systemd services and running containers:
 
 ```bash
-# Check systemd service status
-sudo systemctl status ochami
+# Check all services under openchami.target
+systemctl list-dependencies openchami.target
+
+# Check individual service status
+sudo systemctl status smd
+sudo systemctl status bss
+sudo systemctl status kea
 
 # List running containers
 sudo podman ps
 
-# Expected containers:
-# - localhost-postgres
-# - ochami-smd-smd
-# - ochami-bss-bss
-# - ochami-http-server-http-server
-# - ochami-kea-kea-dhcp4
-# - ochami-kea-sidecar
-# - ochami-tftp-tftp
+# Expected services (each runs as an independent systemd unit):
+# - postgres, smd-init, smd, bss-init, bss
+# - cloud-init-server, pcs-init, pcs
+# - kea-init, kea, kea-ctrl-agent, kea-sidecar
+# - stork-server, stork-agent
+# - http-server, tftp
 ```
 
 ### For Docker Compose
@@ -396,7 +399,7 @@ minikube kubectl -- logs -n ochami ochami-http-server | tail -10
 **For Quadlets:**
 ```bash
 # Check HTTP server logs
-sudo podman logs ochami-http-server-http-server | tail -10
+sudo journalctl -u http-server --no-pager -n 20
 
 # You should see requests for:
 # - /boot.ipxe (or /boot/v1/bootscript for Minikube)
@@ -421,13 +424,13 @@ sudo virsh domstate virtual-compute-node-0
 
 # 2. Check DHCP lease was issued
 # Quadlets:
-sudo podman logs ochami-kea-kea-dhcp4 2>&1 | grep -i "lease"
+sudo journalctl -u kea --no-pager | grep -i "lease"
 # Docker Compose:
 docker compose -p ochami -f ochami-docker-compose/docker-compose.yml logs kea 2>&1 | grep -i "lease"
 
 # 3. Check boot artifacts were downloaded
 # Quadlets:
-sudo podman logs ochami-http-server-http-server 2>&1 | grep -E "(vmlinuz|initramfs|rootfs)"
+sudo journalctl -u http-server --no-pager | grep -E "(vmlinuz|initramfs|rootfs)"
 # Docker Compose:
 docker compose -p ochami -f ochami-docker-compose/docker-compose.yml logs http-server 2>&1 | grep -E "(vmlinuz|initramfs|rootfs)"
 
@@ -488,16 +491,22 @@ If you need to manually clean up a Quadlets deployment:
 sudo virsh destroy virtual-compute-node-0
 sudo virsh undefine virtual-compute-node-0
 
-# Stop the ochami service
-sudo systemctl stop ochami
+# Stop all OpenCHAMI services
+sudo systemctl stop openchami.target
 
-# Remove Quadlet files
-sudo rm -f /etc/containers/systemd/ochami.yaml
-sudo rm -f /etc/containers/systemd/ochami.kube
+# Remove quadlet container files and target
+sudo rm -f /etc/containers/systemd/*.container
+sudo rm -f /etc/systemd/system/openchami.target
 sudo systemctl daemon-reload
 
-# Remove all pods/containers
-sudo podman pod rm -f -a
+# Remove config directory
+sudo rm -rf /etc/openchami
+
+# Remove podman volumes
+sudo podman volume rm systemd-postgres-data systemd-kea-sockets 2>/dev/null || true
+
+# Remove all containers
+sudo podman rm -f -a
 
 # Clean up libvirt network
 virsh net-destroy pxe-net
@@ -539,23 +548,27 @@ rm -f ochami-docker-compose/configs/stork-server.env
 | Component | Purpose |
 | :--- | :--- |
 | **Kea DHCP** | Main DHCP server. Assigns IPs and boot options (Next-Server, Boot-File). |
-| **SMD Sync Sidecar** | Python script in Kea pod. Syncs SMD inventory to Kea's database for static reservations. |
-| **TFTP Server** | Standalone pod (`ochami-tftp`). Serves iPXE binaries (`undionly.kpxe`, `ipxe.efi`). |
-| **HTTP Server** | Serves `boot.ipxe` script, kernel, initramfs, and rootfs. |
+| **SMD Sync Sidecar** | Python script syncing SMD inventory to Kea's database for static reservations. |
+| **TFTP Server** | Serves iPXE binaries (`undionly.kpxe`, `ipxe.efi`). |
+| **HTTP Server** | Nginx proxy serving `boot.ipxe` script, kernel, initramfs, rootfs, and routing to backend services. |
 | **SMD** | State Management Daemon - hardware inventory database. |
 | **BSS** | Boot Script Service - provides dynamic boot scripts for known nodes. |
-| **PostgreSQL** | Persistent storage for SMD, BSS, and Kea. |
-| **Redfish Emulator** | Lightweight emulator (StatefulSet) that controls VM power (On/Off/Reboot) via Libvirt, exposing a Redfish API. |
+| **PCS** | Power Control Service - manages node power states via Redfish. |
+| **Cloud-Init** | Cloud-init server providing instance metadata and user-data to booted nodes. |
+| **PostgreSQL** | Persistent storage for SMD, BSS, Kea, PCS, and Stork. |
+| **Stork** | Kea DHCP monitoring dashboard (server + agent). |
+| **Redfish Emulator** | Lightweight emulator that controls VM power (On/Off/Reboot) via Libvirt, exposing a Redfish API. |
 
 ## 5. Using the Redfish Emulator
 
 The deployment includes an optional **Redfish Emulator** that mimics a Baseboard Management Controller (BMC) for each VM. This allows you to control the VM's power state (On, Off, Reboot) via standard Redfish API calls.
 
 ### 5a. Enable the Emulator
-The emulator is automatically enabled when you deploy with VMs using the `--vms` flag. It works with **Minikube** and **Docker Compose** (Quadlets does not support the emulator due to StatefulSet limitations):
+The emulator is automatically enabled when you deploy with VMs using the `--vms` flag. It works with all deployment methods:
 
 ```bash
 ./deploy.sh --method minikube --vms 1
+./deploy.sh --method quadlets --vms 1
 ./deploy.sh --method docker-compose --vms 1
 ```
 
@@ -610,8 +623,8 @@ You can verify the emulator works by sending a reboot command and watching the V
 - Check Kea logs: `kubectl logs -n ochami ochami-kea -c kea-dhcp4`
 
 **For Quadlets:**
-- Verify Kea container is running: `sudo podman ps | grep kea`
-- Check Kea logs: `sudo podman logs ochami-kea-kea-dhcp4`
+- Verify Kea service is running: `sudo systemctl status kea`
+- Check Kea logs: `sudo journalctl -u kea --no-pager -n 50`
 
 **For Docker Compose:**
 - Verify Kea container is running: `docker compose -p ochami -f ochami-docker-compose/docker-compose.yml ps | grep kea`
@@ -627,8 +640,8 @@ You can verify the emulator works by sending a reboot command and watching the V
 - Check TFTP pod status: `kubectl get pods -n ochami -l app.kubernetes.io/component=tftp`
 
 **For Quadlets:**
-- Check TFTP container: `sudo podman ps | grep tftp`
-- Check TFTP logs: `sudo podman logs ochami-tftp-tftp`
+- Check TFTP service: `sudo systemctl status tftp`
+- Check TFTP logs: `sudo journalctl -u tftp --no-pager -n 50`
 
 **For Docker Compose:**
 - Check TFTP container: `docker compose -p ochami -f ochami-docker-compose/docker-compose.yml ps | grep tftp`
@@ -645,7 +658,7 @@ You can verify the emulator works by sending a reboot command and watching the V
 - Test HTTP: `curl http://192.168.100.2:30080/boot.ipxe`
 
 **For Quadlets:**
-- Verify HTTP server: `sudo podman logs ochami-http-server-http-server`
+- Verify HTTP server: `sudo systemctl status http-server` / `sudo journalctl -u http-server --no-pager -n 50`
 - Test HTTP: `curl http://192.168.100.2:80/boot.ipxe`
 
 **For Docker Compose:**
@@ -657,14 +670,22 @@ You can verify the emulator works by sending a reboot command and watching the V
 #### Services not starting
 
 ```bash
-# Check systemd service status
-sudo systemctl status ochami
+# Check the full service dependency tree
+systemctl list-dependencies openchami.target
 
-# View service logs
-sudo journalctl -u ochami -f
+# Check status of a specific service (look for × = failed, ○ = not started)
+sudo systemctl status smd
+sudo systemctl status kea-init
 
-# Restart the service
-sudo systemctl restart ochami
+# View logs for a specific service
+sudo journalctl -u smd --no-pager -n 50
+sudo journalctl -u kea-init --no-pager -n 50
+
+# Restart a single service
+sudo systemctl restart smd
+
+# Restart all services
+sudo systemctl restart openchami.target
 ```
 
 #### Container startup failures
@@ -674,32 +695,41 @@ sudo systemctl restart ochami
 sudo podman ps -a
 
 # Check logs for failed container
-sudo podman logs <container-name>
+sudo podman logs systemd-smd
+sudo podman logs systemd-kea
 
 # Common issue: Port already in use
 sudo ss -tlnp | grep -E "(67|69|80|27778|27779)"
 ```
 
-#### BSS returns "Unknown node" (Quadlets only)
+#### Init services failed (×)
 
-This is expected with Quadlets deployment. BSS requires ComponentEndpoints from SMD (populated via Redfish discovery), but the Redfish emulator doesn't work with Podman Quadlets due to StatefulSet limitations.
-
-**Solution**: Quadlets deployment uses static `boot.ipxe` which bypasses BSS entirely. All VMs boot with the same kernel/initrd/parameters.
-
-If you see this in BSS logs:
-```
-DEBUG: Unknown/disabled node, ID: 'x0c0s0b0n0'
-```
-This is normal for Quadlets - the static boot script will still work.
-
-#### Quadlet YAML issues
+If init services like `kea-init` or `pcs-init` show as failed, their dependent services won't start:
 
 ```bash
-# View the generated YAML
-cat /etc/containers/systemd/ochami.yaml
+# Check what failed
+sudo journalctl -u kea-init --no-pager
+sudo journalctl -u pcs-init --no-pager
 
-# Check for sed replacement issues (should show localhost, not K8s DNS names)
-grep -E "(ochami-postgres|ochami-smd|ochami-bss)" /etc/containers/systemd/ochami.yaml
+# Re-run a failed init (reset + restart)
+sudo systemctl reset-failed kea-init
+sudo systemctl start kea-init
+```
+
+#### Checking installed quadlet files
+
+```bash
+# List installed container files
+ls -la /etc/containers/systemd/*.container
+
+# Check the target file
+cat /etc/systemd/system/openchami.target
+
+# View generated config files
+ls -la /etc/openchami/configs/
+
+# View environment file
+cat /etc/openchami/openchami.env
 ```
 
 ### Docker Compose-Specific Issues
@@ -745,10 +775,10 @@ sudo virsh start virtual-compute-node-0
 **For Quadlets:**
 ```bash
 # Watch DHCP logs
-sudo podman logs -f ochami-kea-kea-dhcp4 &
+sudo journalctl -u kea -f &
 
 # Watch HTTP logs
-sudo podman logs -f ochami-http-server-http-server &
+sudo journalctl -u http-server -f &
 
 # Start the VM
 sudo virsh start virtual-compute-node-0
@@ -776,13 +806,18 @@ sudo virsh start virtual-compute-node-0
 ### Quick Diagnostic Commands (Quadlets)
 
 ```bash
-# Full system status
-echo "=== Systemd Service ===" && sudo systemctl status ochami --no-pager
+# Service dependency tree
+echo "=== Service Tree ===" && systemctl list-dependencies openchami.target
 echo "=== Running Containers ===" && sudo podman ps
 echo "=== SMD Health ===" && curl -s http://localhost:27779/hsm/v2/service/ready
 echo "=== BSS Health ===" && curl -s http://localhost:27778/boot/v1/service/status
 echo "=== HTTP Server ===" && curl -s -o /dev/null -w "%{http_code}" http://localhost:80/boot.ipxe
 echo "=== VM Status ===" && sudo virsh list --all
+
+# Individual service management
+sudo systemctl status smd        # Check a specific service
+sudo systemctl restart bss       # Restart a single service
+sudo journalctl -u kea -f        # Follow logs for a service
 ```
 
 ### Quick Diagnostic Commands (Docker Compose)
