@@ -101,21 +101,20 @@ The deployment replaces the legacy `coresmd` plugin with a **Sidecar Pattern**:
 *   [Helm](https://helm.sh/docs/intro/install/) (Used to template the Kubernetes YAML)
 *   *Note: Quadlets deployment uses systemd integration with `podman kube play`*
 
+### For Docker Compose Deployment
+*   [Docker](https://docs.docker.com/get-docker/) with the **Compose plugin** (or standalone `docker-compose`)
+*   *Note: Docker Compose deployment uses standard Docker networking with port mappings*
+
 ### Common Requirements
 *   Libvirt & `virt-install` (For local VM testing)
 *   `sudo` privileges (Required for networking and container management)
 
 ## Step 1: Deployment
 
-### Option A: Minikube Deployment (Default)
+### Option A: Minikube Deployment
 
-Run the automated deployment script with Minikube (Kubernetes). This is the default mode.
+Run the automated deployment script with Minikube (Kubernetes):
 
-```bash
-./deploy.sh
-```
-
-Or explicitly:
 ```bash
 ./deploy.sh --method minikube
 ```
@@ -133,8 +132,21 @@ To deploy with test VMs:
 ./deploy.sh --method quadlets --vms 1
 ```
 
+### Option C: Docker Compose Deployment
+
+Deploy using Docker Compose, which runs containers with standard Docker networking:
+
+```bash
+./deploy.sh --method docker-compose
+```
+
+To deploy with test VMs:
+```bash
+./deploy.sh --method docker-compose --vms 1
+```
+
 **Common Options:**
-*   `--method [minikube|quadlets|docker-compose]`: Choose the deployment method (default: minikube)
+*   `--method [minikube|quadlets|docker-compose]`: Choose the deployment method (required)
 *   `--vms N`: Automatically create N test VMs (named `virtual-compute-node-0`, `virtual-compute-node-1`, etc.)
 *   `--rebuild`: Force a rebuild of container images
 *   `--phy-iface IFACE`: Bridge a physical interface for bare-metal testing
@@ -143,36 +155,37 @@ To deploy with test VMs:
 
 ### What the deployment script does:
 
-| Step | Minikube | Quadlets |
-|------|----------|----------|
-| 1. Prerequisites | Installs cri-dockerd, CNI plugins | Checks for podman, helm |
-| 2. Build Images | Builds with Docker, loads into Minikube | Builds with Podman |
-| 3. Start Orchestrator | Starts Minikube with `none` driver | N/A (uses systemd) |
-| 4. Configure Network | Creates `virbr-pxe` bridge, assigns 192.168.100.2 | Same |
-| 5. Deploy Services | Helm install to Kubernetes | Helm template → Quadlet YAML |
-| 6. Create VMs | Creates Libvirt VMs if `--vms` specified | Same |
+| Step | Minikube | Quadlets | Docker Compose |
+|------|----------|----------|----------------|
+| 1. Prerequisites | Installs cri-dockerd, CNI plugins | Checks for podman, helm | Checks for docker compose |
+| 2. Build Images | Builds with Docker, loads into Minikube | Builds with Podman | Builds with Docker |
+| 3. Start Orchestrator | Starts Minikube with `none` driver | N/A (uses systemd) | N/A (uses Docker daemon) |
+| 4. Configure Network | Creates `virbr-pxe` bridge, assigns 192.168.100.2 | Same | Same |
+| 5. Deploy Services | Helm install to Kubernetes | Helm template → Quadlet YAML | Docker Compose up |
+| 6. Create VMs | Creates Libvirt VMs if `--vms` specified | Same | Same |
 
 ### Key Differences Between Methods
 
-| Feature | Minikube | Quadlets |
-|---------|----------|----------|
-| Boot Script | BSS dynamic (per-node) | Static boot.ipxe (all nodes same) |
-| Service Discovery | Kubernetes DNS | Host networking (localhost) |
-| StatefulSets | Supported | Limited support |
-| Redfish Emulator | Works | Does not start (StatefulSet issue) |
-| Management | `kubectl` commands | `systemctl` + `podman` commands |
+| Feature | Minikube | Quadlets | Docker Compose |
+|---------|----------|----------|----------------|
+| Boot Script | BSS dynamic (per-node) | Static boot.ipxe (all nodes same) | Static boot.ipxe (all nodes same) |
+| Service Discovery | Kubernetes DNS | Host networking (localhost) | Docker networking (localhost) |
+| StatefulSets | Supported | Limited support | N/A (uses profiles) |
+| Redfish Emulator | Works | Does not start (StatefulSet issue) | Works (via `--profile emulator`) |
+| Management | `kubectl` commands | `systemctl` + `podman` commands | `docker compose` commands |
 
 **Rebuilding Images:**
 ```bash
 ./deploy.sh --method quadlets --rebuild
+./deploy.sh --method docker-compose --rebuild
 ```
 
 ## Step 1b: Deployment (Bare Metal Mode)
 
-To boot physical machines, you can bridge a physical interface to the PXE network. This allows external devices to reach the DHCP and TFTP services running inside Minikube.
+To boot physical machines, you can bridge a physical interface to the PXE network. This allows external devices to reach the DHCP and TFTP services.
 
 ```bash
-./deploy.sh --phy-iface eth1
+./deploy.sh --method minikube --phy-iface eth1
 ```
 
 *   `--phy-iface`: The physical interface on your host (e.g., `eth1`, `eno1`) to bridge to the PXE network.
@@ -181,13 +194,13 @@ To boot physical machines, you can bridge a physical interface to the PXE networ
 
 If your host has `libvirt` installed, its `dnsmasq` service may conflict with Kea DHCP. Use the `--mode hardware` option to automatically stop and disable libvirt's default network and skip creating the `pxe-net` virtual network (since you are using a physical interface).
 ```bash
-./deploy.sh --mode hardware --phy-iface eth1
+./deploy.sh --method minikube --mode hardware --phy-iface eth1
 ```
 
 You can also combine this with custom IP ranges if your physical network requires it:
 
 ```bash
-./deploy.sh --phy-iface eth1 --ip 192.168.50.1 --cidr 24 \
+./deploy.sh --method minikube --phy-iface eth1 --ip 192.168.50.1 --cidr 24 \
             --dhcp-start 192.168.50.100 --dhcp-end 192.168.50.200
 ```
 
@@ -225,6 +238,18 @@ sudo podman ps
 # - ochami-tftp-tftp
 ```
 
+### For Docker Compose
+
+Check the running services:
+
+```bash
+# List running containers
+docker compose -p ochami -f ochami-docker-compose/docker-compose.yml ps
+
+# View logs
+docker compose -p ochami -f ochami-docker-compose/docker-compose.yml logs
+```
+
 ### Verify Services are Responding
 
 Test that the core services are accessible:
@@ -249,7 +274,7 @@ curl -s -I http://localhost:80/boot.ipxe
 ### Verify Boot Script Content
 
 ```bash
-# For Quadlets (static boot script):
+# For Quadlets / Docker Compose (static boot script):
 curl -s http://localhost:80/boot.ipxe
 # Should show iPXE script with kernel, initrd, and boot commands
 
@@ -380,6 +405,12 @@ sudo podman logs ochami-http-server-http-server | tail -10
 # - /artifacts/rootfs.squashfs
 ```
 
+**For Docker Compose:**
+```bash
+# Check HTTP server logs
+docker compose -p ochami -f ochami-docker-compose/docker-compose.yml logs http-server | tail -10
+```
+
 ### 3e. Full Boot Verification Checklist
 
 Run these commands to verify a successful boot:
@@ -388,11 +419,17 @@ Run these commands to verify a successful boot:
 # 1. Check VM is running
 sudo virsh domstate virtual-compute-node-0
 
-# 2. Check DHCP lease was issued (Quadlets)
+# 2. Check DHCP lease was issued
+# Quadlets:
 sudo podman logs ochami-kea-kea-dhcp4 2>&1 | grep -i "lease"
+# Docker Compose:
+docker compose -p ochami -f ochami-docker-compose/docker-compose.yml logs kea 2>&1 | grep -i "lease"
 
-# 3. Check boot artifacts were downloaded (Quadlets)
+# 3. Check boot artifacts were downloaded
+# Quadlets:
 sudo podman logs ochami-http-server-http-server 2>&1 | grep -E "(vmlinuz|initramfs|rootfs)"
+# Docker Compose:
+docker compose -p ochami -f ochami-docker-compose/docker-compose.yml logs http-server 2>&1 | grep -E "(vmlinuz|initramfs|rootfs)"
 
 # 4. Verify VM is reachable
 ping -c 3 192.168.100.100
@@ -428,12 +465,15 @@ Power on the node. Once registered and synced, Kea will assign the static produc
 To remove the VM, cluster/services, network artifacts, and generated files:
 
 ```bash
-./teardown.sh
+./teardown.sh --method quadlets
+./teardown.sh --method docker-compose
+./teardown.sh --method minikube
 ```
 
 **Available options:**
 | Option | Description |
 | :--- | :--- |
+| `--method METHOD` | Deployment method to tear down: `minikube`, `quadlets`, or `docker-compose` (required) |
 | `--remove-images` | Also delete Docker/Podman images and CNI plugins |
 | `--vm-name NAME` | Specify VM name to remove (default: virtual-compute-node) |
 | `-y, --yes` | Skip confirmation prompt |
@@ -467,6 +507,33 @@ virsh net-undefine pxe-net
 sudo ip link delete ochami-dummy 2>/dev/null || true
 ```
 
+### Manual Cleanup (Docker Compose)
+
+If you need to manually clean up a Docker Compose deployment:
+
+```bash
+# Stop and remove VMs
+sudo virsh destroy virtual-compute-node-0
+sudo virsh undefine virtual-compute-node-0
+
+# Stop Docker Compose services and remove volumes
+docker compose -p ochami -f ochami-docker-compose/docker-compose.yml down -v --remove-orphans
+
+# Clean up libvirt network
+virsh net-destroy pxe-net
+virsh net-undefine pxe-net
+
+# Remove network interface
+sudo ip link delete ochami-dummy 2>/dev/null || true
+
+# Remove generated config files
+rm -f ochami-docker-compose/.env
+rm -f ochami-docker-compose/configs/kea-dhcp4.conf
+rm -f ochami-docker-compose/configs/nginx-default.conf
+rm -f ochami-docker-compose/configs/boot.ipxe
+rm -f ochami-docker-compose/configs/stork-server.env
+```
+
 ## Components Overview
 
 | Component | Purpose |
@@ -485,10 +552,11 @@ sudo ip link delete ochami-dummy 2>/dev/null || true
 The deployment includes an optional **Redfish Emulator** that mimics a Baseboard Management Controller (BMC) for each VM. This allows you to control the VM's power state (On, Off, Reboot) via standard Redfish API calls.
 
 ### 5a. Enable the Emulator
-The emulator is automatically enabled when you deploy with VMs using the `--vms` flag:
+The emulator is automatically enabled when you deploy with VMs using the `--vms` flag. It works with **Minikube** and **Docker Compose** (Quadlets does not support the emulator due to StatefulSet limitations):
 
 ```bash
-./deploy.sh --vms 1
+./deploy.sh --method minikube --vms 1
+./deploy.sh --method docker-compose --vms 1
 ```
 
 This creates:
@@ -545,6 +613,10 @@ You can verify the emulator works by sending a reboot command and watching the V
 - Verify Kea container is running: `sudo podman ps | grep kea`
 - Check Kea logs: `sudo podman logs ochami-kea-kea-dhcp4`
 
+**For Docker Compose:**
+- Verify Kea container is running: `docker compose -p ochami -f ochami-docker-compose/docker-compose.yml ps | grep kea`
+- Check Kea logs: `docker compose -p ochami -f ochami-docker-compose/docker-compose.yml logs kea`
+
 **Common checks:**
 - Ensure the VM is on the `pxe-net` network: `virsh domiflist <vm-name>`
 - **Important**: Kea must bind to the correct interface (`virbr-pxe`). Check logs for `listening on interface virbr-pxe`. If another DHCP server (like `dnsmasq` from `libvirt`'s default network) is running on the host, it may prevent Kea from binding. Use `--mode hardware` to handle this.
@@ -558,6 +630,10 @@ You can verify the emulator works by sending a reboot command and watching the V
 - Check TFTP container: `sudo podman ps | grep tftp`
 - Check TFTP logs: `sudo podman logs ochami-tftp-tftp`
 
+**For Docker Compose:**
+- Check TFTP container: `docker compose -p ochami -f ochami-docker-compose/docker-compose.yml ps | grep tftp`
+- Check TFTP logs: `docker compose -p ochami -f ochami-docker-compose/docker-compose.yml logs tftp`
+
 **Common checks:**
 - Ensure port 69/UDP is not blocked or used by another process (e.g., `dnsmasq`)
 - Test TFTP manually: `tftp 192.168.100.2 -c get undionly.kpxe`
@@ -570,6 +646,10 @@ You can verify the emulator works by sending a reboot command and watching the V
 
 **For Quadlets:**
 - Verify HTTP server: `sudo podman logs ochami-http-server-http-server`
+- Test HTTP: `curl http://192.168.100.2:80/boot.ipxe`
+
+**For Docker Compose:**
+- Verify HTTP server: `docker compose -p ochami -f ochami-docker-compose/docker-compose.yml logs http-server`
 - Test HTTP: `curl http://192.168.100.2:80/boot.ipxe`
 
 ### Quadlets-Specific Issues
@@ -622,6 +702,32 @@ cat /etc/containers/systemd/ochami.yaml
 grep -E "(ochami-postgres|ochami-smd|ochami-bss)" /etc/containers/systemd/ochami.yaml
 ```
 
+### Docker Compose-Specific Issues
+
+#### Container startup failures
+
+```bash
+# Check all containers (including stopped)
+docker compose -p ochami -f ochami-docker-compose/docker-compose.yml ps -a
+
+# Check logs for a specific service
+docker compose -p ochami -f ochami-docker-compose/docker-compose.yml logs <service-name>
+
+# Common issue: Port already in use
+sudo ss -tlnp | grep -E "(67|69|80|27778|27779)"
+```
+
+#### Config file issues
+
+```bash
+# Check generated config files exist
+ls -la ochami-docker-compose/configs/kea-dhcp4.conf
+ls -la ochami-docker-compose/configs/nginx-default.conf
+
+# Re-generate by re-running deploy
+./deploy.sh --method docker-compose
+```
+
 ### Checking the Full Boot Flow
 
 **For Minikube:**
@@ -655,12 +761,35 @@ sudo virsh start virtual-compute-node-0
 # 5. GET /artifacts/rootfs.squashfs
 ```
 
+**For Docker Compose:**
+```bash
+# Watch DHCP logs
+docker compose -p ochami -f ochami-docker-compose/docker-compose.yml logs -f kea &
+
+# Watch HTTP logs
+docker compose -p ochami -f ochami-docker-compose/docker-compose.yml logs -f http-server &
+
+# Start the VM
+sudo virsh start virtual-compute-node-0
+```
+
 ### Quick Diagnostic Commands (Quadlets)
 
 ```bash
 # Full system status
 echo "=== Systemd Service ===" && sudo systemctl status ochami --no-pager
 echo "=== Running Containers ===" && sudo podman ps
+echo "=== SMD Health ===" && curl -s http://localhost:27779/hsm/v2/service/ready
+echo "=== BSS Health ===" && curl -s http://localhost:27778/boot/v1/service/status
+echo "=== HTTP Server ===" && curl -s -o /dev/null -w "%{http_code}" http://localhost:80/boot.ipxe
+echo "=== VM Status ===" && sudo virsh list --all
+```
+
+### Quick Diagnostic Commands (Docker Compose)
+
+```bash
+# Full system status
+echo "=== Running Services ===" && docker compose -p ochami -f ochami-docker-compose/docker-compose.yml ps
 echo "=== SMD Health ===" && curl -s http://localhost:27779/hsm/v2/service/ready
 echo "=== BSS Health ===" && curl -s http://localhost:27778/boot/v1/service/status
 echo "=== HTTP Server ===" && curl -s -o /dev/null -w "%{http_code}" http://localhost:80/boot.ipxe
