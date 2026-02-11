@@ -5,7 +5,7 @@ set -e
 # Delegates to scripts/teardown/<method>.sh based on --method argument.
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-VALID_METHODS="minikube, podman, docker-compose"
+VALID_METHODS="minikube, quadlets, docker-compose"
 
 show_help() {
     echo "Usage: $0 --method <METHOD> [OPTIONS...]"
@@ -14,7 +14,7 @@ show_help() {
     echo ""
     echo "Methods:"
     echo "  minikube         Teardown Minikube deployment"
-    echo "  podman           Teardown Podman Quadlet deployment"
+    echo "  quadlets         Teardown Quadlets deployment"
     echo "  docker-compose   Teardown Docker Compose deployment"
     echo ""
     echo "Options:"
@@ -38,7 +38,8 @@ while [[ "$#" -gt 0 ]]; do
         --orchestrator)
             echo "Warning: --orchestrator is deprecated, use --method instead." >&2
             case "$2" in
-                minikube|podman) METHOD="$2" ;;
+                minikube) METHOD="$2" ;;
+                podman) METHOD="quadlets" ;;
                 *) METHOD="$2" ;;
             esac
             shift 2

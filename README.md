@@ -1,13 +1,13 @@
 # Advanced Tutorial: Booting a Custom Image with OpenCHAMI
 
-This tutorial demonstrates a more advanced scenario where a custom-built Linux image is served via a web server and a VM (or physical node) is network-booted using iPXE provided by a DHCP server. Services can be deployed using either **Minikube** (Kubernetes) or **Podman Quadlets** (systemd-managed containers).
+This tutorial demonstrates a more advanced scenario where a custom-built Linux image is served via a web server and a VM (or physical node) is network-booted using iPXE provided by a DHCP server. Services can be deployed using either **Minikube** (Kubernetes), **Quadlets** (systemd-managed Podman containers), or **Docker Compose**.
 
-## Quick Start (Podman)
+## Quick Start (Quadlets)
 
-Deploy OpenCHAMI with Podman and create a test VM in one command:
+Deploy OpenCHAMI with Quadlets and create a test VM in one command:
 
 ```bash
-./deploy.sh --orchestrator podman --vms 1
+./deploy.sh --method quadlets --vms 1
 ```
 
 Verify the deployment:
@@ -96,10 +96,10 @@ The deployment replaces the legacy `coresmd` plugin with a **Sidecar Pattern**:
 *   [Helm](https://helm.sh/docs/intro/install/)
 *   [Docker](https://docs.docker.com/get-docker/) (Required for building images and running the `none` driver)
 
-### For Podman Deployment
+### For Quadlets Deployment
 *   **Podman** (version 4.0+)
 *   [Helm](https://helm.sh/docs/intro/install/) (Used to template the Kubernetes YAML)
-*   *Note: Podman deployment uses Quadlets (systemd integration) with `podman kube play`*
+*   *Note: Quadlets deployment uses systemd integration with `podman kube play`*
 
 ### Common Requirements
 *   Libvirt & `virt-install` (For local VM testing)
@@ -117,24 +117,24 @@ Run the automated deployment script with Minikube (Kubernetes). This is the defa
 
 Or explicitly:
 ```bash
-./deploy.sh --orchestrator minikube
+./deploy.sh --method minikube
 ```
 
-### Option B: Podman Deployment (Recommended for simplicity)
+### Option B: Quadlets Deployment (Recommended for simplicity)
 
 Deploy using Podman Quadlets, which runs containers as systemd services with host networking:
 
 ```bash
-./deploy.sh --orchestrator podman
+./deploy.sh --method quadlets
 ```
 
 To deploy with test VMs:
 ```bash
-./deploy.sh --orchestrator podman --vms 1
+./deploy.sh --method quadlets --vms 1
 ```
 
 **Common Options:**
-*   `--orchestrator [minikube|podman]`: Choose the container orchestrator (default: minikube)
+*   `--method [minikube|quadlets|docker-compose]`: Choose the deployment method (default: minikube)
 *   `--vms N`: Automatically create N test VMs (named `virtual-compute-node-0`, `virtual-compute-node-1`, etc.)
 *   `--rebuild`: Force a rebuild of container images
 *   `--phy-iface IFACE`: Bridge a physical interface for bare-metal testing
@@ -143,8 +143,8 @@ To deploy with test VMs:
 
 ### What the deployment script does:
 
-| Step | Minikube | Podman |
-|------|----------|--------|
+| Step | Minikube | Quadlets |
+|------|----------|----------|
 | 1. Prerequisites | Installs cri-dockerd, CNI plugins | Checks for podman, helm |
 | 2. Build Images | Builds with Docker, loads into Minikube | Builds with Podman |
 | 3. Start Orchestrator | Starts Minikube with `none` driver | N/A (uses systemd) |
@@ -152,10 +152,10 @@ To deploy with test VMs:
 | 5. Deploy Services | Helm install to Kubernetes | Helm template → Quadlet YAML |
 | 6. Create VMs | Creates Libvirt VMs if `--vms` specified | Same |
 
-### Key Differences Between Orchestrators
+### Key Differences Between Methods
 
-| Feature | Minikube | Podman |
-|---------|----------|--------|
+| Feature | Minikube | Quadlets |
+|---------|----------|----------|
 | Boot Script | BSS dynamic (per-node) | Static boot.ipxe (all nodes same) |
 | Service Discovery | Kubernetes DNS | Host networking (localhost) |
 | StatefulSets | Supported | Limited support |
@@ -164,7 +164,7 @@ To deploy with test VMs:
 
 **Rebuilding Images:**
 ```bash
-./deploy.sh --orchestrator podman --rebuild
+./deploy.sh --method quadlets --rebuild
 ```
 
 ## Step 1b: Deployment (Bare Metal Mode)
@@ -204,7 +204,7 @@ minikube kubectl -- get services -n ochami
 
 You should see pods for `ochami-kea`, `ochami-tftp`, `ochami-http-server`, `smd`, `bss`, and `postgres` running.
 
-### For Podman
+### For Quadlets
 
 Check the systemd service and running containers:
 
@@ -249,7 +249,7 @@ curl -s -I http://localhost:80/boot.ipxe
 ### Verify Boot Script Content
 
 ```bash
-# For Podman (static boot script):
+# For Quadlets (static boot script):
 curl -s http://localhost:80/boot.ipxe
 # Should show iPXE script with kernel, initrd, and boot commands
 
@@ -368,7 +368,7 @@ ping 192.168.100.50
 minikube kubectl -- logs -n ochami ochami-http-server | tail -10
 ```
 
-**For Podman:**
+**For Quadlets:**
 ```bash
 # Check HTTP server logs
 sudo podman logs ochami-http-server-http-server | tail -10
@@ -388,10 +388,10 @@ Run these commands to verify a successful boot:
 # 1. Check VM is running
 sudo virsh domstate virtual-compute-node-0
 
-# 2. Check DHCP lease was issued (Podman)
+# 2. Check DHCP lease was issued (Quadlets)
 sudo podman logs ochami-kea-kea-dhcp4 2>&1 | grep -i "lease"
 
-# 3. Check boot artifacts were downloaded (Podman)
+# 3. Check boot artifacts were downloaded (Quadlets)
 sudo podman logs ochami-http-server-http-server 2>&1 | grep -E "(vmlinuz|initramfs|rootfs)"
 
 # 4. Verify VM is reachable
@@ -439,9 +439,9 @@ To remove the VM, cluster/services, network artifacts, and generated files:
 | `-y, --yes` | Skip confirmation prompt |
 | `-h, --help` | Show help |
 
-### Manual Cleanup (Podman)
+### Manual Cleanup (Quadlets)
 
-If you need to manually clean up a Podman deployment:
+If you need to manually clean up a Quadlets deployment:
 
 ```bash
 # Stop and remove VMs
@@ -541,7 +541,7 @@ You can verify the emulator works by sending a reboot command and watching the V
 - Verify Kea pod is running: `kubectl get pods -n ochami`
 - Check Kea logs: `kubectl logs -n ochami ochami-kea -c kea-dhcp4`
 
-**For Podman:**
+**For Quadlets:**
 - Verify Kea container is running: `sudo podman ps | grep kea`
 - Check Kea logs: `sudo podman logs ochami-kea-kea-dhcp4`
 
@@ -554,7 +554,7 @@ You can verify the emulator works by sending a reboot command and watching the V
 **For Minikube:**
 - Check TFTP pod status: `kubectl get pods -n ochami -l app.kubernetes.io/component=tftp`
 
-**For Podman:**
+**For Quadlets:**
 - Check TFTP container: `sudo podman ps | grep tftp`
 - Check TFTP logs: `sudo podman logs ochami-tftp-tftp`
 
@@ -568,11 +568,11 @@ You can verify the emulator works by sending a reboot command and watching the V
 - Verify HTTP server: `kubectl logs -n ochami ochami-http-server`
 - Test HTTP: `curl http://192.168.100.2:30080/boot.ipxe`
 
-**For Podman:**
+**For Quadlets:**
 - Verify HTTP server: `sudo podman logs ochami-http-server-http-server`
 - Test HTTP: `curl http://192.168.100.2:80/boot.ipxe`
 
-### Podman-Specific Issues
+### Quadlets-Specific Issues
 
 #### Services not starting
 
@@ -600,17 +600,17 @@ sudo podman logs <container-name>
 sudo ss -tlnp | grep -E "(67|69|80|27778|27779)"
 ```
 
-#### BSS returns "Unknown node" (Podman only)
+#### BSS returns "Unknown node" (Quadlets only)
 
-This is expected with Podman deployment. BSS requires ComponentEndpoints from SMD (populated via Redfish discovery), but the Redfish emulator doesn't work with Podman Quadlets due to StatefulSet limitations.
+This is expected with Quadlets deployment. BSS requires ComponentEndpoints from SMD (populated via Redfish discovery), but the Redfish emulator doesn't work with Podman Quadlets due to StatefulSet limitations.
 
-**Solution**: Podman deployment uses static `boot.ipxe` which bypasses BSS entirely. All VMs boot with the same kernel/initrd/parameters.
+**Solution**: Quadlets deployment uses static `boot.ipxe` which bypasses BSS entirely. All VMs boot with the same kernel/initrd/parameters.
 
 If you see this in BSS logs:
 ```
 DEBUG: Unknown/disabled node, ID: 'x0c0s0b0n0'
 ```
-This is normal for Podman - the static boot script will still work.
+This is normal for Quadlets - the static boot script will still work.
 
 #### Quadlet YAML issues
 
@@ -636,7 +636,7 @@ kubectl logs -n ochami ochami-http-server -f &
 sudo virsh start virtual-compute-node-0
 ```
 
-**For Podman:**
+**For Quadlets:**
 ```bash
 # Watch DHCP logs
 sudo podman logs -f ochami-kea-kea-dhcp4 &
@@ -655,7 +655,7 @@ sudo virsh start virtual-compute-node-0
 # 5. GET /artifacts/rootfs.squashfs
 ```
 
-### Quick Diagnostic Commands (Podman)
+### Quick Diagnostic Commands (Quadlets)
 
 ```bash
 # Full system status

@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-# scripts/deploy/podman.sh — Deploy OpenCHAMI using Podman Quadlet
+# scripts/deploy/quadlets.sh — Deploy OpenCHAMI using Podman Quadlet
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/../common.sh"
@@ -27,7 +27,7 @@ fi
 
 validate_common_deploy_args
 
-info "=== OpenCHAMI Podman Deployment ==="
+info "=== OpenCHAMI Quadlets Deployment ==="
 
 if [ "$FORCE_REBUILD" = true ]; then
     echo "Force rebuild enabled."
@@ -37,7 +37,7 @@ fi
 "$PROJECT_ROOT/scripts/install_prerequisites.sh"
 
 # 1. Check Prerequisites
-step "Checking prerequisites for podman..."
+step "Checking prerequisites for quadlets..."
 require_command podman
 require_command helm
 if [ "$MODE" == "libvirt" ]; then
@@ -46,7 +46,7 @@ fi
 
 # 2. Build and Load Images
 step "Building and loading images..."
-build_images_if_needed "sudo podman" "podman" "$FORCE_REBUILD"
+build_images_if_needed "sudo podman" "quadlets" "$FORCE_REBUILD"
 
 # 3. Configure Network
 step "Configuring PXE network (Mode: $MODE)..."
@@ -68,7 +68,7 @@ fi
 check_dhcp_port_conflict "$PXE_INTERFACE"
 
 # 4. Deploy
-step "Deploying OpenCHAMI (Podman)..."
+step "Deploying OpenCHAMI (Quadlets)..."
 HOST_IP="$PXE_IP"
 echo "Using Host IP for PXE boot: $HOST_IP"
 

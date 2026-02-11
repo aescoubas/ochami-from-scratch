@@ -5,7 +5,7 @@ set -euo pipefail
 #   PCS (port 28007) -> SMD (port 27779) -> Redfish Emulator (port 443)
 #
 # Usage: ./scripts/test_pcs_power.sh [--method METHOD] [COMPONENT_ID] [--verbose]
-#   --method      Deployment method: minikube, docker-compose, podman (default: docker-compose)
+#   --method      Deployment method: minikube, docker-compose, quadlets (default: docker-compose)
 #   COMPONENT_ID  Node xname to test (default: x0c0s0b0n0)
 #   --verbose     Show raw JSON output on failure
 
@@ -28,7 +28,7 @@ while [[ "$#" -gt 0 ]]; do
             echo "End-to-end test for PCS power-control chain."
             echo ""
             echo "Options:"
-            echo "  --method METHOD  Deployment method: minikube, docker-compose, podman"
+            echo "  --method METHOD  Deployment method: minikube, docker-compose, quadlets"
             echo "                   (default: docker-compose)"
             echo "  --verbose        Show raw JSON output on failure"
             echo ""
@@ -48,8 +48,8 @@ done
 
 # Validate method
 case "$METHOD" in
-    minikube|docker-compose|podman) ;;
-    *) error "Unknown method: $METHOD (expected minikube, docker-compose, or podman)"; exit 1 ;;
+    minikube|docker-compose|quadlets) ;;
+    *) error "Unknown method: $METHOD (expected minikube, docker-compose, or quadlets)"; exit 1 ;;
 esac
 
 # Derive BMC ID from component ID (e.g., x0c0s0b0n0 -> x0c0s0b0)
@@ -80,8 +80,8 @@ if [ "$METHOD" = "minikube" ]; then
 
     PCS_URL="http://${PCS_IP}:${PCS_PORT}"
     SMD_URL="http://${SMD_IP}:${SMD_PORT}"
-elif [ "$METHOD" = "podman" ]; then
-    # Podman Quadlet uses host networking — services are on localhost
+elif [ "$METHOD" = "quadlets" ]; then
+    # Quadlets uses host networking — services are on localhost
     PCS_URL="http://localhost:${PCS_PORT}"
     SMD_URL="http://localhost:${SMD_PORT}"
 else

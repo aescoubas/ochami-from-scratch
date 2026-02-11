@@ -31,7 +31,7 @@ echo "Found MAC: $MAC"
 
 # 2. Get SMD Service IP
 echo "Fetching SMD service IP..."
-if [ "$ORCHESTRATOR" == "podman" ] || [ "$ORCHESTRATOR" == "docker-compose" ]; then
+if [ "$ORCHESTRATOR" == "quadlets" ] || [ "$ORCHESTRATOR" == "docker-compose" ]; then
     SMD_IP="$HOST_IP"
 else
     SMD_IP=$(minikube kubectl -- get svc ochami-smd -n ochami -o jsonpath='{.spec.clusterIP}')
@@ -68,7 +68,7 @@ if [ -n "$VM_INDEX" ]; then
     NAMESPACE="ochami"
     
     echo "Fetching IP for emulator pod '$POD_NAME'..."
-    if [ "$ORCHESTRATOR" == "podman" ] || [ "$ORCHESTRATOR" == "docker-compose" ]; then
+    if [ "$ORCHESTRATOR" == "quadlets" ] || [ "$ORCHESTRATOR" == "docker-compose" ]; then
         EMULATOR_IP="$HOST_IP"
     else
         EMULATOR_IP=$(minikube kubectl -- get pod -n "$NAMESPACE" "$POD_NAME" -o jsonpath='{.status.podIP}' 2>/dev/null)
@@ -124,7 +124,7 @@ fi
 
 # 6. Register Boot Parameters in BSS
 echo "Fetching BSS service IP..."
-if [ "$ORCHESTRATOR" == "podman" ] || [ "$ORCHESTRATOR" == "docker-compose" ]; then
+if [ "$ORCHESTRATOR" == "quadlets" ] || [ "$ORCHESTRATOR" == "docker-compose" ]; then
     BSS_IP="$HOST_IP"
 else
     BSS_IP=$(minikube kubectl -- get svc ochami-bss -n ochami -o jsonpath='{.spec.clusterIP}')
@@ -170,17 +170,17 @@ else
         else
             echo "  -> Warning: Postgres container not found (Docker Compose). Boot might fail."
         fi
-    elif [ "$ORCHESTRATOR" == "podman" ]; then
+    elif [ "$ORCHESTRATOR" == "quadlets" ]; then
         # Find postgres container
         PG_CONTAINER=$(sudo podman ps --format "{{.Names}}" | grep postgres | head -n 1)
         if [ -n "$PG_CONTAINER" ]; then
              if sudo podman exec "$PG_CONTAINER" bash -c "$UPDATE_CMD" >/dev/null 2>&1; then
-                 echo "  -> Database updated successfully (Podman)."
+                 echo "  -> Database updated successfully (Quadlets)."
              else
-                 echo "  -> Warning: Failed to update database (Podman). Boot might fail."
+                 echo "  -> Warning: Failed to update database (Quadlets). Boot might fail."
              fi
         else
-            echo "  -> Warning: Postgres container not found (Podman). Boot might fail."
+            echo "  -> Warning: Postgres container not found (Quadlets). Boot might fail."
         fi
     else
         if minikube kubectl -- exec -n ochami ochami-postgres -- bash -c "$UPDATE_CMD" >/dev/null 2>&1; then

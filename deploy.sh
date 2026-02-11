@@ -5,7 +5,7 @@ set -e
 # Delegates to scripts/deploy/<method>.sh based on --method argument.
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-VALID_METHODS="minikube, podman, docker-compose"
+VALID_METHODS="minikube, quadlets, docker-compose"
 
 show_help() {
     echo "Usage: $0 --method <METHOD> [OPTIONS...]"
@@ -14,7 +14,7 @@ show_help() {
     echo ""
     echo "Methods:"
     echo "  minikube         Deploy using Minikube (none driver)"
-    echo "  podman           Deploy using Podman Quadlet"
+    echo "  quadlets         Deploy using Podman Quadlet (systemd)"
     echo "  docker-compose   Deploy using Docker Compose"
     echo ""
     echo "Options:"
@@ -39,7 +39,8 @@ while [[ "$#" -gt 0 ]]; do
             echo "Warning: --orchestrator is deprecated, use --method instead." >&2
             # Map legacy values
             case "$2" in
-                minikube|podman) METHOD="$2" ;;
+                minikube) METHOD="$2" ;;
+                podman) METHOD="quadlets" ;;
                 *) METHOD="$2" ;;
             esac
             shift 2

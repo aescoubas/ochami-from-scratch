@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-# scripts/teardown/podman.sh — Teardown OpenCHAMI Podman deployment
+# scripts/teardown/quadlets.sh — Teardown OpenCHAMI Quadlets deployment
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/../common.sh"
@@ -10,7 +10,7 @@ source "$SCRIPT_DIR/../common.sh"
 show_help() {
     echo "Usage: $0 [OPTIONS]"
     echo ""
-    echo "Teardown an OpenCHAMI Podman Quadlet deployment."
+    echo "Teardown an OpenCHAMI Quadlets deployment."
     echo ""
     echo "This script removes:"
     echo "  - Test VMs (virtual-compute-node or specified name)"
@@ -33,8 +33,8 @@ elif [ $rc -ne 0 ]; then
 fi
 
 # --- Confirmation ---
-confirm_teardown "Podman"
-echo "  - Podman Quadlet services"
+confirm_teardown "Quadlets"
+echo "  - Quadlet services"
 echo "  - Build artifacts (kernels, initramfs, rootfs)"
 if [ "$REMOVE_IMAGES" = true ]; then
     echo "  - Podman images (ochami related) [ENABLED]"
@@ -47,8 +47,8 @@ prompt_confirmation
 # 1. Destroy VMs
 destroy_vms "$VM_NAME"
 
-# 2. Stop and remove Podman Quadlet
-step "Removing Podman Quadlet deployment..."
+# 2. Stop and remove Quadlet
+step "Removing Quadlet deployment..."
 if systemctl list-units --full -all | grep -q "ochami.service"; then
     echo "Stopping ochami.service..."
     sudo systemctl stop ochami.service
@@ -82,7 +82,7 @@ if [ "$REMOVE_IMAGES" = true ]; then
         remove_images "sudo podman" "${IMAGES[@]}"
     fi
 else
-    step "Skipping Podman image removal."
+    step "Skipping image removal."
 fi
 
 # 6. Remove Artifacts

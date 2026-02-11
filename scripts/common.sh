@@ -191,7 +191,7 @@ build_images_if_needed() {
     }
 
     local IMAGE_CHECK_CMD
-    if [ "$orchestrator" == "podman" ]; then
+    if [ "$orchestrator" == "quadlets" ]; then
         IMAGE_CHECK_CMD="$container_tool image exists"
     elif [ "$orchestrator" == "docker-compose" ]; then
         IMAGE_CHECK_CMD="docker image inspect"
@@ -207,7 +207,7 @@ build_images_if_needed() {
         if ! docker image inspect "$IMAGE_HTTP" >/dev/null 2>&1 || ! docker image inspect "$IMAGE_EMULATOR" >/dev/null 2>&1; then
             need_build=true
         fi
-    elif [ "$orchestrator" == "podman" ]; then
+    elif [ "$orchestrator" == "quadlets" ]; then
         if ! $container_tool image exists "$IMAGE_HTTP" || ! $container_tool image exists "$IMAGE_EMULATOR"; then
             need_build=true
         fi
@@ -232,7 +232,7 @@ build_images_if_needed() {
         if ! docker image inspect "$IMAGE_TFTP" >/dev/null 2>&1; then
             need_tftp=true
         fi
-    elif [ "$orchestrator" == "podman" ]; then
+    elif [ "$orchestrator" == "quadlets" ]; then
         if ! $container_tool image exists "$IMAGE_TFTP"; then
             need_tftp=true
         fi
@@ -261,7 +261,7 @@ build_images_if_needed() {
         if ! docker image inspect "$IMAGE_STORK_AGENT" >/dev/null 2>&1; then
             need_stork_agent=true
         fi
-    elif [ "$orchestrator" == "podman" ]; then
+    elif [ "$orchestrator" == "quadlets" ]; then
         if ! $container_tool image exists "$IMAGE_STORK_AGENT"; then
             need_stork_agent=true
         fi
@@ -298,7 +298,7 @@ build_images_if_needed() {
             if ! docker image inspect "$img" >/dev/null 2>&1; then
                 need_ms=true
             fi
-        elif [ "$orchestrator" == "podman" ]; then
+        elif [ "$orchestrator" == "quadlets" ]; then
             if ! $container_tool image exists "$img"; then
                 need_ms=true
             fi
