@@ -3,6 +3,14 @@ set -e
 
 # This script registers a VM (or node) in SMD to transition it from discovery mode to production mode.
 
+# macOS guard: requires libvirt to fetch VM MAC address
+if [[ "$(uname -s)" == "Darwin" ]]; then
+    echo "Error: Local VM registration requires libvirt and is not supported on macOS." >&2
+    echo "To register physical hardware nodes, use:" >&2
+    echo "  ./scripts/register_hardware_node.sh <MAC_ADDRESS> <IP_ADDRESS> [COMPONENT_ID]" >&2
+    exit 1
+fi
+
 if [ "$#" -lt 2 ]; then
     echo "Usage: $0 <VM_NAME> <IP_ADDRESS> [COMPONENT_ID] [NID]"
     echo "Example: $0 virtual-compute-node-0 192.168.100.50 x0c0s0b0n0 1"

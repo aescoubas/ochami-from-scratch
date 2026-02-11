@@ -47,7 +47,7 @@ if ! docker compose version >/dev/null 2>&1; then
         exit 1
     fi
 fi
-if [ "$MODE" == "libvirt" ]; then
+if ! $IS_MACOS && [ "$MODE" == "libvirt" ]; then
     require_command virt-install "virt-install is required for libvirt mode but not installed. Aborting."
 fi
 
@@ -57,6 +57,12 @@ if ! docker compose version >/dev/null 2>&1; then
     COMPOSE_CMD="docker-compose"
 fi
 
+# Build compose file list (macOS uses bridge networking override)
+COMPOSE_FILES=(-f "$COMPOSE_DIR/docker-compose.yml")
+if $IS_MACOS; then
+    COMPOSE_FILES+=(-f "$COMPOSE_DIR/docker-compose.macos.yml")
+fi
+
 # 2. Build and Load Images
 step "Building and loading images..."
 build_images_if_needed "docker" "docker-compose" "$FORCE_REBUILD"
@@ -64,26 +70,36 @@ build_images_if_needed "docker" "docker-compose" "$FORCE_REBUILD"
 # 3. Configure Network
 step "Configuring PXE network (Mode: $MODE)..."
 
-if [ "$MODE" == "hardware" ]; then
-    PXE_INTERFACE=$(configure_hardware_network "$PXE_INTERFACE" "$PHY_IFACE")
-    PHY_IFACE=""
-fi
-
-if [ "$MODE" == "libvirt" ]; then
-    configure_libvirt_network "$PXE_INTERFACE"
+if $IS_MACOS; then
+    echo "macOS: Skipping host network configuration (Docker Desktop manages networking)."
+    echo "macOS: Services will communicate via Docker bridge network."
 else
-    echo "Hardware mode selected. Skipping libvirt network creation."
+    if [ "$MODE" == "hardware" ]; then
+        PXE_INTERFACE=$(configure_hardware_network "$PXE_INTERFACE" "$PHY_IFACE")
+        PHY_IFACE=""
+    fi
+
+    if [ "$MODE" == "libvirt" ]; then
+        configure_libvirt_network "$PXE_INTERFACE"
+    else
+        echo "Hardware mode selected. Skipping libvirt network creation."
+    fi
+
+    "$PROJECT_ROOT/scripts/setup_minikube_net.sh" "$PXE_INTERFACE" "$PXE_IP" "$PXE_CIDR" "$PHY_IFACE"
+
+    # 3b. Check for DHCP port conflicts (e.g. dnsmasq from libvirt)
+    check_dhcp_port_conflict "$PXE_INTERFACE"
 fi
-
-"$PROJECT_ROOT/scripts/setup_minikube_net.sh" "$PXE_INTERFACE" "$PXE_IP" "$PXE_CIDR" "$PHY_IFACE"
-
-# 3b. Check for DHCP port conflicts (e.g. dnsmasq from libvirt)
-check_dhcp_port_conflict "$PXE_INTERFACE"
 
 # 4. Generate configuration files
 step "Generating configuration files..."
 HOST_IP="$PXE_IP"
 echo "Using Host IP for PXE boot: $HOST_IP"
+
+# On macOS with bridge networking, Kea must listen on all interfaces inside its container
+if $IS_MACOS; then
+    PXE_INTERFACE="*"
+fi
 
 # Export variables for envsubst
 export HOST_IP PXE_INTERFACE DHCP_START DHCP_END DHCP_NETMASK PXE_CIDR
@@ -171,7 +187,7 @@ if [ "$NUM_VMS" -gt 0 ]; then
     COMPOSE_PROFILES=(--profile emulator)
 fi
 
-$COMPOSE_CMD -p ochami -f "$COMPOSE_DIR/docker-compose.yml" --env-file "$COMPOSE_DIR/.env" "${COMPOSE_PROFILES[@]}" up -d --wait
+$COMPOSE_CMD -p ochami "${COMPOSE_FILES[@]}" --env-file "$COMPOSE_DIR/.env" "${COMPOSE_PROFILES[@]}" up -d --wait
 
 # 7. Wait for services
 step "Waiting for services to be ready..."
@@ -187,9 +203,14 @@ register_bss_defaults "localhost" "$HOST_IP" "ds=nocloud-net;s=http://${HOST_IP}
 
 # 9. Create VMs
 if [ "$NUM_VMS" -gt 0 ]; then
-    step "Creating $NUM_VMS VMs..."
-    export ORCHESTRATOR="docker-compose"
-    create_and_register_vms "$NUM_VMS" "$HOST_IP"
+    if $IS_MACOS; then
+        warn "VM creation via libvirt is not available on macOS."
+        echo "Use ./scripts/register_hardware_node.sh to register physical nodes instead."
+    else
+        step "Creating $NUM_VMS VMs..."
+        export ORCHESTRATOR="docker-compose"
+        create_and_register_vms "$NUM_VMS" "$HOST_IP"
+    fi
 fi
 
 # 10. Final Instructions
@@ -197,12 +218,17 @@ info "=== Deployment Complete ==="
 echo "  Stork DHCP Monitor: http://localhost:${STORK_PORT}/ (login: admin/admin)"
 echo ""
 echo "You can now verify the services are running:"
-echo "  $COMPOSE_CMD -f $COMPOSE_DIR/docker-compose.yml ps"
+echo "  $COMPOSE_CMD ${COMPOSE_FILES[*]} ps"
 echo ""
 echo "View logs:"
-echo "  $COMPOSE_CMD -f $COMPOSE_DIR/docker-compose.yml logs -f"
+echo "  $COMPOSE_CMD ${COMPOSE_FILES[*]} logs -f"
 echo ""
-if [ "$NUM_VMS" -gt 0 ]; then
+if $IS_MACOS; then
+    echo "To register a hardware node:"
+    echo "  ./scripts/register_hardware_node.sh <MAC_ADDRESS> <IP_ADDRESS> [COMPONENT_ID]"
+    echo ""
+    echo "Note: VM creation via libvirt is not available on macOS."
+elif [ "$NUM_VMS" -gt 0 ]; then
     echo "To connect to the VM console, run:"
     for i in $(seq 0 $((NUM_VMS - 1))); do
         echo "  sudo virsh start --console virtual-compute-node-$i"

@@ -14,7 +14,7 @@ show_help() {
     echo ""
     echo "Methods:"
     echo "  minikube         Teardown Minikube deployment"
-    echo "  quadlets         Teardown Quadlets deployment"
+    echo "  quadlets         Teardown Quadlets deployment [Linux only]"
     echo "  docker-compose   Teardown Docker Compose deployment"
     echo ""
     echo "Options:"
@@ -63,6 +63,13 @@ if [ -z "$METHOD" ]; then
     echo "Error: --method is required." >&2
     echo "" >&2
     show_help >&2
+    exit 1
+fi
+
+# Block quadlets on macOS (requires systemd)
+if [[ "$(uname -s)" == "Darwin" && "$METHOD" == "quadlets" ]]; then
+    echo "Error: 'quadlets' requires systemd and is not supported on macOS." >&2
+    echo "Use --method docker-compose or --method minikube instead." >&2
     exit 1
 fi
 

@@ -41,7 +41,7 @@ step "Checking prerequisites for minikube..."
 require_command minikube
 require_command helm
 require_command docker
-if [ "$MODE" == "libvirt" ]; then
+if ! $IS_MACOS && [ "$MODE" == "libvirt" ]; then
     require_command virt-install "virt-install is required for libvirt mode but not installed. Aborting."
 fi
 
@@ -49,8 +49,12 @@ fi
 step "Ensuring Minikube is running..."
 if ! minikube status | grep -q "Running"; then
     echo "Starting Minikube..."
-    sudo -E minikube start --driver=none --memory=4096 --cpus=2
-    sudo chown -R "$USER:$USER" "$HOME/.minikube" "$HOME/.kube"
+    if $IS_MACOS; then
+        minikube start --driver=docker --memory=4096 --cpus=2
+    else
+        sudo -E minikube start --driver=none --memory=4096 --cpus=2
+        sudo chown -R "$USER:$USER" "$HOME/.minikube" "$HOME/.kube"
+    fi
 else
     echo "Minikube is already running."
 fi
@@ -62,21 +66,27 @@ build_images_if_needed "docker" "minikube" "$FORCE_REBUILD"
 # 4. Configure Network
 step "Configuring PXE network (Mode: $MODE)..."
 
-if [ "$MODE" == "hardware" ]; then
-    PXE_INTERFACE=$(configure_hardware_network "$PXE_INTERFACE" "$PHY_IFACE")
-    PHY_IFACE=""
-fi
-
-if [ "$MODE" == "libvirt" ]; then
-    configure_libvirt_network "$PXE_INTERFACE"
+if $IS_MACOS; then
+    echo "macOS: Skipping host network configuration (Minikube Docker driver manages networking)."
+    HOST_IP=$(minikube ip 2>/dev/null || echo "127.0.0.1")
+    echo "Using Minikube IP: $HOST_IP"
 else
-    echo "Hardware mode selected. Skipping libvirt network creation."
+    if [ "$MODE" == "hardware" ]; then
+        PXE_INTERFACE=$(configure_hardware_network "$PXE_INTERFACE" "$PHY_IFACE")
+        PHY_IFACE=""
+    fi
+
+    if [ "$MODE" == "libvirt" ]; then
+        configure_libvirt_network "$PXE_INTERFACE"
+    else
+        echo "Hardware mode selected. Skipping libvirt network creation."
+    fi
+
+    "$PROJECT_ROOT/scripts/setup_minikube_net.sh" "$PXE_INTERFACE" "$PXE_IP" "$PXE_CIDR" "$PHY_IFACE"
+
+    # 4b. Check for DHCP port conflicts (e.g. dnsmasq from libvirt)
+    check_dhcp_port_conflict "$PXE_INTERFACE"
 fi
-
-"$PROJECT_ROOT/scripts/setup_minikube_net.sh" "$PXE_INTERFACE" "$PXE_IP" "$PXE_CIDR" "$PHY_IFACE"
-
-# 4b. Check for DHCP port conflicts (e.g. dnsmasq from libvirt)
-check_dhcp_port_conflict "$PXE_INTERFACE"
 
 # 5. Deploy
 step "Deploying OpenCHAMI (Minikube)..."
@@ -172,8 +182,13 @@ register_bss_defaults "$BSS_IP" "$HOST_IP" "ds=nocloud-net;s=http://${HOST_IP}:$
 
 # 6. Create VMs
 if [ "$NUM_VMS" -gt 0 ]; then
-    step "Creating $NUM_VMS VMs..."
-    create_and_register_vms "$NUM_VMS" "$HOST_IP"
+    if $IS_MACOS; then
+        warn "VM creation via libvirt is not available on macOS."
+        echo "Use ./scripts/register_hardware_node.sh to register physical nodes instead."
+    else
+        step "Creating $NUM_VMS VMs..."
+        create_and_register_vms "$NUM_VMS" "$HOST_IP"
+    fi
 fi
 
 # 7. Final Instructions
@@ -183,7 +198,12 @@ echo ""
 echo "You can now verify the pods are running:"
 echo "  minikube kubectl -- get pods -n ochami"
 echo ""
-if [ "$NUM_VMS" -gt 0 ]; then
+if $IS_MACOS; then
+    echo "To register a hardware node:"
+    echo "  ./scripts/register_hardware_node.sh <MAC_ADDRESS> <IP_ADDRESS> [COMPONENT_ID]"
+    echo ""
+    echo "Note: VM creation via libvirt is not available on macOS."
+elif [ "$NUM_VMS" -gt 0 ]; then
     echo "To connect to the VM console, run:"
     for i in $(seq 0 $((NUM_VMS - 1))); do
         echo "  sudo virsh start --console virtual-compute-node-$i"

@@ -6,6 +6,8 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/../common.sh"
 
+require_linux "Quadlets teardown"
+
 QUADLETS_INSTALL_DIR="/etc/containers/systemd"
 OPENCHAMI_CONFIG_DIR="/etc/openchami"
 

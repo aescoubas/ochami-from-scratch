@@ -1,6 +1,12 @@
 #!/bin/bash
 set -e
 
+# On macOS, delegate to the macOS-specific prerequisites script
+if [[ "$(uname -s)" == "Darwin" ]]; then
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    exec bash "$SCRIPT_DIR/install_prerequisites_macos.sh"
+fi
+
 GREEN='\033[0;32m'
 NC='\033[0m' # No Color
 

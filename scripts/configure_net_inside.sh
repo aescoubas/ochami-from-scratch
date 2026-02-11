@@ -1,6 +1,12 @@
 #!/bin/bash
 set -e
 
+# macOS guard: this script runs inside a Linux Minikube VM only
+if [[ "$(uname -s)" == "Darwin" ]]; then
+    echo "Error: This script is designed to run inside a Linux Minikube VM only." >&2
+    exit 1
+fi
+
 MAC_ADDR=$1
 IP_ADDR=$2
 NETMASK="24"

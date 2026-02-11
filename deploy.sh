@@ -13,8 +13,8 @@ show_help() {
     echo "Deploy OpenCHAMI using the specified method."
     echo ""
     echo "Methods:"
-    echo "  minikube         Deploy using Minikube (none driver)"
-    echo "  quadlets         Deploy using Podman Quadlet (systemd)"
+    echo "  minikube         Deploy using Minikube (Linux: none driver, macOS: docker driver)"
+    echo "  quadlets         Deploy using Podman Quadlet (systemd) [Linux only]"
     echo "  docker-compose   Deploy using Docker Compose"
     echo ""
     echo "Options:"
@@ -64,6 +64,13 @@ if [ -z "$METHOD" ]; then
     echo "Error: --method is required." >&2
     echo "" >&2
     show_help >&2
+    exit 1
+fi
+
+# Block quadlets on macOS (requires systemd)
+if [[ "$(uname -s)" == "Darwin" && "$METHOD" == "quadlets" ]]; then
+    echo "Error: 'quadlets' requires systemd and is not supported on macOS." >&2
+    echo "Use --method docker-compose or --method minikube instead." >&2
     exit 1
 fi
 

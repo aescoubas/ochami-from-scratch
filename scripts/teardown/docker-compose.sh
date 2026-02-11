@@ -43,6 +43,12 @@ if command_exists docker && ! docker compose version >/dev/null 2>&1; then
     fi
 fi
 
+# Build compose file list (macOS uses bridge networking override)
+COMPOSE_FILES=(-f "$COMPOSE_DIR/docker-compose.yml")
+if $IS_MACOS; then
+    COMPOSE_FILES+=(-f "$COMPOSE_DIR/docker-compose.macos.yml")
+fi
+
 # --- Confirmation ---
 confirm_teardown "Docker Compose"
 echo "  - Docker Compose services and volumes"
@@ -62,7 +68,7 @@ destroy_vms "$VM_NAME"
 # 2. Stop and remove Docker Compose services
 step "Stopping Docker Compose services..."
 if [ -f "$COMPOSE_DIR/docker-compose.yml" ]; then
-    $COMPOSE_CMD -p ochami -f "$COMPOSE_DIR/docker-compose.yml" down -v --remove-orphans 2>/dev/null || echo "Docker Compose services already stopped or not found."
+    $COMPOSE_CMD -p ochami "${COMPOSE_FILES[@]}" down -v --remove-orphans 2>/dev/null || echo "Docker Compose services already stopped or not found."
 fi
 
 # 3. Destroy Network

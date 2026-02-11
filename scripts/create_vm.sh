@@ -5,6 +5,14 @@ set -e
 # This script creates a new Libvirt VM for the OpenCHAMI minimal tutorial.
 # Supports both BIOS (Legacy) and UEFI boot modes for PXE testing.
 
+# macOS guard: libvirt/KVM is not available on macOS
+if [[ "$(uname -s)" == "Darwin" ]]; then
+    echo "Error: VM creation requires libvirt/KVM and is not supported on macOS." >&2
+    echo "To register physical hardware nodes, use:" >&2
+    echo "  ./scripts/register_hardware_node.sh <MAC_ADDRESS> <IP_ADDRESS> [COMPONENT_ID]" >&2
+    exit 1
+fi
+
 # --- Configuration ---
 VM_NAME="virtual-compute-node"
 MEMORY="2048" # in MiB

@@ -13,6 +13,21 @@ fi
 COMMON_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$COMMON_DIR/.." && pwd)"
 
+# --- OS Detection ---
+OS_TYPE="$(uname -s)"   # "Linux" or "Darwin"
+IS_MACOS=false
+IS_LINUX=false
+[[ "$OS_TYPE" == "Darwin" ]] && IS_MACOS=true
+[[ "$OS_TYPE" == "Linux" ]]  && IS_LINUX=true
+ARCH_TYPE="$(uname -m)" # "x86_64" or "arm64"
+
+require_linux() {
+    if $IS_MACOS; then
+        error "$1 is not supported on macOS."
+        exit 1
+    fi
+}
+
 # --- Color Codes ---
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -127,9 +142,16 @@ validate_positive_int() {
 
 validate_interface_exists() {
     local iface="$1"
-    if ! ip link show "$iface" >/dev/null 2>&1; then
-        error "Interface '$iface' does not exist."
-        return 1
+    if $IS_MACOS; then
+        if ! ifconfig "$iface" >/dev/null 2>&1; then
+            error "Interface '$iface' does not exist."
+            return 1
+        fi
+    else
+        if ! ip link show "$iface" >/dev/null 2>&1; then
+            error "Interface '$iface' does not exist."
+            return 1
+        fi
     fi
     return 0
 }
@@ -387,6 +409,11 @@ configure_hardware_network() {
 configure_libvirt_network() {
     local pxe_interface="$1"
 
+    if $IS_MACOS; then
+        echo "macOS: Skipping libvirt network configuration (not available on macOS)."
+        return 0
+    fi
+
     if [ "$pxe_interface" == "virbr-pxe" ]; then
         if ! virsh net-info pxe-net >/dev/null 2>&1; then
             echo "Defining pxe-net network..."
@@ -412,6 +439,10 @@ EOF
 
 configure_firewall() {
     local pxe_interface="$1"
+    if $IS_MACOS; then
+        echo "macOS: Docker Desktop manages its own networking. Skipping firewall configuration."
+        return 0
+    fi
     if systemctl is-active --quiet firewalld; then
         echo "Configuring firewall for $pxe_interface..."
         sudo firewall-cmd --zone=trusted --add-interface="$pxe_interface" --permanent
@@ -423,7 +454,49 @@ check_dhcp_port_conflict() {
     local pxe_interface="$1"
     step "Checking for DHCP port conflicts on $pxe_interface..."
 
-    # Find any process bound to UDP port 67
+    if $IS_MACOS; then
+        # On macOS, use lsof to check for UDP port 67
+        local conflict
+        conflict=$(sudo lsof -i UDP:67 -P -n 2>/dev/null | grep -v "^COMMAND" || true)
+
+        if [ -z "$conflict" ]; then
+            echo "No DHCP port conflict detected."
+            return 0
+        fi
+
+        warn "Another process is already bound to UDP port 67 (DHCP):"
+        echo "$conflict"
+
+        local pids
+        pids=$(echo "$conflict" | awk '{print $2}' | sort -u || true)
+
+        if [ -z "$pids" ]; then
+            warn "Could not determine the conflicting PID. Please free port 67/UDP manually before deploying."
+            return 1
+        fi
+
+        for pid in $pids; do
+            local proc_name
+            proc_name=$(ps -p "$pid" -o comm= 2>/dev/null || echo "unknown")
+            echo ""
+            echo "Conflicting process: $proc_name (PID $pid)"
+
+            read -r -p "Kill $proc_name (PID $pid) to free port 67? (y/N) " answer
+            if [[ "$answer" =~ ^[Yy]$ ]]; then
+                sudo kill "$pid"
+                echo "Killed $proc_name (PID $pid)."
+                sleep 1
+            else
+                warn "Port 67/UDP is still in use. Kea DHCP may fail to start."
+                return 1
+            fi
+        done
+
+        echo "DHCP port conflict resolved."
+        return 0
+    fi
+
+    # Linux: Find any process bound to UDP port 67
     # ss -ulnp with UDP-only filter uses "State" as header (no Netid column)
     local conflict
     conflict=$(sudo ss -ulnp 'sport = :67' 2>/dev/null | grep -v "^State" || true)
@@ -634,6 +707,12 @@ EOF
 
 destroy_vms() {
     local vm_name="$1"
+
+    if $IS_MACOS; then
+        echo "macOS: VM management via libvirt is not available. Skipping VM removal."
+        return 0
+    fi
+
     step "Removing VMs..."
     local vms_to_delete
     vms_to_delete=$(sudo virsh list --all --name | grep -E "^${vm_name}$|^${vm_name}-[0-9]+$" || true)
@@ -652,6 +731,12 @@ destroy_vms() {
 
 destroy_pxe_network() {
     local net_name="pxe-net"
+
+    if $IS_MACOS; then
+        echo "macOS: Libvirt network management is not available. Skipping PXE network removal."
+        return 0
+    fi
+
     step "Removing Network '$net_name'..."
     if sudo virsh net-info "$net_name" >/dev/null 2>&1; then
         sudo virsh net-destroy "$net_name" >/dev/null 2>&1 || true
@@ -665,6 +750,11 @@ destroy_pxe_network() {
 cleanup_host_networking() {
     local host_iface="${1:-virbr-pxe}"
     local host_ip="${2:-192.168.100.2}"
+
+    if $IS_MACOS; then
+        echo "macOS: Docker Desktop manages its own networking. Skipping host networking cleanup."
+        return 0
+    fi
 
     if systemctl is-active --quiet firewalld; then
         echo "Restoring firewall rules..."

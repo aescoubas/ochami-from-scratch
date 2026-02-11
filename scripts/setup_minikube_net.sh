@@ -1,6 +1,13 @@
 #!/bin/bash
 set -e
 
+# macOS guard: host networking setup is not needed on macOS
+# (Docker Desktop / Minikube Docker driver manage their own networking)
+if [[ "$(uname -s)" == "Darwin" ]]; then
+    echo "macOS: Skipping host network configuration."
+    exit 0
+fi
+
 # Configuration
 HOST_IFACE=${1:-"virbr-pxe"} # Corresponds to the bridge name defined in deploy.sh
 MINIKUBE_IP=${2:-"192.168.100.2"}

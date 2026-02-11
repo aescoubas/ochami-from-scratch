@@ -24,6 +24,38 @@ ping -c 3 192.168.100.100
 
 For detailed instructions, see the sections below.
 
+## Quick Start (macOS with Docker Compose)
+
+Deploy OpenCHAMI on macOS using Docker Compose:
+
+```bash
+./deploy.sh --method docker-compose
+```
+
+Verify the deployment:
+```bash
+# Check SMD is ready
+curl -s http://localhost:27779/hsm/v2/service/ready
+
+# Check BSS is ready
+curl -s http://localhost:27778/boot/v1/service/status
+
+# Check running services
+docker compose -p ochami -f ochami-docker-compose/docker-compose.yml -f ochami-docker-compose/docker-compose.macos.yml ps
+```
+
+To register a hardware node:
+```bash
+./scripts/register_hardware_node.sh <MAC_ADDRESS> <IP_ADDRESS> [COMPONENT_ID]
+```
+
+To teardown:
+```bash
+./teardown.sh --method docker-compose -y
+```
+
+> **Note:** VM creation (`--vms N`) and PXE booting are not available on macOS. Use `--mode hardware` with physical nodes instead.
+
 ---
 
 ## Architecture Overview
@@ -88,15 +120,36 @@ The deployment replaces the legacy `coresmd` plugin with a **Sidecar Pattern**:
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
+## Feature Matrix
+
+The table below shows which combinations of **platform**, **deployment method**, and **mode** are supported.
+
+| | Ubuntu — libvirt VMs | Ubuntu — hardware | macOS — libvirt VMs | macOS — hardware |
+|---|:---:|:---:|:---:|:---:|
+| **minikube** | Supported | Supported | — | Supported (services only) |
+| **quadlets** | Supported | Supported | — | — |
+| **docker-compose** | Supported | Supported | — | Supported (services only) |
+
+**Legend:**
+*   **Supported** — full functionality including VM creation, PXE boot, and all services.
+*   **Supported (services only)** — OpenCHAMI services run and APIs are accessible; VM creation and host PXE boot are not available. Register physical nodes via `./scripts/register_hardware_node.sh`.
+*   **—** — not supported on this platform.
+
+**Key notes:**
+*   **libvirt VMs** mode (`--mode libvirt`, the default) creates virtual machines with KVM for testing. This requires Linux with libvirt/KVM — it is unavailable on macOS.
+*   **hardware** mode (`--mode hardware`) skips VM creation and targets physical nodes. On macOS, services are accessible via `localhost` but PXE booting from the macOS host is not supported (Docker Desktop cannot bridge DHCP to physical networks).
+*   **quadlets** requires systemd and is Linux-only.
+*   On macOS, Docker Compose uses bridge networking (not `host` mode) with explicit port mappings. Minikube uses the `docker` driver instead of `none`.
+
 ## 1. Prerequisites
 
 ### For Minikube Deployment
-*   **Minikube** with the **`none` (bare-metal)** driver.
-    *   *Note: The deployment script will automatically install necessary system dependencies (like `conntrack`, `cri-dockerd`, `cri-tools`, and CNI plugins) for Debian/Ubuntu systems.*
+*   **Minikube** with the **`none` (bare-metal)** driver (Linux) or **`docker`** driver (macOS).
+    *   *Note (Linux): The deployment script will automatically install necessary system dependencies (like `conntrack`, `cri-dockerd`, `cri-tools`, and CNI plugins) for Debian/Ubuntu systems.*
 *   [Helm](https://helm.sh/docs/intro/install/)
 *   [Docker](https://docs.docker.com/get-docker/) (Required for building images and running the `none` driver)
 
-### For Quadlets Deployment
+### For Quadlets Deployment (Linux only)
 *   **Podman** (version 4.0+, with quadlet support)
 *   `envsubst` (from the `gettext` package — used to process config templates)
 *   *Note: Quadlets deployment uses native podman `.container` files managed by systemd, with each service running as an independent unit under `openchami.target`*
@@ -105,7 +158,12 @@ The deployment replaces the legacy `coresmd` plugin with a **Sidecar Pattern**:
 *   [Docker](https://docs.docker.com/get-docker/) with the **Compose plugin** (or standalone `docker-compose`)
 *   *Note: Docker Compose deployment uses standard Docker networking with port mappings*
 
-### Common Requirements
+### macOS Prerequisites
+*   [Docker Desktop](https://www.docker.com/products/docker-desktop/) (must be running)
+*   [Homebrew](https://brew.sh/) (for installing dependencies)
+*   The deploy script will automatically install: `gettext` (envsubst), `python3`/PyYAML, GNU `grep`, `minikube`, and `helm` via Homebrew
+
+### Common Requirements (Linux)
 *   Libvirt & `virt-install` (For local VM testing)
 *   `sudo` privileges (Required for networking and container management)
 

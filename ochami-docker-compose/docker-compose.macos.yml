@@ -1,0 +1,156 @@
+# docker-compose.macos.yml — Override for macOS (Docker Desktop)
+#
+# Docker Desktop on macOS does not support network_mode: host.
+# This override switches all services to a shared bridge network with
+# explicit port mappings and service-name DNS for inter-service communication.
+
+services:
+  postgres:
+    network_mode: null
+    networks:
+      - ochami-net
+
+  smd-init:
+    network_mode: null
+    networks:
+      - ochami-net
+    environment:
+      SMD_DBHOST: postgres
+
+  smd:
+    network_mode: null
+    networks:
+      - ochami-net
+    ports:
+      - "${SMD_PORT:-27779}:${SMD_PORT:-27779}"
+    environment:
+      SMD_DBHOST: postgres
+
+  bss-init:
+    network_mode: null
+    networks:
+      - ochami-net
+    environment:
+      BSS_DBHOST: postgres
+
+  bss:
+    network_mode: null
+    networks:
+      - ochami-net
+    ports:
+      - "${BSS_PORT:-27778}:${BSS_PORT:-27778}"
+    environment:
+      HSM_URL: "http://smd:${SMD_PORT:-27779}"
+      BSS_DBHOST: postgres
+      BSS_ENDPOINT: "bss"
+      NFD_URL: "http://http-server:${HTTP_PORT:-80}/hmi/v1/subscribe"
+      SMS_SERVER: "http://smd:${SMD_PORT:-27779}"
+
+  cloud-init:
+    network_mode: null
+    networks:
+      - ochami-net
+    ports:
+      - "${CLOUD_INIT_PORT:-27777}:${CLOUD_INIT_PORT:-27777}"
+    command:
+      - "/usr/local/bin/cloud-init-server"
+      - "--listen"
+      - "0.0.0.0:${CLOUD_INIT_PORT:-27777}"
+      - "--smd-url"
+      - "http://smd:${SMD_PORT:-27779}"
+      - "--cluster-name"
+      - "ochami"
+      - "--insecure"
+
+  power-control-init:
+    network_mode: null
+    networks:
+      - ochami-net
+    environment:
+      POSTGRES_HOST: postgres
+
+  power-control:
+    network_mode: null
+    networks:
+      - ochami-net
+    ports:
+      - "${PCS_PORT:-28007}:${PCS_PORT:-28007}"
+    environment:
+      SMS_SERVER: "http://smd:${SMD_PORT:-27779}"
+      POSTGRES_HOST: postgres
+
+  kea-init:
+    network_mode: null
+    networks:
+      - ochami-net
+    command:
+      - "db-init"
+      - "pgsql"
+      - "-h"
+      - "postgres"
+      - "-P"
+      - "${POSTGRES_PORT:-5432}"
+      - "-u"
+      - "${KEA_DB_USER:-kea-user}"
+      - "-p"
+      - "${KEA_DB_PASSWORD:-CHANGEME}"
+      - "-n"
+      - "${KEA_DB_NAME:-kea}"
+
+  kea:
+    network_mode: null
+    networks:
+      - ochami-net
+    ports:
+      - "67:67/udp"
+      - "68:68/udp"
+
+  kea-sidecar:
+    network_mode: null
+    networks:
+      - ochami-net
+    environment:
+      SMD_URL: "http://smd:${SMD_PORT:-27779}"
+      DB_HOST: postgres
+
+  http-server:
+    network_mode: null
+    networks:
+      - ochami-net
+    ports:
+      - "${HTTP_PORT:-80}:${HTTP_PORT:-80}"
+
+  tftp:
+    network_mode: null
+    networks:
+      - ochami-net
+    ports:
+      - "${TFTP_PORT:-69}:69/udp"
+
+  redfish-emulator:
+    network_mode: null
+    networks:
+      - ochami-net
+
+  kea-ctrl-agent:
+    network_mode: null
+    networks:
+      - ochami-net
+
+  stork-server:
+    network_mode: null
+    networks:
+      - ochami-net
+    ports:
+      - "${STORK_PORT:-28010}:${STORK_PORT:-28010}"
+
+  stork-agent:
+    network_mode: null
+    networks:
+      - ochami-net
+    environment:
+      STORK_AGENT_SERVER_URL: "http://stork-server:${STORK_PORT:-28010}"
+
+networks:
+  ochami-net:
+    driver: bridge

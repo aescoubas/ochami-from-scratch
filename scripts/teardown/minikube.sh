@@ -56,7 +56,9 @@ cleanup_host_networking
 # 4. Delete Minikube
 step "Deleting Minikube cluster..."
 if command_exists minikube; then
-    if minikube profile list -o json 2>/dev/null | grep -q '"Driver": "none"'; then
+    if $IS_MACOS; then
+        minikube delete
+    elif minikube profile list -o json 2>/dev/null | grep -q '"Driver": "none"'; then
         echo "Detected 'none' driver. Running delete with sudo to clean up root-owned artifacts..."
         sudo -E minikube delete
     else
@@ -96,10 +98,12 @@ if [ "$REMOVE_IMAGES" = true ]; then
     fi
 fi
 
-# Revert sysctl change
-if [ "$(sysctl -n fs.protected_regular)" = "0" ]; then
-    step "Reverting fs.protected_regular to 1..."
-    sudo sysctl -w fs.protected_regular=1 >/dev/null 2>&1 || true
+# Revert sysctl change (Linux only)
+if ! $IS_MACOS; then
+    if [ "$(sysctl -n fs.protected_regular 2>/dev/null)" = "0" ]; then
+        step "Reverting fs.protected_regular to 1..."
+        sudo sysctl -w fs.protected_regular=1 >/dev/null 2>&1 || true
+    fi
 fi
 
 info "=== Teardown Complete ==="
