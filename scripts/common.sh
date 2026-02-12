@@ -121,6 +121,16 @@ validate_ip() {
     return 0
 }
 
+validate_mac() {
+    local mac="$1"
+    local label="${2:-MAC address}"
+    if ! [[ "$mac" =~ ^[0-9A-Fa-f]{2}(:[0-9A-Fa-f]{2}){5}$ ]]; then
+        error "$label '$mac' is not a valid MAC address (expected XX:XX:XX:XX:XX:XX)."
+        return 1
+    fi
+    return 0
+}
+
 validate_cidr() {
     local cidr="$1"
     if ! [[ "$cidr" =~ ^[0-9]+$ ]] || (( cidr < 0 || cidr > 32 )); then
@@ -153,6 +163,55 @@ validate_interface_exists() {
             return 1
         fi
     fi
+    return 0
+}
+
+# --- CSV Validation ---
+
+validate_nodes_file() {
+    local file="$1"
+    local errors=0
+    local line_num=0
+
+    while IFS= read -r line || [ -n "$line" ]; do
+        line_num=$((line_num + 1))
+
+        # Skip comments and blank lines
+        [[ "$line" =~ ^[[:space:]]*# ]] && continue
+        [[ -z "${line// /}" ]] && continue
+
+        IFS=',' read -r mac ip component_id nid <<< "$line"
+
+        # Trim whitespace
+        mac="${mac// /}"
+        ip="${ip// /}"
+        component_id="${component_id// /}"
+        nid="${nid// /}"
+
+        if [ -z "$mac" ] || [ -z "$ip" ] || [ -z "$component_id" ] || [ -z "$nid" ]; then
+            error "Line $line_num: Missing field(s). Expected: mac,ip,component_id,nid"
+            errors=$((errors + 1))
+            continue
+        fi
+
+        if ! validate_mac "$mac" "Line $line_num MAC"; then
+            errors=$((errors + 1))
+        fi
+
+        if ! validate_ip "$ip" "Line $line_num IP"; then
+            errors=$((errors + 1))
+        fi
+
+        if ! validate_positive_int "$nid" "Line $line_num NID"; then
+            errors=$((errors + 1))
+        fi
+    done < "$file"
+
+    if [ "$errors" -gt 0 ]; then
+        error "Found $errors error(s) in nodes file '$file'."
+        return 1
+    fi
+
     return 0
 }
 
@@ -583,6 +642,147 @@ register_bss_defaults() {
     return 1
 }
 
+# --- Hardware Node Registration ---
+
+register_hardware_nodes_from_file() {
+    local file="$1"
+    local host_ip="$2"
+    local orchestrator="${ORCHESTRATOR:-minikube}"
+    local artifacts_url="http://${host_ip}:${HTTP_PORT}/artifacts"
+
+    # Resolve SMD/BSS service IPs (orchestrator-aware)
+    local smd_ip bss_ip
+    if [ "$orchestrator" == "quadlets" ] || [ "$orchestrator" == "docker-compose" ]; then
+        smd_ip="$host_ip"
+        bss_ip="$host_ip"
+    else
+        smd_ip=$(minikube kubectl -- get svc ochami-smd -n ochami -o jsonpath='{.spec.clusterIP}')
+        bss_ip=$(minikube kubectl -- get svc ochami-bss -n ochami -o jsonpath='{.spec.clusterIP}')
+    fi
+
+    if [ -z "$smd_ip" ] || [ -z "$bss_ip" ]; then
+        error "Could not resolve SMD or BSS service IP."
+        return 1
+    fi
+
+    echo "SMD endpoint: http://${smd_ip}:${SMD_PORT}"
+    echo "BSS endpoint: http://${bss_ip}:${BSS_PORT}"
+
+    local node_count=0
+    while IFS= read -r line || [ -n "$line" ]; do
+        # Skip comments and blank lines
+        [[ "$line" =~ ^[[:space:]]*# ]] && continue
+        [[ -z "${line// /}" ]] && continue
+
+        IFS=',' read -r mac ip component_id nid <<< "$line"
+        mac="${mac// /}"
+        ip="${ip// /}"
+        component_id="${component_id// /}"
+        nid="${nid// /}"
+
+        node_count=$((node_count + 1))
+        echo ""
+        step "Registering node $node_count: $component_id (MAC=$mac, IP=$ip, NID=$nid)"
+
+        # 1. Register Component in SMD
+        echo "  Creating Node Component in SMD..."
+        local http_code
+        http_code=$(curl -s -o /dev/null -w "%{http_code}" -X POST \
+            "http://${smd_ip}:${SMD_PORT}/hsm/v2/State/Components" \
+            -H "Content-Type: application/json" \
+            -d "{
+                \"Components\": [{
+                    \"ID\": \"${component_id}\",
+                    \"Type\": \"Node\",
+                    \"State\": \"On\",
+                    \"Flag\": \"OK\",
+                    \"Role\": \"Compute\",
+                    \"NID\": ${nid},
+                    \"NetType\": \"Sling\"
+                }]
+            }")
+        if [[ "$http_code" -ge 200 && "$http_code" -lt 300 ]]; then
+            echo "  -> Component created ($http_code)"
+        else
+            echo "  -> Component registration returned $http_code (may already exist)"
+        fi
+
+        # 2. Register EthernetInterface in SMD
+        echo "  Registering EthernetInterface in SMD..."
+        http_code=$(curl -s -o /dev/null -w "%{http_code}" -X POST \
+            "http://${smd_ip}:${SMD_PORT}/hsm/v2/Inventory/EthernetInterfaces" \
+            -H "Content-Type: application/json" \
+            -d "{
+                \"Description\": \"Hardware Node NIC\",
+                \"MACAddress\": \"${mac}\",
+                \"IPAddresses\": [{\"IPAddress\": \"${ip}\"}],
+                \"ComponentID\": \"${component_id}\"
+            }")
+        if [[ "$http_code" -ge 200 && "$http_code" -lt 300 ]]; then
+            echo "  -> EthernetInterface created ($http_code)"
+        else
+            echo "  -> EthernetInterface registration returned $http_code (may already exist)"
+        fi
+
+        # 3. Register per-node boot params in BSS
+        echo "  Registering boot parameters in BSS..."
+        http_code=$(curl -s -o /dev/null -w "%{http_code}" -X PUT \
+            "http://${bss_ip}:${BSS_PORT}/boot/v1/bootparameters" \
+            -H "Content-Type: application/json" \
+            -d "{
+                \"hosts\": [\"${component_id}\"],
+                \"macs\": [\"${mac}\"],
+                \"kernel\": \"${artifacts_url}/vmlinuz-lts\",
+                \"initrd\": \"${artifacts_url}/initramfs-lts\",
+                \"params\": \"console=ttyS0 ip=dhcp rd.neednet=1 root=live:${artifacts_url}/rootfs.squashfs\"
+            }")
+        if [[ "$http_code" -ge 200 && "$http_code" -lt 300 ]]; then
+            echo "  -> Boot parameters registered ($http_code)"
+        else
+            echo "  -> Boot parameters registration returned $http_code"
+        fi
+
+        # 4. Apply boot_mac database workaround
+        echo "  Applying boot_mac database workaround..."
+        local update_cmd="psql -U ${BSS_DB_USER} -d ${BSS_DB_NAME} -c \"UPDATE nodes SET boot_mac = '${mac}' WHERE xname = '${component_id}';\""
+
+        if [ "$orchestrator" == "docker-compose" ]; then
+            local pg_container
+            pg_container=$(docker ps --format "{{.Names}}" | grep postgres | head -n 1)
+            if [ -n "$pg_container" ]; then
+                if docker exec "$pg_container" bash -c "$update_cmd" >/dev/null 2>&1; then
+                    echo "  -> Database updated (Docker Compose)"
+                else
+                    warn "  Failed to update boot_mac in database (Docker Compose)"
+                fi
+            else
+                warn "  Postgres container not found (Docker Compose)"
+            fi
+        elif [ "$orchestrator" == "quadlets" ]; then
+            local pg_container
+            pg_container=$(sudo podman ps --format "{{.Names}}" | grep postgres | head -n 1)
+            if [ -n "$pg_container" ]; then
+                if sudo podman exec "$pg_container" bash -c "$update_cmd" >/dev/null 2>&1; then
+                    echo "  -> Database updated (Quadlets)"
+                else
+                    warn "  Failed to update boot_mac in database (Quadlets)"
+                fi
+            else
+                warn "  Postgres container not found (Quadlets)"
+            fi
+        else
+            if minikube kubectl -- exec -n ochami ochami-postgres -- bash -c "$update_cmd" >/dev/null 2>&1; then
+                echo "  -> Database updated (Minikube)"
+            else
+                warn "  Failed to update boot_mac in database (Minikube)"
+            fi
+        fi
+    done < "$file"
+
+    echo ""
+    info "Registered $node_count hardware node(s) from $file."
+}
+
 # --- VM Helpers ---
 
 create_and_register_vms() {
@@ -628,6 +828,7 @@ parse_common_deploy_args() {
     PHY_IFACE=""
     MODE="$DEFAULT_MODE"
     NUM_VMS="$DEFAULT_NUM_VMS"
+    NODES_FILE=""
 
     while [[ "$#" -gt 0 ]]; do
         case $1 in
@@ -641,6 +842,7 @@ parse_common_deploy_args() {
             --phy-iface) PHY_IFACE="$2"; shift ;;
             --mode) MODE="$2"; shift ;;
             --vms) NUM_VMS="$2"; shift ;;
+            --nodes-file) NODES_FILE="$2"; shift ;;
             -h|--help) return 2 ;;
             *) error "Unknown parameter: $1"; exit 1 ;;
         esac
@@ -680,6 +882,14 @@ validate_common_deploy_args() {
         validate_ip "$DHCP_NETMASK" "--dhcp-netmask" || exit 1
     fi
 
+    # Validate nodes file
+    if [ -n "$NODES_FILE" ]; then
+        if [ ! -f "$NODES_FILE" ]; then
+            error "Nodes file '$NODES_FILE' does not exist."
+            exit 1
+        fi
+    fi
+
     # Apply defaults
     if [ -z "$DHCP_START" ]; then
         DHCP_START="$DEFAULT_DHCP_START"
@@ -703,6 +913,7 @@ Common options:
   --phy-iface NAME       Physical interface to bridge
   --mode MODE            'libvirt' or 'hardware' (default: $DEFAULT_MODE)
   --vms N                Number of VMs to create (default: $DEFAULT_NUM_VMS)
+  --nodes-file FILE      CSV file with hardware nodes to register (mac,ip,component_id,nid)
   -h, --help             Show help
 EOF
 }

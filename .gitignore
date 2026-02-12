@@ -7,6 +7,9 @@ ochami-bss/
 ochami-coresmd/
 ochami-cloud-init/
 
+# Hardware node inventory (user-specific)
+nodes.csv
+
 # Docker Compose generated files
 ochami-docker-compose/.env
 ochami-docker-compose/configs/kea-dhcp4.conf

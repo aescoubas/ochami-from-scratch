@@ -201,6 +201,14 @@ wait_for_url "http://localhost:${STORK_PORT}/api/version" "Stork (Kea DHCP Monit
 step "Configuring BSS Default Boot Parameters..."
 register_bss_defaults "localhost" "$HOST_IP" "ds=nocloud-net;s=http://${HOST_IP}:${HTTP_PORT}/cloud-init/"
 
+# 8b. Register hardware nodes from file
+if [ -n "$NODES_FILE" ]; then
+    step "Registering hardware nodes from $NODES_FILE..."
+    validate_nodes_file "$NODES_FILE"
+    export ORCHESTRATOR="docker-compose"
+    register_hardware_nodes_from_file "$NODES_FILE" "$HOST_IP"
+fi
+
 # 9. Create VMs
 if [ "$NUM_VMS" -gt 0 ]; then
     if $IS_MACOS; then

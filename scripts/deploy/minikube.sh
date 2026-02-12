@@ -180,6 +180,14 @@ fi
 
 register_bss_defaults "$BSS_IP" "$HOST_IP" "ds=nocloud-net;s=http://${HOST_IP}:${HTTP_PORT}/cloud-init/"
 
+# 5c. Register hardware nodes from file
+if [ -n "$NODES_FILE" ]; then
+    step "Registering hardware nodes from $NODES_FILE..."
+    validate_nodes_file "$NODES_FILE"
+    export ORCHESTRATOR="minikube"
+    register_hardware_nodes_from_file "$NODES_FILE" "$HOST_IP"
+fi
+
 # 6. Create VMs
 if [ "$NUM_VMS" -gt 0 ]; then
     if $IS_MACOS; then

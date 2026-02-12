@@ -210,6 +210,7 @@ To deploy with test VMs:
 *   `--phy-iface IFACE`: Bridge a physical interface for bare-metal testing
 *   `--ip ADDRESS`: Set the PXE server IP (default: 192.168.100.2)
 *   `--cidr CIDR`: Set the network CIDR (default: 24)
+*   `--nodes-file FILE`: CSV file with hardware nodes to auto-register (see [Automated Hardware Node Registration](#automated-hardware-node-registration))
 
 ### What the deployment script does:
 
@@ -508,15 +509,53 @@ Ensure your hardware node is connected to the physical interface specified via `
 *   **Warning:** Do not run this on a shared corporate network. Use an isolated switch or direct connection.
 *   **Firewall:** Ensure your host firewall allows traffic on ports 67/udp, 69/udp, and 30080/tcp on the PXE interface.
 
-### 4b. Register the Hardware Node
-Locate the MAC address of your hardware node and register it using the hardware-specific script:
+### 4b. Automated Hardware Node Registration
+
+You can register multiple hardware nodes automatically during deployment using a CSV inventory file with `--nodes-file`:
+
+1.  **Create the inventory file:**
+
+    ```bash
+    cp nodes.csv.example nodes.csv
+    ```
+
+    Edit `nodes.csv` with your hardware inventory:
+    ```csv
+    # mac,ip,component_id,nid
+    50:6b:4b:d5:1d:5d,148.187.1.69,x1000c0s0b0n0,1000
+    AA:BB:CC:DD:EE:01,148.187.1.70,x1000c0s1b0n0,1001
+    ```
+
+2.  **Deploy with automatic registration:**
+
+    ```bash
+    ./deploy.sh --method minikube --mode hardware --interface ens160 \
+      --ip 148.187.1.68 --cidr 28 \
+      --dhcp-start 148.187.1.69 --dhcp-end 148.187.1.78 \
+      --nodes-file nodes.csv
+    ```
+
+    The deploy script will:
+    - Start all OpenCHAMI services
+    - Register BSS default boot parameters
+    - Read the CSV and register each node in SMD + BSS
+    - Apply the `boot_mac` database workaround for each node
+
+    After deployment, the hardware nodes will PXE boot without any manual registration steps.
+
+### 4c. Manual Hardware Node Registration
+
+To register a single hardware node after deployment, use the standalone script:
 
 ```bash
-# Usage: ./scripts/register_hardware_node.sh <MAC_ADDRESS> <IP_ADDRESS> [COMPONENT_ID]
-./scripts/register_hardware_node.sh 00:11:22:33:44:55 192.168.50.50 x1000c0s0b0n0
+# Usage: ./scripts/register_hardware_node.sh <MAC_ADDRESS> <IP_ADDRESS> [COMPONENT_ID] [NID]
+./scripts/register_hardware_node.sh 00:11:22:33:44:55 192.168.50.50 x1000c0s0b0n0 1000
+
+# For quadlets or docker-compose deployments, set the ORCHESTRATOR env var:
+ORCHESTRATOR=quadlets ./scripts/register_hardware_node.sh 00:11:22:33:44:55 192.168.50.50
 ```
 
-### 4c. Boot the Hardware
+### 4d. Boot the Hardware
 Power on the node. Once registered and synced, Kea will assign the static production IP and serve the boot image.
 
 ## Cleanup
