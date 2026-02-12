@@ -122,9 +122,12 @@ else
         echo "  -> Failed ($HTTP_CODE)."
     fi
 
-    # 5. Apply boot_mac database workaround
-    echo "Applying boot_mac database workaround..."
-    UPDATE_CMD="psql -U ${BSS_DB_USER} -d ${BSS_DB_NAME} -c \"UPDATE nodes SET boot_mac = '${MAC_ADDRESS}' WHERE xname = '${COMPONENT_ID}';\""
+    # 5. Apply boot_mac + nid database workaround
+    # BSS API doesn't properly save boot_mac or nid in the nodes table.
+    # Without boot_mac, BSS can't look up boot params by MAC.
+    # Without nid, BSS treats the node as unknown/disabled.
+    echo "Applying BSS nodes table workaround (boot_mac + nid)..."
+    UPDATE_CMD="psql -U ${BSS_DB_USER} -d ${BSS_DB_NAME} -c \"UPDATE nodes SET boot_mac = '${MAC_ADDRESS}', nid = ${NID} WHERE xname = '${COMPONENT_ID}';\""
 
     if [ "$ORCHESTRATOR" == "docker-compose" ]; then
         PG_CONTAINER=$(docker ps --format "{{.Names}}" | grep postgres | head -n 1)

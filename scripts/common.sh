@@ -742,9 +742,12 @@ register_hardware_nodes_from_file() {
             echo "  -> Boot parameters registration returned $http_code"
         fi
 
-        # 4. Apply boot_mac database workaround
-        echo "  Applying boot_mac database workaround..."
-        local update_cmd="psql -U ${BSS_DB_USER} -d ${BSS_DB_NAME} -c \"UPDATE nodes SET boot_mac = '${mac}' WHERE xname = '${component_id}';\""
+        # 4. Apply boot_mac + nid database workaround
+        # BSS API doesn't properly save boot_mac or nid in the nodes table.
+        # Without boot_mac, BSS can't look up boot params by MAC.
+        # Without nid, BSS treats the node as unknown/disabled.
+        echo "  Applying BSS nodes table workaround (boot_mac + nid)..."
+        local update_cmd="psql -U ${BSS_DB_USER} -d ${BSS_DB_NAME} -c \"UPDATE nodes SET boot_mac = '${mac}', nid = ${nid} WHERE xname = '${component_id}';\""
 
         if [ "$orchestrator" == "docker-compose" ]; then
             local pg_container

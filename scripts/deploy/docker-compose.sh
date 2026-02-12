@@ -233,7 +233,7 @@ echo "  $COMPOSE_CMD ${COMPOSE_FILES[*]} logs -f"
 echo ""
 if $IS_MACOS; then
     echo "To register a hardware node:"
-    echo "  ./scripts/register_hardware_node.sh <MAC_ADDRESS> <IP_ADDRESS> [COMPONENT_ID]"
+    echo "  ./scripts/register_hardware_node.sh <MAC_ADDRESS> <IP_ADDRESS> [COMPONENT_ID] [NID]"
     echo ""
     echo "Note: VM creation via libvirt is not available on macOS."
 elif [ "$NUM_VMS" -gt 0 ]; then

@@ -7,7 +7,7 @@ set -e
 if [[ "$(uname -s)" == "Darwin" ]]; then
     echo "Error: Local VM registration requires libvirt and is not supported on macOS." >&2
     echo "To register physical hardware nodes, use:" >&2
-    echo "  ./scripts/register_hardware_node.sh <MAC_ADDRESS> <IP_ADDRESS> [COMPONENT_ID]" >&2
+    echo "  ./scripts/register_hardware_node.sh <MAC_ADDRESS> <IP_ADDRESS> [COMPONENT_ID] [NID]" >&2
     exit 1
 fi
 
@@ -160,11 +160,12 @@ else
       
     echo "Boot parameters registered."
 
-    # WORKAROUND: BSS currently fails to save the boot_mac in the nodes table.
-    # We manually update it here to ensure the node can look up its boot script by MAC.
-    echo "Applying workaround: Updating boot_mac in BSS database for $COMPONENT_ID..."
-    
-    UPDATE_CMD="psql -U bss-user -d bssdb -c \"UPDATE nodes SET boot_mac = '$MAC' WHERE xname = '$COMPONENT_ID';\""
+    # WORKAROUND: BSS API doesn't properly save boot_mac or nid in the nodes table.
+    # Without boot_mac, BSS can't look up boot params by MAC.
+    # Without nid, BSS treats the node as unknown/disabled.
+    echo "Applying workaround: Updating boot_mac + nid in BSS database for $COMPONENT_ID..."
+
+    UPDATE_CMD="psql -U bss-user -d bssdb -c \"UPDATE nodes SET boot_mac = '$MAC', nid = $NID WHERE xname = '$COMPONENT_ID';\""
     
     if [ "$ORCHESTRATOR" == "docker-compose" ]; then
         # Find postgres container via docker

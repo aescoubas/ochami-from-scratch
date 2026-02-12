@@ -46,7 +46,7 @@ docker compose -p ochami -f ochami-docker-compose/docker-compose.yml -f ochami-d
 
 To register a hardware node:
 ```bash
-./scripts/register_hardware_node.sh <MAC_ADDRESS> <IP_ADDRESS> [COMPONENT_ID]
+ORCHESTRATOR=docker-compose ./scripts/register_hardware_node.sh <MAC_ADDRESS> <IP_ADDRESS> [COMPONENT_ID] [NID]
 ```
 
 To teardown:
@@ -132,12 +132,13 @@ The table below shows which combinations of **platform**, **deployment method**,
 
 **Legend:**
 *   **Supported** — full functionality including VM creation, PXE boot, and all services.
-*   **Supported (services only)** — OpenCHAMI services run and APIs are accessible; VM creation and host PXE boot are not available. Register physical nodes via `./scripts/register_hardware_node.sh`.
+*   **Supported (services only)** — OpenCHAMI services run and APIs are accessible; VM creation and host PXE boot are not available. Register physical nodes via `--nodes-file` or `./scripts/register_hardware_node.sh`.
 *   **—** — not supported on this platform.
 
 **Key notes:**
-*   **libvirt VMs** mode (`--mode libvirt`, the default) creates virtual machines with KVM for testing. This requires Linux with libvirt/KVM — it is unavailable on macOS.
-*   **hardware** mode (`--mode hardware`) skips VM creation and targets physical nodes. On macOS, services are accessible via `localhost` but PXE booting from the macOS host is not supported (Docker Desktop cannot bridge DHCP to physical networks).
+*   **libvirt VMs** mode (`--mode libvirt`, the default) creates virtual machines with KVM for testing. This requires Linux with libvirt/KVM — it is unavailable on macOS. The `--vms N` flag controls how many VMs to create.
+*   **hardware** mode (`--mode hardware`) skips VM creation and targets physical nodes. Use `--nodes-file` to auto-register nodes during deployment, or register them individually afterward with `./scripts/register_hardware_node.sh`. On macOS, services are accessible via `localhost` but PXE booting from the macOS host is not supported (Docker Desktop cannot bridge DHCP to physical networks).
+*   `--vms` and `--nodes-file` are independent — you can use either or both. Omitting both deploys services only.
 *   **quadlets** requires systemd and is Linux-only.
 *   On macOS, Docker Compose uses bridge networking (not `host` mode) with explicit port mappings. Minikube uses the `docker` driver instead of `none`.
 
@@ -210,7 +211,7 @@ To deploy with test VMs:
 *   `--phy-iface IFACE`: Bridge a physical interface for bare-metal testing
 *   `--ip ADDRESS`: Set the PXE server IP (default: 192.168.100.2)
 *   `--cidr CIDR`: Set the network CIDR (default: 24)
-*   `--nodes-file FILE`: CSV file with hardware nodes to auto-register (see [Automated Hardware Node Registration](#automated-hardware-node-registration))
+*   `--nodes-file FILE`: CSV file with hardware nodes to auto-register (see [Automated Hardware Node Registration](#4b-automated-hardware-node-registration))
 
 ### What the deployment script does:
 
@@ -221,7 +222,8 @@ To deploy with test VMs:
 | 3. Start Orchestrator | Starts Minikube with `none` driver | N/A (uses systemd) | N/A (uses Docker daemon) |
 | 4. Configure Network | Creates `virbr-pxe` bridge, assigns 192.168.100.2 | Same | Same |
 | 5. Deploy Services | Helm install to Kubernetes | Installs `.container` quadlet files + `openchami.target` | Docker Compose up |
-| 6. Create VMs | Creates Libvirt VMs if `--vms` specified | Same | Same |
+| 6. Register Hardware Nodes | Registers nodes from CSV if `--nodes-file` specified | Same | Same |
+| 7. Create VMs | Creates Libvirt VMs if `--vms` specified | Same | Same |
 
 ### Key Differences Between Methods
 
@@ -262,6 +264,17 @@ You can also combine this with custom IP ranges if your physical network require
 ./deploy.sh --method minikube --phy-iface eth1 --ip 192.168.50.1 --cidr 24 \
             --dhcp-start 192.168.50.100 --dhcp-end 192.168.50.200
 ```
+
+To fully automate hardware deployment (services + node registration in one command), add `--nodes-file`:
+
+```bash
+./deploy.sh --method minikube --mode hardware --interface ens160 \
+            --ip 148.187.1.68 --cidr 28 \
+            --dhcp-start 148.187.1.69 --dhcp-end 148.187.1.78 \
+            --nodes-file nodes.csv
+```
+
+See [Automated Hardware Node Registration](#4b-automated-hardware-node-registration) for the CSV format.
 
 ## Step 2: Verify the Deployment
 
