@@ -36,7 +36,7 @@
       {
         "name": "iPXE",
         "test": "substring(option[77].hex,0,4) == 'iPXE'",
-        "boot-file-name": "http://${HOST_IP}:${HTTP_PORT}/boot/v1/bootscript?mac=${net0/mac}"
+        "boot-file-name": "http://${HOST_IP}:${HTTP_PORT}/boot/v1/bootscript?mac=${mac}"
       },
       {
         "name": "BIOS",

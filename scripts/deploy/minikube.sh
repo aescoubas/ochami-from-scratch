@@ -121,7 +121,7 @@ kea:
     name: "kea"
     user: "kea-user"
     password: "CHANGEME"
-bootScriptUrl: "http://$HOST_IP/boot/v1/bootscript?mac=\${net0/mac}"
+bootScriptUrl: "http://$HOST_IP/boot/v1/bootscript?mac=\${mac}"
 EOF
 
 if [ "$NUM_VMS" -gt 0 ]; then

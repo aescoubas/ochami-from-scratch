@@ -155,7 +155,7 @@ EOF
 mkdir -p "$COMPOSE_DIR/configs"
 
 if [ -f "$COMPOSE_DIR/configs/kea-dhcp4.conf.template" ]; then
-    # Use explicit variable list to protect iPXE variable ${net0/mac} from substitution
+    # Use explicit variable list to protect iPXE variable ${mac} from substitution
     envsubst '${PXE_INTERFACE} ${KEA_DB_NAME} ${KEA_DB_USER} ${KEA_DB_PASSWORD} ${POSTGRES_PORT} ${HOST_IP} ${HTTP_PORT} ${DHCP_START} ${DHCP_END} ${PXE_CIDR}' \
         < "$COMPOSE_DIR/configs/kea-dhcp4.conf.template" > "$COMPOSE_DIR/configs/kea-dhcp4.conf"
     echo "Generated kea-dhcp4.conf"
