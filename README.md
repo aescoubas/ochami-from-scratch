@@ -761,6 +761,45 @@ You can verify the emulator works by sending a reboot command and watching the V
 - Ensure port 69/UDP is not blocked or used by another process (e.g., `dnsmasq`)
 - Test TFTP manually: `tftp 192.168.100.2 -c get undionly.kpxe`
 
+#### BSS returns 5xx / node shows "Unknown/disabled" in BSS logs
+
+If BSS logs show `Unknown/disabled node` and the iPXE client gets an HTTP 5xx error, the node is registered in SMD but BSS doesn't recognize it as a known node. This is caused by the BSS `boot_mac` + `nid` workaround (see [Known Issues & Workarounds](#known-issues--workarounds)).
+
+**Diagnosis:**
+```bash
+# Check the BSS nodes table
+# For Minikube:
+minikube kubectl -- exec -n ochami ochami-postgres -- \
+  psql -U bss-user -d bssdb -c "SELECT xname, boot_mac, nid FROM nodes;"
+
+# For Quadlets:
+sudo podman exec $(sudo podman ps --format "{{.Names}}" | grep postgres | head -n 1) \
+  psql -U bss-user -d bssdb -c "SELECT xname, boot_mac, nid FROM nodes;"
+
+# For Docker Compose:
+docker exec $(docker ps --format "{{.Names}}" | grep postgres | head -n 1) \
+  psql -U bss-user -d bssdb -c "SELECT xname, boot_mac, nid FROM nodes;"
+```
+
+If `boot_mac` is NULL or `nid` is 0, apply the fix manually:
+```bash
+# Replace values with your node's MAC, NID, and xname
+minikube kubectl -- exec -n ochami ochami-postgres -- \
+  psql -U bss-user -d bssdb -c "UPDATE nodes SET boot_mac = '50:6b:4b:d5:1d:5d', nid = 1000 WHERE xname = 'x1000c0s0b0n0';"
+```
+
+Then restart BSS to reload its cached state:
+```bash
+# Minikube:
+minikube kubectl -- delete pod -n ochami -l app.kubernetes.io/component=bss
+# Quadlets:
+sudo systemctl restart bss
+# Docker Compose:
+docker compose -p ochami -f ochami-docker-compose/docker-compose.yml restart bss
+```
+
+> **Note:** The deploy scripts (`--nodes-file`) and registration scripts apply this workaround automatically. This manual fix is only needed if the workaround failed silently or if you registered nodes through the API directly.
+
 #### iPXE loads but fails to download boot script
 
 **For Minikube:**
@@ -940,3 +979,42 @@ echo "=== BSS Health ===" && curl -s http://localhost:27778/boot/v1/service/stat
 echo "=== HTTP Server ===" && curl -s -o /dev/null -w "%{http_code}" http://localhost:80/boot.ipxe
 echo "=== VM Status ===" && sudo virsh list --all
 ```
+
+## Known Issues & Workarounds
+
+### BSS `boot_mac` and `nid` not saved by API
+
+**Affected component:** BSS (Boot Script Service)
+
+**Problem:** When boot parameters are registered via the BSS API (`PUT /boot/v1/bootparameters`), BSS creates a row in its internal `nodes` table but fails to populate the `boot_mac` and `nid` columns (they default to NULL and 0 respectively). Without `boot_mac`, BSS cannot look up boot parameters when a node requests a boot script by MAC address. Without `nid`, BSS treats the node as "Unknown/disabled" even though it can see the node in SMD.
+
+**Symptom:** BSS logs show `Unknown/disabled node, ID: 'x1000c0s0b0n0'` and the iPXE client receives an HTTP 5xx error. In severe cases, BSS panics with `slice bounds out of range [-1:]` in `checkState`.
+
+**Workaround:** The deploy scripts and registration scripts automatically apply a direct database update after registering boot parameters:
+
+```sql
+UPDATE nodes SET boot_mac = '<MAC>', nid = <NID> WHERE xname = '<COMPONENT_ID>';
+```
+
+This workaround is applied in:
+- `register_hardware_nodes_from_file()` in `scripts/common.sh` (batch registration via `--nodes-file`)
+- `scripts/register_hardware_node.sh` (standalone hardware node registration)
+- `scripts/register_local_vm.sh` (VM registration)
+
+After the database update, BSS must be restarted (or must poll SMD again) to pick up the change in its cached state.
+
+### Kea DHCP `${net0/mac}` resolves wrong NIC on multi-NIC hardware
+
+**Affected component:** Kea DHCP configuration
+
+**Problem:** The iPXE variable `${net0/mac}` always refers to the first network interface (net0), which may not be the NIC that actually PXE booted. On multi-NIC hardware (e.g., ConnectX-5 dual-port), the boot NIC might be `net3` while `${net0/mac}` returns a completely different MAC address.
+
+**Fix:** The Kea config templates use `${mac}` instead of `${net0/mac}`. The `${mac}` variable in Kea's DHCP context resolves to the MAC address from the DHCP request itself, which is always the correct boot NIC.
+
+### `configure_hardware_network()` stdout pollution
+
+**Affected component:** `scripts/common.sh`
+
+**Problem:** `configure_hardware_network()` is called via command substitution (`PXE_INTERFACE=$(configure_hardware_network ...)`), so its stdout is captured as the return value. Status messages printed to stdout were concatenated with the interface name, producing values like `"Checking for conflicting...ens160"` instead of `"ens160"`.
+
+**Fix:** All informational messages in `configure_hardware_network()` are now redirected to stderr (`>&2`). Only the final interface name is printed to stdout.

@@ -180,16 +180,20 @@ validate_nodes_file() {
         [[ "$line" =~ ^[[:space:]]*# ]] && continue
         [[ -z "${line// /}" ]] && continue
 
-        IFS=',' read -r mac ip component_id nid <<< "$line"
+        IFS=',' read -r mac ip component_id nid bmc_ip bmc_user bmc_pass <<< "$line"
 
         # Trim whitespace
         mac="${mac// /}"
         ip="${ip// /}"
         component_id="${component_id// /}"
         nid="${nid// /}"
+        bmc_ip="${bmc_ip// /}"
+        bmc_user="${bmc_user// /}"
+        bmc_pass="${bmc_pass// /}"
 
-        if [ -z "$mac" ] || [ -z "$ip" ] || [ -z "$component_id" ] || [ -z "$nid" ]; then
-            error "Line $line_num: Missing field(s). Expected: mac,ip,component_id,nid"
+        if [ -z "$mac" ] || [ -z "$ip" ] || [ -z "$component_id" ] || [ -z "$nid" ] \
+            || [ -z "$bmc_ip" ] || [ -z "$bmc_user" ] || [ -z "$bmc_pass" ]; then
+            error "Line $line_num: Missing field(s). Expected: mac,ip,component_id,nid,bmc_ip,bmc_user,bmc_pass"
             errors=$((errors + 1))
             continue
         fi
@@ -203,6 +207,10 @@ validate_nodes_file() {
         fi
 
         if ! validate_positive_int "$nid" "Line $line_num NID"; then
+            errors=$((errors + 1))
+        fi
+
+        if ! validate_ip "$bmc_ip" "Line $line_num BMC IP"; then
             errors=$((errors + 1))
         fi
     done < "$file"
@@ -674,15 +682,21 @@ register_hardware_nodes_from_file() {
         [[ "$line" =~ ^[[:space:]]*# ]] && continue
         [[ -z "${line// /}" ]] && continue
 
-        IFS=',' read -r mac ip component_id nid <<< "$line"
+        IFS=',' read -r mac ip component_id nid bmc_ip bmc_user bmc_pass <<< "$line"
         mac="${mac// /}"
         ip="${ip// /}"
         component_id="${component_id// /}"
         nid="${nid// /}"
+        bmc_ip="${bmc_ip// /}"
+        bmc_user="${bmc_user// /}"
+        bmc_pass="${bmc_pass// /}"
+
+        # Derive BMC xname by stripping the node suffix (e.g., x1000c0s0b0n0 -> x1000c0s0b0)
+        local bmc_xname="${component_id%n[0-9]*}"
 
         node_count=$((node_count + 1))
         echo ""
-        step "Registering node $node_count: $component_id (MAC=$mac, IP=$ip, NID=$nid)"
+        step "Registering node $node_count: $component_id (MAC=$mac, IP=$ip, NID=$nid, BMC=$bmc_ip)"
 
         # 1. Register Component in SMD
         echo "  Creating Node Component in SMD..."
@@ -724,7 +738,42 @@ register_hardware_nodes_from_file() {
             echo "  -> EthernetInterface registration returned $http_code (may already exist)"
         fi
 
-        # 3. Register per-node boot params in BSS
+        # 3. Register RedfishEndpoint in SMD
+        echo "  Registering RedfishEndpoint for BMC ($bmc_xname) at $bmc_ip..."
+        http_code=$(curl -s -o /dev/null -w "%{http_code}" -X POST \
+            "http://${smd_ip}:${SMD_PORT}/hsm/v2/Inventory/RedfishEndpoints" \
+            -H "Content-Type: application/json" \
+            -d "{
+                \"ID\": \"${bmc_xname}\",
+                \"RediscoverOnUpdate\": true,
+                \"Hostname\": \"${bmc_ip}\",
+                \"User\": \"${bmc_user}\",
+                \"Password\": \"${bmc_pass}\"
+            }")
+        if [ "$http_code" -eq 409 ]; then
+            echo "  -> Endpoint exists (409). Updating via PUT to trigger rediscovery..."
+            curl -s -X PUT "http://${smd_ip}:${SMD_PORT}/hsm/v2/Inventory/RedfishEndpoints/${bmc_xname}" \
+                -H "Content-Type: application/json" \
+                -d "{
+                    \"ID\": \"${bmc_xname}\",
+                    \"RediscoverOnUpdate\": true,
+                    \"Hostname\": \"${bmc_ip}\",
+                    \"User\": \"${bmc_user}\",
+                    \"Password\": \"${bmc_pass}\"
+                }" > /dev/null
+        elif [[ "$http_code" -ge 200 && "$http_code" -lt 300 ]]; then
+            echo "  -> RedfishEndpoint created ($http_code)"
+        else
+            echo "  -> RedfishEndpoint registration returned $http_code"
+        fi
+
+        # 4. Trigger Redfish Discovery
+        echo "  Triggering SMD Redfish discovery for ${bmc_xname}..."
+        curl -s -X POST "http://${smd_ip}:${SMD_PORT}/hsm/v2/Inventory/Discover" \
+            -H "Content-Type: application/json" \
+            -d "{\"xnames\":[\"${bmc_xname}\"]}" > /dev/null
+
+        # 5. Register per-node boot params in BSS
         echo "  Registering boot parameters in BSS..."
         http_code=$(curl -s -o /dev/null -w "%{http_code}" -X PUT \
             "http://${bss_ip}:${BSS_PORT}/boot/v1/bootparameters" \
@@ -742,7 +791,7 @@ register_hardware_nodes_from_file() {
             echo "  -> Boot parameters registration returned $http_code"
         fi
 
-        # 4. Apply boot_mac + nid database workaround
+        # 6. Apply boot_mac + nid database workaround
         # BSS API doesn't properly save boot_mac or nid in the nodes table.
         # Without boot_mac, BSS can't look up boot params by MAC.
         # Without nid, BSS treats the node as unknown/disabled.
@@ -916,7 +965,7 @@ Common options:
   --phy-iface NAME       Physical interface to bridge
   --mode MODE            'libvirt' or 'hardware' (default: $DEFAULT_MODE)
   --vms N                Number of VMs to create (default: $DEFAULT_NUM_VMS)
-  --nodes-file FILE      CSV file with hardware nodes to register (mac,ip,component_id,nid)
+  --nodes-file FILE      CSV file with hardware nodes (mac,ip,component_id,nid,bmc_ip,bmc_user,bmc_pass)
   -h, --help             Show help
 EOF
 }

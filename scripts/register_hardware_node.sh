@@ -8,9 +8,9 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/common.sh"
 
-if [ "$#" -lt 2 ]; then
-    echo "Usage: $0 <MAC_ADDRESS> <IP_ADDRESS> [COMPONENT_ID] [NID]"
-    echo "Example: $0 00:11:22:33:44:55 192.168.50.50 x1000c0s0b0n0 1000"
+if [ "$#" -lt 7 ]; then
+    echo "Usage: $0 <MAC_ADDRESS> <IP_ADDRESS> <COMPONENT_ID> <NID> <BMC_IP> <BMC_USER> <BMC_PASS>"
+    echo "Example: $0 00:11:22:33:44:55 192.168.50.50 x1000c0s0b0n0 1000 192.168.50.100 root password"
     echo ""
     echo "Environment variables:"
     echo "  ORCHESTRATOR   Deployment method: minikube, quadlets, or docker-compose (default: minikube)"
@@ -21,10 +21,14 @@ fi
 
 MAC_ADDRESS="$1"
 IP_ADDRESS="$2"
-# Default XName (Component ID) if not provided.
-# Using a high number to avoid conflict with local VMs (x0c0s0b0n0)
-COMPONENT_ID=${3:-"x1000c0s0b0n0"}
-NID=${4:-1000}
+COMPONENT_ID="$3"
+NID="$4"
+BMC_IP="$5"
+BMC_USER="$6"
+BMC_PASS="$7"
+
+# Derive BMC xname by stripping the node suffix (e.g., x1000c0s0b0n0 -> x1000c0s0b0)
+BMC_XNAME="${COMPONENT_ID%n[0-9]*}"
 
 ORCHESTRATOR=${ORCHESTRATOR:-minikube}
 HOST_IP=${HOST_IP:-"192.168.100.2"}
@@ -33,12 +37,16 @@ HOST_IP=${HOST_IP:-"192.168.100.2"}
 validate_mac "$MAC_ADDRESS" "MAC address" || exit 1
 validate_ip "$IP_ADDRESS" "IP address" || exit 1
 validate_positive_int "$NID" "NID" || exit 1
+validate_ip "$BMC_IP" "BMC IP" || exit 1
 
 echo "=== Registering Hardware Node ==="
 echo "MAC Address:   $MAC_ADDRESS"
 echo "IP Address:    $IP_ADDRESS"
 echo "Component ID:  $COMPONENT_ID"
 echo "NID:           $NID"
+echo "BMC IP:        $BMC_IP"
+echo "BMC XName:     $BMC_XNAME"
+echo "BMC User:      $BMC_USER"
 echo "Orchestrator:  $ORCHESTRATOR"
 
 # 1. Get SMD/BSS Service IPs (orchestrator-aware)
@@ -98,7 +106,42 @@ else
     echo "  -> Failed ($HTTP_CODE). Interface might already exist."
 fi
 
-# 4. Register Boot Parameters in BSS
+# 4. Register RedfishEndpoint in SMD
+echo "Registering RedfishEndpoint for BMC ($BMC_XNAME) at $BMC_IP..."
+HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "http://${SMD_IP}:${SMD_PORT}/hsm/v2/Inventory/RedfishEndpoints" \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"ID\": \"${BMC_XNAME}\",
+    \"RediscoverOnUpdate\": true,
+    \"Hostname\": \"${BMC_IP}\",
+    \"User\": \"${BMC_USER}\",
+    \"Password\": \"${BMC_PASS}\"
+  }")
+
+if [ "$HTTP_CODE" -eq 409 ]; then
+    echo "  -> Endpoint exists (409). Updating via PUT to trigger rediscovery..."
+    curl -s -X PUT "http://${SMD_IP}:${SMD_PORT}/hsm/v2/Inventory/RedfishEndpoints/${BMC_XNAME}" \
+      -H "Content-Type: application/json" \
+      -d "{
+        \"ID\": \"${BMC_XNAME}\",
+        \"RediscoverOnUpdate\": true,
+        \"Hostname\": \"${BMC_IP}\",
+        \"User\": \"${BMC_USER}\",
+        \"Password\": \"${BMC_PASS}\"
+      }" > /dev/null
+elif [[ "$HTTP_CODE" -ge 200 && "$HTTP_CODE" -lt 300 ]]; then
+    echo "  -> Success ($HTTP_CODE)"
+else
+    echo "  -> Failed ($HTTP_CODE)"
+fi
+
+# 5. Trigger Redfish Discovery
+echo "Triggering SMD Redfish discovery for ${BMC_XNAME}..."
+curl -s -X POST "http://${SMD_IP}:${SMD_PORT}/hsm/v2/Inventory/Discover" \
+  -H "Content-Type: application/json" \
+  -d "{\"xnames\":[\"${BMC_XNAME}\"]}" > /dev/null
+
+# 6. Register Boot Parameters in BSS
 if [ -z "$BSS_IP" ]; then
     warn "Could not resolve BSS service IP. Skipping boot parameter registration."
 else
@@ -122,7 +165,7 @@ else
         echo "  -> Failed ($HTTP_CODE)."
     fi
 
-    # 5. Apply boot_mac + nid database workaround
+    # 7. Apply boot_mac + nid database workaround
     # BSS API doesn't properly save boot_mac or nid in the nodes table.
     # Without boot_mac, BSS can't look up boot params by MAC.
     # Without nid, BSS treats the node as unknown/disabled.
