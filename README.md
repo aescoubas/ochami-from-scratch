@@ -268,6 +268,21 @@ To deploy with test VMs:
   --smd-ref your-smd-branch
 ```
 
+**Base image pinning for local image builds:**
+Local Dockerfile-based images (`http-server`, `redfish-emulator`, `tftp`, `stork-agent`) are built from centralized, digest-pinned base images in:
+
+```bash
+scripts/image-bases.env
+```
+
+You can override these at runtime without editing files:
+
+```bash
+BASE_IMAGE_HTTP_SERVER="nginx:1.27.5-alpine@sha256:..." \
+BASE_IMAGE_REDFISH_EMULATOR="python:3.9.21-slim-bookworm@sha256:..." \
+./deploy.sh --method docker-compose --rebuild
+```
+
 ## Step 1b: Deployment (Bare Metal Mode)
 
 To boot physical machines, you can bridge a physical interface to the PXE network. This allows external devices to reach the DHCP and TFTP services.

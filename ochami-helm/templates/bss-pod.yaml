@@ -8,19 +8,30 @@ metadata:
 spec:
   terminationGracePeriodSeconds: 0  # TODO: remove this line for production
   initContainers:
-    - name: wait-for-dependencies
+    - name: wait-for-postgres
+      image: "{{ .Values.image.postgres.repository }}:{{ .Values.image.postgres.tag }}"
+      imagePullPolicy: {{ .Values.image.postgres.pullPolicy }}
+      command:
+        - 'sh'
+        - '-c'
+        - |
+          until pg_isready -t 1 -h {{ include "ochami-helm.fullname" . }}-postgres -p {{ .Values.bss.db.port }}; do
+            echo "waiting for postgres..."
+            sleep 0.2
+          done
+          echo "Postgres ready!"
+    - name: wait-for-smd
       image: "{{ .Values.bssInit.image.repository }}:{{ .Values.bssInit.image.tag }}"
       imagePullPolicy: IfNotPresent
       command:
         - 'sh'
         - '-c'
         - |
-          until nc -z -w 1 {{ include "ochami-helm.fullname" . }}-postgres {{ .Values.bss.db.port }} && \
-          /usr/bin/curl -m 1 -s -o /dev/null {{ include "ochami-helm.reverseProxyUrl" . }}/hsm/v2/service/ready; do
-            echo "waiting for dependencies (postgres & smd)..."
+          until /usr/bin/curl -m 1 -s -o /dev/null {{ include "ochami-helm.reverseProxyUrl" . }}/hsm/v2/service/ready; do
+            echo "waiting for smd..."
             sleep 0.2
           done
-          echo "Dependencies ready!"
+          echo "SMD ready!"
     - name: bss-init-run
       image: "{{ .Values.bssInit.image.repository }}:{{ .Values.bssInit.image.tag }}"
       imagePullPolicy: {{ .Values.bssInit.image.pullPolicy }}

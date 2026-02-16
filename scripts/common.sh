@@ -13,6 +13,10 @@ fi
 COMMON_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$COMMON_DIR/.." && pwd)"
 
+# Centralized base image definitions for locally maintained Dockerfiles.
+# shellcheck disable=SC1091
+source "$PROJECT_ROOT/scripts/image-bases.env"
+
 # --- OS Detection ---
 OS_TYPE="$(uname -s)"   # "Linux" or "Darwin"
 IS_MACOS=false
@@ -378,7 +382,7 @@ build_images_if_needed() {
 
     if [ "$need_tftp" = true ]; then
         echo "Building tftp server..."
-        $container_tool build -t "$IMAGE_TFTP" "$PROJECT_ROOT/ochami-helm/tftp/"
+        $container_tool build --build-arg BASE_IMAGE="$BASE_IMAGE_TFTP" -t "$IMAGE_TFTP" "$PROJECT_ROOT/ochami-helm/tftp/"
         if [ "$orchestrator" == "minikube" ]; then
             echo "Loading $IMAGE_TFTP into Minikube..."
             minikube image load "$IMAGE_TFTP"
@@ -407,7 +411,7 @@ build_images_if_needed() {
 
     if [ "$need_stork_agent" = true ]; then
         echo "Building stork-agent..."
-        $container_tool build -t "$IMAGE_STORK_AGENT" "$PROJECT_ROOT/ochami-helm/stork-agent/"
+        $container_tool build --build-arg BASE_IMAGE="$BASE_IMAGE_STORK_AGENT" -t "$IMAGE_STORK_AGENT" "$PROJECT_ROOT/ochami-helm/stork-agent/"
         if [ "$orchestrator" == "minikube" ]; then
             echo "Loading $IMAGE_STORK_AGENT into Minikube..."
             minikube image load "$IMAGE_STORK_AGENT"

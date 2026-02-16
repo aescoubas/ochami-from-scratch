@@ -1,4 +1,5 @@
-FROM alpine:3.18
+ARG BASE_IMAGE=alpine:3.18.12
+FROM ${BASE_IMAGE}
 RUN apk add --no-cache tftp-hpa
 # Create directory for TFTP root
 RUN mkdir -p /var/tftpboot

@@ -1,4 +1,5 @@
-FROM nginx:alpine
+ARG BASE_IMAGE=nginx:1.27.5-alpine
+FROM ${BASE_IMAGE}
 
 # The build artifacts will be mounted here
 # See k8s/http-server.yaml

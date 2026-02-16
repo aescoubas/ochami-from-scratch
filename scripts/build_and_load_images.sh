@@ -2,6 +2,10 @@
 
 set -e
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/image-bases.env"
+
 # Configuration
 CONTAINER_TOOL=${CONTAINER_TOOL:-docker}
 ORCHESTRATOR=${ORCHESTRATOR:-minikube}
@@ -35,7 +39,7 @@ XML
 
 # Create a Dockerfile to build the image
 cat > "$BUILD_DIR/Dockerfile" <<EOF
-FROM opensuse/leap:15.6
+FROM ${BASE_IMAGE_SLES_BUILDER}
 RUN zypper ref && zypper install -y kernel-default dracut squashfs iproute2 util-linux shadow device-mapper tar dhcp-client curl udev
 
 # Configure system
@@ -109,7 +113,7 @@ echo "Artifacts staged in $ARTIFACTS_DIR"
 
 echo "--- Building and loading http-server image into Minikube ---"
 DOCKER_CONTEXT="ochami-helm/http-server/"
-$CONTAINER_TOOL build -t localhost/http-server:latest "$DOCKER_CONTEXT"
+$CONTAINER_TOOL build --build-arg BASE_IMAGE="$BASE_IMAGE_HTTP_SERVER" -t localhost/http-server:latest "$DOCKER_CONTEXT"
 if [ "$ORCHESTRATOR" == "minikube" ]; then
     minikube image load localhost/http-server:latest
 fi
@@ -118,7 +122,7 @@ fi
 # coresmd includes iPXE binaries (undionly.kpxe, ipxe.efi) for BIOS and UEFI boot
 
 echo "--- Building redfish-emulator ---"
-$CONTAINER_TOOL build -t localhost/redfish-emulator:latest ochami-helm/redfish-emulator/
+$CONTAINER_TOOL build --build-arg BASE_IMAGE="$BASE_IMAGE_REDFISH_EMULATOR" -t localhost/redfish-emulator:latest ochami-helm/redfish-emulator/
 if [ "$ORCHESTRATOR" == "minikube" ]; then
     minikube image load localhost/redfish-emulator:latest
 fi

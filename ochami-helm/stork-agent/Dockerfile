@@ -1,4 +1,5 @@
-FROM jonasal/kea-dhcp4:3.1.4
+ARG BASE_IMAGE=jonasal/kea-dhcp4:3.1.4
+FROM ${BASE_IMAGE}
 RUN apt-get update && \
     apt-get install -y --no-install-recommends ca-certificates curl gnupg && \
     curl -1sLf 'https://dl.cloudsmith.io/public/isc/stork/setup.deb.sh' | bash && \

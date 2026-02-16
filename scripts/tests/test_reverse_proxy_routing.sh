@@ -111,6 +111,12 @@ test_helm_routes_smd_calls_through_reverse_proxy() {
         "helm bss should route HSM through reverse proxy service"
     assert_not_contains "$bss" "ochami-smd" \
         "helm bss template must not call SMD directly"
+    assert_not_contains "$bss" "nc -z" \
+        "helm bss init must not depend on nc for readiness checks"
+    assert_contains "$bss" "pg_isready -t 1 -h" \
+        "helm bss init should use pg_isready for postgres readiness"
+    assert_contains "$bss" "/hsm/v2/service/ready" \
+        "helm bss init should wait for SMD readiness via reverse proxy"
 
     assert_contains "$pcs" "SMS_SERVER" "helm pcs template should define SMS_SERVER"
     assert_contains "$pcs" "include \"ochami-helm.reverseProxyUrl\" ." \
