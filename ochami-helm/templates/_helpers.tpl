@@ -55,3 +55,10 @@ Create the name of the service account to use
 {{- default "default" .Values.serviceAccount.name }}
 {{- end }}
 {{- end }}
+
+{{/*
+Internal reverse proxy base URL used for inter-service API calls.
+*/}}
+{{- define "ochami-helm.reverseProxyUrl" -}}
+http://{{ include "ochami-helm.fullname" . }}-http-server.{{ .Release.Namespace }}.svc.cluster.local:{{ .Values.httpServer.service.port }}
+{{- end }}

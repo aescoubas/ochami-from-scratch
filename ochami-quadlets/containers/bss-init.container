@@ -1,12 +1,12 @@
 [Unit]
 Description=OpenCHAMI BSS Database Initialization
-After=smd.service
-Requires=smd.service
+After=smd.service http-server.service
+Requires=smd.service http-server.service
 
 [Container]
 Image=localhost/bss:local-bss
 Network=host
-Exec=sh -c "until curl -sf http://localhost:27779/hsm/v2/service/ready; do sleep 1; done; /usr/local/bin/bss-init"
+Exec=sh -c "until curl -sf http://localhost:${HTTP_PORT}/hsm/v2/service/ready; do sleep 1; done; /usr/local/bin/bss-init"
 Environment=BSS_USESQL=true
 Environment=BSS_INSECURE=true
 Environment=BSS_DBHOST=localhost

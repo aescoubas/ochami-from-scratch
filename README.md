@@ -747,6 +747,22 @@ rm -f ochami-docker-compose/configs/stork-server.env
 | **Stork** | Kea DHCP monitoring dashboard (server + agent). |
 | **Redfish Emulator** | Lightweight emulator that controls VM power (On/Off/Reboot) via Libvirt, exposing a Redfish API. |
 
+### Internal API Routing (Reverse Proxy)
+
+All inter-service HTTP calls that need SMD now go through the Nginx reverse proxy (`http-server`) rather than calling SMD directly.
+
+- Proxied SMD path: `/hsm/` (forwarded to SMD)
+- Also proxied: `/boot/v1/`, `/cloud-init/`, `/power-control/`, `/stork/`
+
+Deployment-specific reverse proxy base URL:
+
+| Deployment Method | Reverse Proxy Base URL Used by Services |
+| :--- | :--- |
+| Minikube (Helm) | `http://ochami-http-server.<namespace>.svc.cluster.local:80` |
+| Docker Compose (Linux) | `http://localhost:80` |
+| Docker Compose (macOS) | `http://http-server:80` |
+| Quadlets | `http://localhost:80` |
+
 ## 5. Using the Redfish Emulator
 
 The deployment includes an optional **Redfish Emulator** that mimics a Baseboard Management Controller (BMC) for each VM. This allows you to control the VM's power state (On, Off, Reboot) via standard Redfish API calls.

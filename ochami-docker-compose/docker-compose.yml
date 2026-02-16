@@ -79,7 +79,7 @@ services:
       bss-init:
         condition: service_completed_successfully
     environment:
-      HSM_URL: "http://localhost:${SMD_PORT:-27779}"
+      HSM_URL: "http://localhost:${HTTP_PORT:-80}"
       BSS_INSECURE: "true"
       BSS_DEBUG: "true"
       BSS_DBHOST: localhost
@@ -111,7 +111,7 @@ services:
       - "--listen"
       - "0.0.0.0:${CLOUD_INIT_PORT:-27777}"
       - "--smd-url"
-      - "http://localhost:${SMD_PORT:-27779}"
+      - "http://localhost:${HTTP_PORT:-80}"
       - "--cluster-name"
       - "ochami"
       - "--insecure"
@@ -149,7 +149,7 @@ services:
         condition: service_completed_successfully
     environment:
       STORAGE: "POSTGRES"
-      SMS_SERVER: "http://localhost:${SMD_PORT:-27779}"
+      SMS_SERVER: "http://localhost:${HTTP_PORT:-80}"
       POSTGRES_HOST: "localhost"
       POSTGRES_PORT: "${POSTGRES_PORT:-5432}"
       POSTGRES_USER: "${PCS_DB_USER:-pcs-user}"
@@ -207,7 +207,7 @@ services:
       kea-init:
         condition: service_completed_successfully
     environment:
-      SMD_URL: "http://localhost:${SMD_PORT:-27779}"
+      SMD_URL: "http://localhost:${HTTP_PORT:-80}"
       DB_NAME: ${KEA_DB_NAME:-kea}
       DB_USER: ${KEA_DB_USER:-kea-user}
       DB_PASS: ${KEA_DB_PASSWORD:-CHANGEME}
@@ -280,7 +280,7 @@ services:
       stork-server:
         condition: service_healthy
     environment:
-      STORK_AGENT_SERVER_URL: "http://localhost:${STORK_PORT:-28010}"
+      STORK_AGENT_SERVER_URL: "http://localhost:${HTTP_PORT:-80}"
       STORK_AGENT_HOST: "${HOST_IP:-127.0.0.1}"
       STORK_AGENT_PORT: "${STORK_AGENT_PORT:-28011}"
     volumes:

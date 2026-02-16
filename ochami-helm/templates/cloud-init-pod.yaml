@@ -16,7 +16,7 @@ spec:
         - 'sh'
         - '-c'
         - |
-          until /usr/bin/curl -m 1 -s -o /dev/null http://ochami-smd.{{ .Release.Namespace }}.svc.cluster.local:{{ .Values.service.smd.port }}/hsm/v2/service/ready; do
+          until /usr/bin/curl -m 1 -s -o /dev/null {{ include "ochami-helm.reverseProxyUrl" . }}/hsm/v2/service/ready; do
             echo "waiting for SMD to be ready..."
             sleep 0.2
           done
@@ -34,7 +34,7 @@ spec:
         - "--listen"
         - "0.0.0.0:{{ .Values.cloudInit.port }}"
         - "--smd-url"
-        - "http://ochami-smd.{{ .Release.Namespace }}.svc.cluster.local:{{ .Values.service.smd.port }}"
+        - {{ include "ochami-helm.reverseProxyUrl" . | quote }}
         - "--cluster-name"
         - {{ .Values.cloudInit.clusterName | quote }}
         - "--insecure"

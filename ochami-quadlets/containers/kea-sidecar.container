@@ -1,13 +1,13 @@
 [Unit]
 Description=OpenCHAMI Kea SMD Sync Sidecar
-After=smd.service kea.service
-Requires=smd.service kea.service
+After=smd.service http-server.service kea.service
+Requires=smd.service http-server.service kea.service
 
 [Container]
 Image=python:3.9-slim
 Network=host
 Exec=sh -c "pip install psycopg2-binary requests && python /scripts/smd_sync.py"
-Environment=SMD_URL=http://localhost:27779
+Environment=SMD_URL=http://localhost:${HTTP_PORT}
 Environment=DB_HOST=localhost
 EnvironmentFile=/etc/openchami/openchami.env
 Volume=/etc/openchami/configs/smd_sync.py:/scripts/smd_sync.py:ro

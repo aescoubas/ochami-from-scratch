@@ -15,7 +15,7 @@ spec:
         - 'sh'
         - '-c'
         - |
-          until wget -q -T 1 -O /dev/null http://ochami-smd.{{ .Release.Namespace }}.svc.cluster.local:{{ .Values.service.smd.port }}/hsm/v2/service/ready; do
+          until wget -q -T 1 -O /dev/null {{ include "ochami-helm.reverseProxyUrl" . }}/hsm/v2/service/ready; do
             echo "waiting for SMD (and postgres) to be ready..."
             sleep 0.2
           done
@@ -49,7 +49,7 @@ spec:
         - name: STORAGE
           value: "POSTGRES"
         - name: SMS_SERVER
-          value: "http://{{ include "ochami-helm.fullname" . }}-smd.{{ .Release.Namespace }}.svc.cluster.local:{{ .Values.service.smd.port }}"
+          value: {{ include "ochami-helm.reverseProxyUrl" . | quote }}
         - name: POSTGRES_HOST
           value: "{{ include "ochami-helm.fullname" . }}-postgres"
         - name: POSTGRES_PORT

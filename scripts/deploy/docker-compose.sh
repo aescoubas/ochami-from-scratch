@@ -162,7 +162,7 @@ if [ -f "$COMPOSE_DIR/configs/kea-dhcp4.conf.template" ]; then
 fi
 
 if [ -f "$COMPOSE_DIR/configs/nginx-default.conf.template" ]; then
-    envsubst '${HTTP_PORT} ${BSS_PORT} ${CLOUD_INIT_PORT} ${PCS_PORT} ${STORK_PORT}' < "$COMPOSE_DIR/configs/nginx-default.conf.template" > "$COMPOSE_DIR/configs/nginx-default.conf"
+    envsubst '${HTTP_PORT} ${SMD_PORT} ${BSS_PORT} ${CLOUD_INIT_PORT} ${PCS_PORT} ${STORK_PORT}' < "$COMPOSE_DIR/configs/nginx-default.conf.template" > "$COMPOSE_DIR/configs/nginx-default.conf"
     echo "Generated nginx-default.conf"
 fi
 

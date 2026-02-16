@@ -40,11 +40,11 @@ services:
     ports:
       - "${BSS_PORT:-27778}:${BSS_PORT:-27778}"
     environment:
-      HSM_URL: "http://smd:${SMD_PORT:-27779}"
+      HSM_URL: "http://http-server:${HTTP_PORT:-80}"
       BSS_DBHOST: postgres
       BSS_ENDPOINT: "bss"
       NFD_URL: "http://http-server:${HTTP_PORT:-80}/hmi/v1/subscribe"
-      SMS_SERVER: "http://smd:${SMD_PORT:-27779}"
+      SMS_SERVER: "http://http-server:${HTTP_PORT:-80}"
 
   cloud-init:
     network_mode: null
@@ -57,7 +57,7 @@ services:
       - "--listen"
       - "0.0.0.0:${CLOUD_INIT_PORT:-27777}"
       - "--smd-url"
-      - "http://smd:${SMD_PORT:-27779}"
+      - "http://http-server:${HTTP_PORT:-80}"
       - "--cluster-name"
       - "ochami"
       - "--insecure"
@@ -76,7 +76,7 @@ services:
     ports:
       - "${PCS_PORT:-28007}:${PCS_PORT:-28007}"
     environment:
-      SMS_SERVER: "http://smd:${SMD_PORT:-27779}"
+      SMS_SERVER: "http://http-server:${HTTP_PORT:-80}"
       POSTGRES_HOST: postgres
 
   kea-init:
@@ -110,7 +110,7 @@ services:
     networks:
       - ochami-net
     environment:
-      SMD_URL: "http://smd:${SMD_PORT:-27779}"
+      SMD_URL: "http://http-server:${HTTP_PORT:-80}"
       DB_HOST: postgres
 
   http-server:
@@ -149,7 +149,7 @@ services:
     networks:
       - ochami-net
     environment:
-      STORK_AGENT_SERVER_URL: "http://stork-server:${STORK_PORT:-28010}"
+      STORK_AGENT_SERVER_URL: "http://http-server:${HTTP_PORT:-80}"
 
 networks:
   ochami-net:

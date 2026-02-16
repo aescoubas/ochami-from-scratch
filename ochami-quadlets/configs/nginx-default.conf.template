@@ -20,6 +20,14 @@ server {
         proxy_set_header X-Real-IP $remote_addr;
     }
 
+    # Proxy to SMD
+    location /hsm/ {
+        proxy_pass http://localhost:${SMD_PORT}/hsm/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    }
+
     location /cloud-init/ {
         proxy_pass http://localhost:${CLOUD_INIT_PORT}/cloud-init/;
         proxy_set_header Host $host;
@@ -37,6 +45,14 @@ server {
     # Proxy to Stork (Kea DHCP Monitor)
     location /stork/ {
         proxy_pass http://localhost:${STORK_PORT}/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    }
+
+    # Stork API endpoint used by stork-agent when configured with proxy root URL
+    location /api/ {
+        proxy_pass http://localhost:${STORK_PORT}/api/;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;

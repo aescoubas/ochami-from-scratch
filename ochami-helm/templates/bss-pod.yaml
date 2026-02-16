@@ -16,7 +16,7 @@ spec:
         - '-c'
         - |
           until nc -z -w 1 {{ include "ochami-helm.fullname" . }}-postgres {{ .Values.bss.db.port }} && \
-          /usr/bin/curl -m 1 -s -o /dev/null http://ochami-smd.ochami.svc.cluster.local:{{ .Values.service.smd.port }}/hsm/v2/service/ready; do
+          /usr/bin/curl -m 1 -s -o /dev/null {{ include "ochami-helm.reverseProxyUrl" . }}/hsm/v2/service/ready; do
             echo "waiting for dependencies (postgres & smd)..."
             sleep 0.2
           done
@@ -50,7 +50,7 @@ spec:
           protocol: TCP
       env:
         - name: HSM_URL
-          value: "http://{{ include "ochami-helm.fullname" . }}-smd.{{ .Release.Namespace }}.svc.cluster.local:{{ .Values.service.smd.port }}"
+          value: {{ include "ochami-helm.reverseProxyUrl" . | quote }}
         - name: BSS_USESQL
           value: "true"
         - name: BSS_INSECURE
