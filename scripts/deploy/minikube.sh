@@ -180,8 +180,12 @@ fi
 
 register_bss_defaults "$BSS_IP" "$HOST_IP" "ds=nocloud-net;s=http://${HOST_IP}:${HTTP_PORT}/cloud-init/"
 
-# 5c. Register hardware nodes from file
-if [ -n "$NODES_FILE" ]; then
+# 5c. Discover/register hardware nodes
+if [ "$DISCOVERY_METHOD" == "magellan" ]; then
+    step "Running Magellan dynamic discovery..."
+    export ORCHESTRATOR="minikube"
+    run_magellan_discovery "$HOST_IP"
+elif [ -n "$NODES_FILE" ]; then
     step "Registering hardware nodes from $NODES_FILE..."
     validate_nodes_file "$NODES_FILE"
     export ORCHESTRATOR="minikube"
@@ -193,6 +197,12 @@ if [ "$NUM_VMS" -gt 0 ]; then
     if $IS_MACOS; then
         warn "VM creation via libvirt is not available on macOS."
         echo "Use ./scripts/register_hardware_node.sh to register physical nodes instead."
+    elif [ "$DISCOVERY_METHOD" == "magellan" ]; then
+        step "Creating $NUM_VMS VMs (Magellan discovery mode)..."
+        create_vms_only "$NUM_VMS"
+        step "Running Magellan discovery after VM creation..."
+        export ORCHESTRATOR="minikube"
+        run_magellan_discovery "$HOST_IP"
     else
         step "Creating $NUM_VMS VMs..."
         create_and_register_vms "$NUM_VMS" "$HOST_IP"

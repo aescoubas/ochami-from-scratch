@@ -25,6 +25,10 @@ test_default_microservice_refs() {
     assert_eq "${SMD_REPO_URI}" "https://github.com/aescoubas/ochami-smd.git" "default SMD repo URI"
     assert_eq "${BSS_REPO_URI}" "https://github.com/aescoubas/ochami-bss.git" "default BSS repo URI"
     assert_eq "${PCS_REPO_URI}" "https://github.com/OpenCHAMI/power-control.git" "default PCS repo URI"
+    assert_eq "${DISCOVERY_METHOD}" "static" "default discovery method should be static"
+    assert_eq "${MAGELLAN_SUBNETS}" "" "default magellan subnets should be empty"
+    assert_eq "${MAGELLAN_HOSTS}" "" "default magellan hosts should be empty"
+    assert_eq "${MAGELLAN_INSECURE}" "false" "default magellan insecure should be false"
 }
 
 test_custom_microservice_refs() {
@@ -60,6 +64,28 @@ test_get_microservice_repo_uri() {
     assert_eq "$(get_microservice_repo_uri pcs)" "https://github.com/dev/pcs.git" "PCS repo URI resolution"
 }
 
+test_magellan_discovery_args() {
+    parse_common_deploy_args \
+        --discovery-method "magellan" \
+        --magellan-subnets "172.16.0.0/24,10.20.0.0/16" \
+        --magellan-hosts "https://10.0.0.10,10.0.0.11" \
+        --magellan-subnet-mask "255.255.255.0" \
+        --magellan-bmc-user "admin" \
+        --magellan-bmc-pass "secret" \
+        --magellan-bmc-id-map "@/tmp/bmc-map.yaml" \
+        --magellan-cache "/tmp/magellan-assets.db" \
+        --magellan-insecure
+    assert_eq "${DISCOVERY_METHOD}" "magellan" "discovery method parsing"
+    assert_eq "${MAGELLAN_SUBNETS}" "172.16.0.0/24,10.20.0.0/16" "magellan subnets parsing"
+    assert_eq "${MAGELLAN_HOSTS}" "https://10.0.0.10,10.0.0.11" "magellan hosts parsing"
+    assert_eq "${MAGELLAN_SUBNET_MASK}" "255.255.255.0" "magellan subnet mask parsing"
+    assert_eq "${MAGELLAN_BMC_USER}" "admin" "magellan user parsing"
+    assert_eq "${MAGELLAN_BMC_PASS}" "secret" "magellan password parsing"
+    assert_eq "${MAGELLAN_BMC_ID_MAP}" "@/tmp/bmc-map.yaml" "magellan bmc id map parsing"
+    assert_eq "${MAGELLAN_CACHE}" "/tmp/magellan-assets.db" "magellan cache parsing"
+    assert_eq "${MAGELLAN_INSECURE}" "true" "magellan insecure parsing"
+}
+
 run_test() {
     local test_name="$1"
     if "$test_name"; then
@@ -73,3 +99,4 @@ run_test test_default_microservice_refs
 run_test test_custom_microservice_refs
 run_test test_get_microservice_ref
 run_test test_get_microservice_repo_uri
+run_test test_magellan_discovery_args

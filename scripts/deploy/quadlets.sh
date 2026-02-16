@@ -260,8 +260,12 @@ wait_for_url "http://localhost:${STORK_PORT}/api/version" "Stork (Kea DHCP Monit
 step "Configuring BSS Default Boot Parameters..."
 register_bss_defaults "$HOST_IP" "$HOST_IP" "ds=nocloud-net;s=http://${HOST_IP}:${HTTP_PORT}/cloud-init/"
 
-# 5b. Register hardware nodes from file
-if [ -n "$NODES_FILE" ]; then
+# 5b. Discover/register hardware nodes
+if [ "$DISCOVERY_METHOD" == "magellan" ]; then
+    step "Running Magellan dynamic discovery..."
+    export ORCHESTRATOR="quadlets"
+    run_magellan_discovery "$HOST_IP"
+elif [ -n "$NODES_FILE" ]; then
     step "Registering hardware nodes from $NODES_FILE..."
     validate_nodes_file "$NODES_FILE"
     export ORCHESTRATOR="quadlets"
@@ -270,8 +274,16 @@ fi
 
 # 6. Create VMs
 if [ "$NUM_VMS" -gt 0 ]; then
-    step "Creating $NUM_VMS VMs..."
-    create_and_register_vms "$NUM_VMS" "$HOST_IP"
+    if [ "$DISCOVERY_METHOD" == "magellan" ]; then
+        step "Creating $NUM_VMS VMs (Magellan discovery mode)..."
+        create_vms_only "$NUM_VMS"
+        step "Running Magellan discovery after VM creation..."
+        export ORCHESTRATOR="quadlets"
+        run_magellan_discovery "$HOST_IP"
+    else
+        step "Creating $NUM_VMS VMs..."
+        create_and_register_vms "$NUM_VMS" "$HOST_IP"
+    fi
 fi
 
 # 7. Final Instructions

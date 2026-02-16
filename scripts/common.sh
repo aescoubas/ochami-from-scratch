@@ -50,6 +50,7 @@ DEFAULT_PCS_REF="main"
 DEFAULT_SMD_REPO_URI="https://github.com/aescoubas/ochami-smd.git"
 DEFAULT_BSS_REPO_URI="https://github.com/aescoubas/ochami-bss.git"
 DEFAULT_PCS_REPO_URI="https://github.com/OpenCHAMI/power-control.git"
+DEFAULT_DISCOVERY_METHOD="static"
 
 # Image names
 IMAGE_HTTP="localhost/http-server:latest"
@@ -259,6 +260,18 @@ get_microservice_repo_uri() {
             return 1
             ;;
     esac
+}
+
+resolve_smd_service_ip() {
+    local host_ip="$1"
+    local orchestrator="${ORCHESTRATOR:-minikube}"
+
+    if [ "$orchestrator" == "quadlets" ] || [ "$orchestrator" == "docker-compose" ]; then
+        echo "$host_ip"
+        return 0
+    fi
+
+    minikube kubectl -- get svc ochami-smd -n ochami -o jsonpath='{.spec.clusterIP}'
 }
 
 require_command() {
@@ -872,6 +885,97 @@ register_hardware_nodes_from_file() {
     info "Registered $node_count hardware node(s) from $file."
 }
 
+run_magellan_discovery() {
+    local host_ip="$1"
+    local orchestrator="${ORCHESTRATOR:-minikube}"
+    local smd_ip
+
+    require_command magellan "magellan is required for --discovery-method magellan."
+
+    smd_ip=$(resolve_smd_service_ip "$host_ip")
+    if [ -z "$smd_ip" ]; then
+        error "Could not resolve SMD service IP for Magellan discovery."
+        return 1
+    fi
+
+    local cache="${MAGELLAN_CACHE:-/tmp/$USER/magellan/assets.db}"
+    mkdir -p "$(dirname "$cache")"
+
+    local scan_cmd=(magellan scan --cache "$cache")
+    local has_scan_target=false
+
+    if [ -n "${MAGELLAN_SUBNETS:-}" ]; then
+        local subnet
+        IFS=',' read -r -a _magellan_subnets <<< "$MAGELLAN_SUBNETS"
+        for subnet in "${_magellan_subnets[@]}"; do
+            subnet="${subnet// /}"
+            [ -z "$subnet" ] && continue
+            scan_cmd+=(--subnet "$subnet")
+            has_scan_target=true
+        done
+    fi
+
+    local -a scan_hosts=()
+    if [ -n "${MAGELLAN_HOSTS:-}" ]; then
+        local host
+        IFS=',' read -r -a _magellan_hosts <<< "$MAGELLAN_HOSTS"
+        for host in "${_magellan_hosts[@]}"; do
+            host="${host// /}"
+            [ -z "$host" ] && continue
+            scan_hosts+=("$host")
+            has_scan_target=true
+        done
+    fi
+
+    if ! $has_scan_target; then
+        error "Magellan discovery requires at least one scan target via --magellan-subnets or --magellan-hosts."
+        return 1
+    fi
+
+    if [ -n "${MAGELLAN_SUBNET_MASK:-}" ]; then
+        scan_cmd+=(--subnet-mask "$MAGELLAN_SUBNET_MASK")
+    fi
+    if [ "${MAGELLAN_INSECURE:-false}" = "true" ]; then
+        scan_cmd+=(--insecure)
+    fi
+    if [ "${#scan_hosts[@]}" -gt 0 ]; then
+        scan_cmd+=("${scan_hosts[@]}")
+    fi
+
+    local collect_cmd=(magellan collect --cache "$cache" --show --format json)
+    if [ -n "${MAGELLAN_BMC_USER:-}" ]; then
+        collect_cmd+=(--username "$MAGELLAN_BMC_USER")
+    fi
+    if [ -n "${MAGELLAN_BMC_PASS:-}" ]; then
+        collect_cmd+=(--password "$MAGELLAN_BMC_PASS")
+    fi
+    if [ -n "${MAGELLAN_BMC_ID_MAP:-}" ]; then
+        collect_cmd+=(--bmc-id-map "$MAGELLAN_BMC_ID_MAP")
+    fi
+    if [ "${MAGELLAN_INSECURE:-false}" = "true" ]; then
+        collect_cmd+=(--insecure)
+    fi
+    local collect_output
+    collect_output="$(mktemp --suffix=.json)"
+    local send_cmd=(magellan send -d "@${collect_output}" "http://${smd_ip}:${SMD_PORT}")
+
+    step "Running Magellan scan (orchestrator=$orchestrator)..."
+    "${scan_cmd[@]}"
+    step "Collecting inventory via Magellan..."
+    "${collect_cmd[@]}" > "$collect_output"
+
+    if [ ! -s "$collect_output" ] || [ "$(tr -d '[:space:]' < "$collect_output")" = "[]" ]; then
+        warn "Magellan discovered no assets to send to SMD."
+        rm -f "$collect_output"
+        return 0
+    fi
+
+    step "Sending Magellan-discovered inventory to SMD..."
+    "${send_cmd[@]}"
+    rm -f "$collect_output"
+    info "Magellan discovery completed and inventory sent to SMD."
+}
+
 # --- VM Helpers ---
 
 create_and_register_vms() {
@@ -904,6 +1008,16 @@ create_and_register_vms() {
     done
 }
 
+create_vms_only() {
+    local num_vms="$1"
+
+    for i in $(seq 0 $((num_vms - 1))); do
+        local vm_name="virtual-compute-node-$i"
+        echo "Creating $vm_name..."
+        sudo "$PROJECT_ROOT/scripts/create_vm.sh" --name "$vm_name"
+    done
+}
+
 # --- CLI Helpers ---
 
 parse_common_deploy_args() {
@@ -924,6 +1038,15 @@ parse_common_deploy_args() {
     SMD_REPO_URI="$DEFAULT_SMD_REPO_URI"
     BSS_REPO_URI="$DEFAULT_BSS_REPO_URI"
     PCS_REPO_URI="$DEFAULT_PCS_REPO_URI"
+    DISCOVERY_METHOD="$DEFAULT_DISCOVERY_METHOD"
+    MAGELLAN_SUBNETS=""
+    MAGELLAN_HOSTS=""
+    MAGELLAN_SUBNET_MASK=""
+    MAGELLAN_BMC_USER=""
+    MAGELLAN_BMC_PASS=""
+    MAGELLAN_BMC_ID_MAP=""
+    MAGELLAN_CACHE=""
+    MAGELLAN_INSECURE=false
 
     while [[ "$#" -gt 0 ]]; do
         case $1 in
@@ -944,6 +1067,15 @@ parse_common_deploy_args() {
             --smd-repo-uri) SMD_REPO_URI="$2"; shift ;;
             --bss-repo-uri) BSS_REPO_URI="$2"; shift ;;
             --pcs-repo-uri) PCS_REPO_URI="$2"; shift ;;
+            --discovery-method) DISCOVERY_METHOD="$2"; shift ;;
+            --magellan-subnets) MAGELLAN_SUBNETS="$2"; shift ;;
+            --magellan-hosts) MAGELLAN_HOSTS="$2"; shift ;;
+            --magellan-subnet-mask) MAGELLAN_SUBNET_MASK="$2"; shift ;;
+            --magellan-bmc-user) MAGELLAN_BMC_USER="$2"; shift ;;
+            --magellan-bmc-pass) MAGELLAN_BMC_PASS="$2"; shift ;;
+            --magellan-bmc-id-map) MAGELLAN_BMC_ID_MAP="$2"; shift ;;
+            --magellan-cache) MAGELLAN_CACHE="$2"; shift ;;
+            --magellan-insecure) MAGELLAN_INSECURE=true ;;
             -h|--help) return 2 ;;
             *) error "Unknown parameter: $1"; exit 1 ;;
         esac
@@ -1000,6 +1132,36 @@ validate_common_deploy_args() {
         exit 1
     fi
 
+    if [[ "$DISCOVERY_METHOD" != "static" && "$DISCOVERY_METHOD" != "magellan" ]]; then
+        error "--discovery-method must be 'static' or 'magellan'."
+        exit 1
+    fi
+
+    if [ "$DISCOVERY_METHOD" == "magellan" ]; then
+        if [ -n "$NODES_FILE" ]; then
+            error "--nodes-file cannot be combined with --discovery-method magellan."
+            exit 1
+        fi
+
+        if [ -z "$MAGELLAN_SUBNETS" ] && [ -z "$MAGELLAN_HOSTS" ]; then
+            error "Magellan discovery requires --magellan-subnets and/or --magellan-hosts."
+            exit 1
+        fi
+
+        if { [ -n "$MAGELLAN_BMC_USER" ] && [ -z "$MAGELLAN_BMC_PASS" ]; } || { [ -z "$MAGELLAN_BMC_USER" ] && [ -n "$MAGELLAN_BMC_PASS" ]; }; then
+            error "--magellan-bmc-user and --magellan-bmc-pass must be specified together."
+            exit 1
+        fi
+    fi
+
+    if [ -n "$MAGELLAN_SUBNET_MASK" ]; then
+        validate_ip "$MAGELLAN_SUBNET_MASK" "--magellan-subnet-mask" || exit 1
+    fi
+    if [ -n "$MAGELLAN_CACHE" ] && [ -z "${MAGELLAN_CACHE// /}" ]; then
+        error "--magellan-cache must be non-empty when set."
+        exit 1
+    fi
+
     # Apply defaults
     if [ -z "$DHCP_START" ]; then
         DHCP_START="$DEFAULT_DHCP_START"
@@ -1030,6 +1192,17 @@ Common options:
   --smd-repo-uri URI     Git repository URI for SMD builds (default: $DEFAULT_SMD_REPO_URI)
   --bss-repo-uri URI     Git repository URI for BSS builds (default: $DEFAULT_BSS_REPO_URI)
   --pcs-repo-uri URI     Git repository URI for PCS builds (default: $DEFAULT_PCS_REPO_URI)
+  --discovery-method M   Discovery mode: 'static' (CSV registration) or 'magellan' (default: $DEFAULT_DISCOVERY_METHOD)
+  --magellan-subnets L   Comma-separated subnets for Magellan scan (e.g. 172.16.0.0/24,10.0.0.0/16)
+  --magellan-hosts L     Comma-separated hosts/URIs for Magellan scan
+  --magellan-subnet-mask IP
+                         Subnet mask used with non-CIDR --magellan-subnets
+  --magellan-bmc-user U  BMC username used by Magellan collect
+  --magellan-bmc-pass P  BMC password used by Magellan collect
+  --magellan-bmc-id-map M
+                         BMC ID map for Magellan collect (raw JSON/YAML or @/path/to/map.yaml)
+  --magellan-cache PATH  Magellan cache path (default: /tmp/\$USER/magellan/assets.db)
+  --magellan-insecure    Skip TLS certificate verification during Magellan scan
   -h, --help             Show help
 EOF
 }

@@ -132,13 +132,14 @@ The table below shows which combinations of **platform**, **deployment method**,
 
 **Legend:**
 *   **Supported** — full functionality including VM creation, PXE boot, and all services.
-*   **Supported (services only)** — OpenCHAMI services run and APIs are accessible; VM creation and host PXE boot are not available. Register physical nodes via `--nodes-file` or `./scripts/register_hardware_node.sh`.
+*   **Supported (services only)** — OpenCHAMI services run and APIs are accessible; VM creation and host PXE boot are not available. Register physical nodes via `--nodes-file`, `--discovery-method magellan`, or `./scripts/register_hardware_node.sh`.
 *   **—** — not supported on this platform.
 
 **Key notes:**
 *   **libvirt VMs** mode (`--mode libvirt`, the default) creates virtual machines with KVM for testing. This requires Linux with libvirt/KVM — it is unavailable on macOS. The `--vms N` flag controls how many VMs to create.
-*   **hardware** mode (`--mode hardware`) skips VM creation and targets physical nodes. Use `--nodes-file` to auto-register nodes during deployment, or register them individually afterward with `./scripts/register_hardware_node.sh`. On macOS, services are accessible via `localhost` but PXE booting from the macOS host is not supported (Docker Desktop cannot bridge DHCP to physical networks).
-*   `--vms` and `--nodes-file` are independent — you can use either or both. Omitting both deploys services only.
+*   **hardware** mode (`--mode hardware`) skips VM creation and targets physical nodes. Use `--nodes-file` for static registration, `--discovery-method magellan` for dynamic discovery, or register nodes individually afterward with `./scripts/register_hardware_node.sh`. On macOS, services are accessible via `localhost` but PXE booting from the macOS host is not supported (Docker Desktop cannot bridge DHCP to physical networks).
+*   `--vms` is independent of discovery configuration. In `--discovery-method static` (default), VM creation uses static registration. In `--discovery-method magellan`, VMs are created without static registration and discovered via Magellan.
+*   You can deploy services only by omitting `--vms`, `--nodes-file`, and `--discovery-method magellan`.
 *   **quadlets** requires systemd and is Linux-only.
 *   On macOS, Docker Compose uses bridge networking (not `host` mode) with explicit port mappings. Minikube uses the `docker` driver instead of `none`.
 
@@ -218,6 +219,14 @@ To deploy with test VMs:
 *   `--ip ADDRESS`: Set the PXE server IP (default: 192.168.100.2)
 *   `--cidr CIDR`: Set the network CIDR (default: 24)
 *   `--nodes-file FILE`: CSV file with hardware nodes to auto-register (see [Automated Hardware Node Registration](#4b-automated-hardware-node-registration))
+*   `--discovery-method [static|magellan]`: Node discovery mode (default: `static`)
+*   `--magellan-subnets LIST`: Comma-separated subnets for Magellan scan (e.g. `172.16.0.0/24,10.0.0.0/16`)
+*   `--magellan-hosts LIST`: Comma-separated hosts/URIs for Magellan scan
+*   `--magellan-subnet-mask MASK`: Subnet mask for non-CIDR Magellan subnets
+*   `--magellan-bmc-user USER` / `--magellan-bmc-pass PASS`: Credentials for Magellan collect
+*   `--magellan-bmc-id-map MAP`: BMC ID map value for Magellan collect (`@/path/to/map.yaml` or inline JSON/YAML)
+*   `--magellan-cache PATH`: Magellan cache path (default: `/tmp/$USER/magellan/assets.db`)
+*   `--magellan-insecure`: Skip TLS verification during Magellan scan and collect
 
 ### What the deployment script does:
 
@@ -228,7 +237,7 @@ To deploy with test VMs:
 | 3. Start Orchestrator | Starts Minikube with `none` driver | N/A (uses systemd) | N/A (uses Docker daemon) |
 | 4. Configure Network | Creates `virbr-pxe` bridge, assigns 192.168.100.2 | Same | Same |
 | 5. Deploy Services | Helm install to Kubernetes | Installs `.container` quadlet files + `openchami.target` | Docker Compose up |
-| 6. Register Hardware Nodes | Registers nodes from CSV if `--nodes-file` specified | Same | Same |
+| 6. Register Hardware Nodes | Registers from CSV (`--nodes-file`) or runs Magellan discovery (`--discovery-method magellan`) | Same | Same |
 | 7. Create VMs | Creates Libvirt VMs if `--vms` specified | Same | Same |
 
 ### Key Differences Between Methods
@@ -283,7 +292,9 @@ You can also combine this with custom IP ranges if your physical network require
             --dhcp-start 192.168.50.100 --dhcp-end 192.168.50.200
 ```
 
-To fully automate hardware deployment (services + node registration in one command), add `--nodes-file`:
+To fully automate hardware deployment (services + node registration in one command), use either static CSV registration or Magellan discovery.
+
+Static CSV registration:
 
 ```bash
 ./deploy.sh --method minikube --mode hardware --interface ens160 \
@@ -293,6 +304,21 @@ To fully automate hardware deployment (services + node registration in one comma
 ```
 
 See [Automated Hardware Node Registration](#4b-automated-hardware-node-registration) for the CSV format.
+
+Dynamic Magellan discovery:
+
+```bash
+./deploy.sh --method minikube --mode hardware --interface ens160 \
+            --ip 148.187.1.68 --cidr 28 \
+            --dhcp-start 148.187.1.69 --dhcp-end 148.187.1.78 \
+            --discovery-method magellan \
+            --magellan-subnets 148.187.1.64/28 \
+            --magellan-bmc-user root \
+            --magellan-bmc-pass 'password' \
+            --magellan-insecure
+```
+
+See [Magellan Dynamic Discovery](#4c-magellan-dynamic-discovery) for details.
 
 ## Step 2: Verify the Deployment
 
@@ -542,7 +568,7 @@ Ensure your hardware node is connected to the physical interface specified via `
 
 ### 4b. Automated Hardware Node Registration
 
-You can register multiple hardware nodes automatically during deployment using a CSV inventory file with `--nodes-file`:
+You can register multiple hardware nodes automatically during deployment using a CSV inventory file with `--nodes-file` (discovery method `static`):
 
 1.  **Create the inventory file:**
 
@@ -552,9 +578,9 @@ You can register multiple hardware nodes automatically during deployment using a
 
     Edit `nodes.csv` with your hardware inventory:
     ```csv
-    # mac,ip,component_id,nid
-    50:6b:4b:d5:1d:5d,148.187.1.69,x1000c0s0b0n0,1000
-    AA:BB:CC:DD:EE:01,148.187.1.70,x1000c0s1b0n0,1001
+    # mac,ip,component_id,nid,bmc_ip,bmc_user,bmc_pass
+    50:6b:4b:d5:1d:5d,148.187.1.69,x1000c0s0b0n0,1000,148.187.1.100,root,password
+    AA:BB:CC:DD:EE:01,148.187.1.70,x1000c0s1b0n0,1001,148.187.1.101,root,password
     ```
 
 2.  **Deploy with automatic registration:**
@@ -574,7 +600,41 @@ You can register multiple hardware nodes automatically during deployment using a
 
     After deployment, the hardware nodes will PXE boot without any manual registration steps.
 
-### 4c. Manual Hardware Node Registration
+### 4c. Magellan Dynamic Discovery
+
+Magellan can dynamically discover BMCs and populate SMD without maintaining a static node CSV.
+
+1.  **Ensure `magellan` is installed and in your PATH.**
+
+2.  **Deploy with Magellan discovery enabled:**
+
+    ```bash
+    ./deploy.sh --method minikube --mode hardware --interface ens160 \
+      --ip 148.187.1.68 --cidr 28 \
+      --dhcp-start 148.187.1.69 --dhcp-end 148.187.1.78 \
+      --discovery-method magellan \
+      --magellan-subnets 148.187.1.64/28 \
+      --magellan-bmc-user root \
+      --magellan-bmc-pass 'password' \
+      --magellan-insecure
+    ```
+
+    Optional flags:
+    - `--magellan-hosts` to scan specific hosts/URIs in addition to subnet scans.
+    - `--magellan-bmc-id-map @/path/to/map.yaml` to control generated BMC IDs/XNames.
+    - `--magellan-cache /path/to/assets.db` to control scan cache location.
+
+    The deploy script will:
+    - Start all OpenCHAMI services
+    - Register BSS default boot parameters
+    - Run `magellan scan`
+    - Run `magellan collect --show` and send the collected data to SMD with `magellan send`
+
+    If `--vms N` is also set with `--discovery-method magellan`, deploy creates VMs first, then runs Magellan discovery again to discover the emulator endpoints for those VMs.
+
+    Tip: Magellan reuses its cache file. Use `--magellan-cache` to isolate runs or remove stale cache files between scans.
+
+### 4d. Manual Hardware Node Registration
 
 To register a single hardware node after deployment, use the standalone script:
 
@@ -586,7 +646,7 @@ To register a single hardware node after deployment, use the standalone script:
 ORCHESTRATOR=quadlets ./scripts/register_hardware_node.sh 00:11:22:33:44:55 192.168.50.50
 ```
 
-### 4d. Boot the Hardware
+### 4e. Boot the Hardware
 Power on the node. Once registered and synced, Kea will assign the static production IP and serve the boot image.
 
 ## Cleanup
