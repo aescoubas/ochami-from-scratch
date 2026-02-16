@@ -208,6 +208,12 @@ To deploy with test VMs:
 *   `--method [minikube|quadlets|docker-compose]`: Choose the deployment method (required)
 *   `--vms N`: Automatically create N test VMs (named `virtual-compute-node-0`, `virtual-compute-node-1`, etc.)
 *   `--rebuild`: Force a rebuild of container images
+*   `--smd-ref REF`: Git ref to use when rebuilding the local SMD image (default: `main`)
+*   `--bss-ref REF`: Git ref to use when rebuilding the local BSS image (default: `main`)
+*   `--pcs-ref REF`: Git ref to use when rebuilding the local PCS image (default: `main`)
+*   `--smd-repo-uri URI`: Git repository URI to use for SMD rebuilds
+*   `--bss-repo-uri URI`: Git repository URI to use for BSS rebuilds
+*   `--pcs-repo-uri URI`: Git repository URI to use for PCS rebuilds
 *   `--phy-iface IFACE`: Bridge a physical interface for bare-metal testing
 *   `--ip ADDRESS`: Set the PXE server IP (default: 192.168.100.2)
 *   `--cidr CIDR`: Set the network CIDR (default: 24)
@@ -239,6 +245,18 @@ To deploy with test VMs:
 ```bash
 ./deploy.sh --method quadlets --rebuild
 ./deploy.sh --method docker-compose --rebuild
+```
+
+**Rebuild from a feature branch (example: SMD):**
+```bash
+./deploy.sh --method docker-compose --rebuild --smd-ref your-smd-branch
+```
+
+**Rebuild from a custom SMD fork URI + branch:**
+```bash
+./deploy.sh --method docker-compose --rebuild \
+  --smd-repo-uri https://github.com/your-user/ochami-smd.git \
+  --smd-ref your-smd-branch
 ```
 
 ## Step 1b: Deployment (Bare Metal Mode)

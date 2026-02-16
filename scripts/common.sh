@@ -44,6 +44,12 @@ DEFAULT_DHCP_NETMASK="255.255.255.0"
 DEFAULT_MODE="libvirt"
 DEFAULT_NUM_VMS=0
 DEFAULT_VM_NAME="virtual-compute-node"
+DEFAULT_SMD_REF="main"
+DEFAULT_BSS_REF="main"
+DEFAULT_PCS_REF="main"
+DEFAULT_SMD_REPO_URI="https://github.com/aescoubas/ochami-smd.git"
+DEFAULT_BSS_REPO_URI="https://github.com/aescoubas/ochami-bss.git"
+DEFAULT_PCS_REPO_URI="https://github.com/OpenCHAMI/power-control.git"
 
 # Image names
 IMAGE_HTTP="localhost/http-server:latest"
@@ -229,6 +235,32 @@ command_exists() {
     command -v "$1" >/dev/null 2>&1
 }
 
+get_microservice_ref() {
+    local service="$1"
+    case "$service" in
+        smd) echo "${SMD_REF:-$DEFAULT_SMD_REF}" ;;
+        bss) echo "${BSS_REF:-$DEFAULT_BSS_REF}" ;;
+        pcs) echo "${PCS_REF:-$DEFAULT_PCS_REF}" ;;
+        *)
+            error "Unknown microservice '$service' for ref resolution."
+            return 1
+            ;;
+    esac
+}
+
+get_microservice_repo_uri() {
+    local service="$1"
+    case "$service" in
+        smd) echo "${SMD_REPO_URI:-$DEFAULT_SMD_REPO_URI}" ;;
+        bss) echo "${BSS_REPO_URI:-$DEFAULT_BSS_REPO_URI}" ;;
+        pcs) echo "${PCS_REPO_URI:-$DEFAULT_PCS_REPO_URI}" ;;
+        *)
+            error "Unknown microservice '$service' for repo URI resolution."
+            return 1
+            ;;
+    esac
+}
+
 require_command() {
     local cmd="$1"
     local msg="${2:-$cmd is required but not installed. Aborting.}"
@@ -407,7 +439,12 @@ build_images_if_needed() {
             local FUNC="build_${NAME}"
 
             if declare -f "$FUNC" > /dev/null; then
-                $FUNC "$TAG"
+                local SERVICE_REF
+                local SERVICE_REPO_URI
+                SERVICE_REF="$(get_microservice_ref "$NAME")" || exit 1
+                SERVICE_REPO_URI="$(get_microservice_repo_uri "$NAME")" || exit 1
+                echo "Using git ref '$SERVICE_REF' and repo URI '$SERVICE_REPO_URI' for microservice '$NAME' (image tag: '$TAG')."
+                $FUNC "$SERVICE_REF" "$TAG" "$SERVICE_REPO_URI"
 
                 if [[ "$NAME" == "coresmd" ]]; then
                     if ! $container_tool image inspect "$img" >/dev/null 2>&1; then
@@ -881,6 +918,12 @@ parse_common_deploy_args() {
     MODE="$DEFAULT_MODE"
     NUM_VMS="$DEFAULT_NUM_VMS"
     NODES_FILE=""
+    SMD_REF="$DEFAULT_SMD_REF"
+    BSS_REF="$DEFAULT_BSS_REF"
+    PCS_REF="$DEFAULT_PCS_REF"
+    SMD_REPO_URI="$DEFAULT_SMD_REPO_URI"
+    BSS_REPO_URI="$DEFAULT_BSS_REPO_URI"
+    PCS_REPO_URI="$DEFAULT_PCS_REPO_URI"
 
     while [[ "$#" -gt 0 ]]; do
         case $1 in
@@ -895,6 +938,12 @@ parse_common_deploy_args() {
             --mode) MODE="$2"; shift ;;
             --vms) NUM_VMS="$2"; shift ;;
             --nodes-file) NODES_FILE="$2"; shift ;;
+            --smd-ref) SMD_REF="$2"; shift ;;
+            --bss-ref) BSS_REF="$2"; shift ;;
+            --pcs-ref) PCS_REF="$2"; shift ;;
+            --smd-repo-uri) SMD_REPO_URI="$2"; shift ;;
+            --bss-repo-uri) BSS_REPO_URI="$2"; shift ;;
+            --pcs-repo-uri) PCS_REPO_URI="$2"; shift ;;
             -h|--help) return 2 ;;
             *) error "Unknown parameter: $1"; exit 1 ;;
         esac
@@ -942,6 +991,15 @@ validate_common_deploy_args() {
         fi
     fi
 
+    if [ -z "$SMD_REF" ] || [ -z "$BSS_REF" ] || [ -z "$PCS_REF" ]; then
+        error "Microservice refs must be non-empty. Check --smd-ref, --bss-ref, and --pcs-ref."
+        exit 1
+    fi
+    if [ -z "$SMD_REPO_URI" ] || [ -z "$BSS_REPO_URI" ] || [ -z "$PCS_REPO_URI" ]; then
+        error "Microservice repo URIs must be non-empty. Check --smd-repo-uri, --bss-repo-uri, and --pcs-repo-uri."
+        exit 1
+    fi
+
     # Apply defaults
     if [ -z "$DHCP_START" ]; then
         DHCP_START="$DEFAULT_DHCP_START"
@@ -966,6 +1024,12 @@ Common options:
   --mode MODE            'libvirt' or 'hardware' (default: $DEFAULT_MODE)
   --vms N                Number of VMs to create (default: $DEFAULT_NUM_VMS)
   --nodes-file FILE      CSV file with hardware nodes (mac,ip,component_id,nid,bmc_ip,bmc_user,bmc_pass)
+  --smd-ref REF          Git ref to build for SMD image (default: $DEFAULT_SMD_REF)
+  --bss-ref REF          Git ref to build for BSS image (default: $DEFAULT_BSS_REF)
+  --pcs-ref REF          Git ref to build for PCS image (default: $DEFAULT_PCS_REF)
+  --smd-repo-uri URI     Git repository URI for SMD builds (default: $DEFAULT_SMD_REPO_URI)
+  --bss-repo-uri URI     Git repository URI for BSS builds (default: $DEFAULT_BSS_REPO_URI)
+  --pcs-repo-uri URI     Git repository URI for PCS builds (default: $DEFAULT_PCS_REPO_URI)
   -h, --help             Show help
 EOF
 }
