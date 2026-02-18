@@ -79,13 +79,13 @@ if $CONTAINER_TOOL cp "$CONTAINER_ID:/lib/modules" ./modules_tmp; then
     VMLINUZ_SEARCH_DIRS+=("./modules_tmp")
 fi
 
-if $CONTAINER_TOOL cp "$CONTAINER_ID:/usr/lib/modules" ./usr_modules_tmp; then
+if $CONTAINER_TOOL cp "$CONTAINER_ID:/usr/lib/modules" ./usr_modules_tmp 2>/dev/null; then
     relax_permissions ./usr_modules_tmp
     VMLINUZ_SEARCH_DIRS+=("./usr_modules_tmp")
 fi
 
-VMLINUX=""
-for search_dir in "${VMLINUX_SEARCH_DIRS[@]}"; do
+VMLINUZ=""
+for search_dir in "${VMLINUZ_SEARCH_DIRS[@]}"; do
     candidate=$(find "$search_dir" -type f -name "vmlinuz*" | head -n 1 || true)
     if [ -n "$candidate" ]; then
         VMLINUZ="$candidate"
@@ -93,10 +93,10 @@ for search_dir in "${VMLINUX_SEARCH_DIRS[@]}"; do
     fi
 done
 
-if [ -z "$VMLINUX" ]; then
+if [ -z "$VMLINUZ" ]; then
     echo "Error: vmlinuz not found in copied container paths."
-    echo "Searched directories: ${VMLINUX_SEARCH_DIRS[*]}"
-    for search_dir in "${VMLINUX_SEARCH_DIRS[@]}"; do
+    echo "Searched directories: ${VMLINUZ_SEARCH_DIRS[*]}"
+    for search_dir in "${VMLINUZ_SEARCH_DIRS[@]}"; do
         if [ -d "$search_dir" ]; then
             ls -R "$search_dir"
         fi
@@ -104,7 +104,7 @@ if [ -z "$VMLINUX" ]; then
     exit 1
 fi
 
-cp "$VMLINUX" ./vmlinuz-lts
+cp "$VMLINUZ" ./vmlinuz-lts
 rm -rf ./boot_tmp ./modules_tmp ./usr_modules_tmp
 
 # Create a squashfs rootfs
