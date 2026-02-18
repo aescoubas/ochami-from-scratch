@@ -86,102 +86,40 @@ test_magellan_discovery_args() {
     assert_eq "${MAGELLAN_INSECURE}" "true" "magellan insecure parsing"
 }
 
-test_get_invoking_uid_gid_prefers_sudo_ids() {
-    local original_sudo_uid="${SUDO_UID-}"
-    local original_sudo_gid="${SUDO_GID-}"
-    local original_sudo_user="${SUDO_USER-}"
-
-    SUDO_UID="501"
-    SUDO_GID="20"
-    SUDO_USER="ignored-user"
-    assert_eq "$(get_invoking_uid_gid)" "501:20" "should prefer numeric sudo ids"
-
-    if [ -n "${original_sudo_uid}" ]; then SUDO_UID="${original_sudo_uid}"; else unset SUDO_UID; fi
-    if [ -n "${original_sudo_gid}" ]; then SUDO_GID="${original_sudo_gid}"; else unset SUDO_GID; fi
-    if [ -n "${original_sudo_user}" ]; then SUDO_USER="${original_sudo_user}"; else unset SUDO_USER; fi
+test_relax_permissions_helper_exists() {
+    if ! declare -f relax_permissions >/dev/null 2>&1; then
+        echo "FAIL: relax_permissions helper should be defined in common.sh"
+        return 1
+    fi
 }
 
-test_get_invoking_uid_gid_falls_back_to_current_user() {
-    local original_sudo_uid="${SUDO_UID-}"
-    local original_sudo_gid="${SUDO_GID-}"
-    local original_sudo_user="${SUDO_USER-}"
-
-    unset SUDO_UID
-    unset SUDO_GID
-    unset SUDO_USER
-    assert_eq "$(get_invoking_uid_gid)" "$(id -u):$(id -g)" "should fall back to current uid/gid"
-
-    if [ -n "${original_sudo_uid}" ]; then SUDO_UID="${original_sudo_uid}"; else unset SUDO_UID; fi
-    if [ -n "${original_sudo_gid}" ]; then SUDO_GID="${original_sudo_gid}"; else unset SUDO_GID; fi
-    if [ -n "${original_sudo_user}" ]; then SUDO_USER="${original_sudo_user}"; else unset SUDO_USER; fi
-}
-
-test_get_invoking_chown_owner_uses_current_uid() {
-    local original_sudo_uid="${SUDO_UID-}"
-    local original_sudo_gid="${SUDO_GID-}"
-    local original_sudo_user="${SUDO_USER-}"
-
-    unset SUDO_UID
-    unset SUDO_GID
-    unset SUDO_USER
-    assert_eq "$(get_invoking_chown_owner)" "$(id -u)" "chown owner should use current uid"
-
-    if [ -n "${original_sudo_uid}" ]; then SUDO_UID="${original_sudo_uid}"; else unset SUDO_UID; fi
-    if [ -n "${original_sudo_gid}" ]; then SUDO_GID="${original_sudo_gid}"; else unset SUDO_GID; fi
-    if [ -n "${original_sudo_user}" ]; then SUDO_USER="${original_sudo_user}"; else unset SUDO_USER; fi
-}
-
-test_get_invoking_chown_owner_prefers_sudo_uid() {
-    local original_sudo_uid="${SUDO_UID-}"
-    local original_sudo_gid="${SUDO_GID-}"
-    local original_sudo_user="${SUDO_USER-}"
-
-    SUDO_UID="501"
-    unset SUDO_GID
-    SUDO_USER="ignored-user"
-    assert_eq "$(get_invoking_chown_owner)" "501" "chown owner should prefer sudo uid when present"
-
-    if [ -n "${original_sudo_uid}" ]; then SUDO_UID="${original_sudo_uid}"; else unset SUDO_UID; fi
-    if [ -n "${original_sudo_gid}" ]; then SUDO_GID="${original_sudo_gid}"; else unset SUDO_GID; fi
-    if [ -n "${original_sudo_user}" ]; then SUDO_USER="${original_sudo_user}"; else unset SUDO_USER; fi
-}
-
-test_get_invoking_chown_spec_aliases_owner() {
-    local original_sudo_uid="${SUDO_UID-}"
-    local original_sudo_gid="${SUDO_GID-}"
-    local original_sudo_user="${SUDO_USER-}"
-
-    SUDO_UID="501"
-    unset SUDO_GID
-    SUDO_USER="ignored-user"
-    assert_eq "$(get_invoking_chown_spec)" "$(get_invoking_chown_owner)" "chown spec should alias owner helper"
-
-    if [ -n "${original_sudo_uid}" ]; then SUDO_UID="${original_sudo_uid}"; else unset SUDO_UID; fi
-    if [ -n "${original_sudo_gid}" ]; then SUDO_GID="${original_sudo_gid}"; else unset SUDO_GID; fi
-    if [ -n "${original_sudo_user}" ]; then SUDO_USER="${original_sudo_user}"; else unset SUDO_USER; fi
-}
-
-test_chown_calls_use_numeric_owner_helper() {
+test_scripts_use_relax_permissions_and_avoid_chown() {
     local deploy_script="$PROJECT_ROOT/scripts/deploy/minikube.sh"
     local build_script="$PROJECT_ROOT/scripts/build_and_load_images.sh"
+    local common_script="$PROJECT_ROOT/scripts/common.sh"
 
-    if rg -q '\$USER:\$USER' "$deploy_script" "$build_script"; then
-        echo "FAIL: chown call sites must not use USER:USER"
+    if rg -q '\bchown\b' "$deploy_script" "$build_script"; then
+        echo "FAIL: deploy/build scripts should not call chown"
         return 1
     fi
 
-    if ! rg -q 'chown -R "\$\(get_invoking_chown_owner\)"' "$deploy_script"; then
-        echo "FAIL: minikube deploy should use get_invoking_chown_owner for recursive chown"
+    if ! rg -q 'relax_permissions "\$HOME/\.minikube" "\$HOME/\.kube"' "$deploy_script"; then
+        echo "FAIL: minikube deploy should use relax_permissions for kube dirs"
         return 1
     fi
 
-    if ! rg -q 'chown -R "\$\(get_invoking_chown_owner\)"' "$build_script"; then
-        echo "FAIL: build script should use get_invoking_chown_owner for recursive chown"
+    if ! rg -q 'relax_permissions \./boot_tmp' "$build_script"; then
+        echo "FAIL: build script should use relax_permissions for boot_tmp"
         return 1
     fi
 
-    if ! rg -q 'chown "\$\(get_invoking_chown_owner\)"' "$build_script"; then
-        echo "FAIL: build script should use get_invoking_chown_owner for file chown"
+    if ! rg -q 'relax_permissions \./rootfs\.squashfs' "$build_script"; then
+        echo "FAIL: build script should use relax_permissions for rootfs artifact"
+        return 1
+    fi
+
+    if ! rg -q 'relax_permissions\(\)' "$common_script"; then
+        echo "FAIL: relax_permissions helper should be implemented in common.sh"
         return 1
     fi
 }
@@ -200,9 +138,5 @@ run_test test_custom_microservice_refs
 run_test test_get_microservice_ref
 run_test test_get_microservice_repo_uri
 run_test test_magellan_discovery_args
-run_test test_get_invoking_uid_gid_prefers_sudo_ids
-run_test test_get_invoking_uid_gid_falls_back_to_current_user
-run_test test_get_invoking_chown_owner_uses_current_uid
-run_test test_get_invoking_chown_owner_prefers_sudo_uid
-run_test test_get_invoking_chown_spec_aliases_owner
-run_test test_chown_calls_use_numeric_owner_helper
+run_test test_relax_permissions_helper_exists
+run_test test_scripts_use_relax_permissions_and_avoid_chown

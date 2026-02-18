@@ -68,7 +68,7 @@ $CONTAINER_TOOL cp "$CONTAINER_ID:/boot/initrd.img" ./initramfs-lts
 sudo rm -rf ./boot_tmp
 mkdir -p ./boot_tmp
 $CONTAINER_TOOL cp "$CONTAINER_ID:/boot/." ./boot_tmp/
-sudo chown -R "$(get_invoking_chown_owner)" ./boot_tmp
+relax_permissions ./boot_tmp
 
 # Find the vmlinuz file
 VMLINUZ=$(find ./boot_tmp -name "vmlinuz*" -type f | head -n 1)
@@ -99,7 +99,7 @@ sudo tar -xf "$BUILD_DIR/rootfs.tar" -C "$BUILD_DIR/full_root"
 
 # Create squashfs
 sudo mksquashfs "$BUILD_DIR/full_root" ./rootfs.squashfs -noappend -wildcards -e "proc/*" -e "sys/*" -e "dev/*" -e "tmp/*" -e "boot/*" -e "var/cache/zypp/*"
-sudo chown "$(get_invoking_chown_owner)" ./rootfs.squashfs
+relax_permissions ./rootfs.squashfs
 
 # Clean up
 $CONTAINER_TOOL rm "$CONTAINER_ID"

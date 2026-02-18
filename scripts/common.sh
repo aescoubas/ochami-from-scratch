@@ -240,82 +240,13 @@ command_exists() {
     command -v "$1" >/dev/null 2>&1
 }
 
-is_non_negative_int() {
-    [[ "$1" =~ ^[0-9]+$ ]]
-}
-
-get_invoking_uid() {
-    if [ -n "${SUDO_UID:-}" ] && is_non_negative_int "${SUDO_UID}"; then
-        echo "${SUDO_UID}"
-        return 0
-    fi
-
-    if [ -n "${SUDO_USER:-}" ]; then
-        local sudo_uid
-        sudo_uid=$(id -u "${SUDO_USER}" 2>/dev/null || true)
-        if [ -n "$sudo_uid" ] && is_non_negative_int "$sudo_uid"; then
-            echo "$sudo_uid"
-            return 0
+relax_permissions() {
+    local target
+    for target in "$@"; do
+        if [ -e "$target" ]; then
+            sudo chmod -R a+rwX "$target"
         fi
-    fi
-
-    id -u
-}
-
-get_invoking_gid() {
-    if [ -n "${SUDO_GID:-}" ] && is_non_negative_int "${SUDO_GID}"; then
-        echo "${SUDO_GID}"
-        return 0
-    fi
-
-    if [ -n "${SUDO_USER:-}" ]; then
-        local sudo_gid
-        sudo_gid=$(id -g "${SUDO_USER}" 2>/dev/null || true)
-        if [ -n "$sudo_gid" ] && is_non_negative_int "$sudo_gid"; then
-            echo "$sudo_gid"
-            return 0
-        fi
-    fi
-
-    id -g
-}
-
-get_invoking_uid_gid() {
-    echo "$(get_invoking_uid):$(get_invoking_gid)"
-}
-
-get_invoking_user() {
-    if [ -n "${SUDO_USER:-}" ] && id -u "${SUDO_USER}" >/dev/null 2>&1; then
-        echo "${SUDO_USER}"
-        return 0
-    fi
-
-    id -un
-}
-
-get_invoking_group() {
-    local user
-    user="$(get_invoking_user)"
-
-    local primary_group
-    primary_group=$(id -gn "$user" 2>/dev/null || true)
-    if [ -n "$primary_group" ]; then
-        echo "$primary_group"
-        return 0
-    fi
-
-    id -gn
-}
-
-get_invoking_chown_spec() {
-    # Backward-compatible alias kept for call sites expecting a chown spec.
-    # We intentionally return owner-only numeric UID to avoid group-name issues
-    # on platforms where username and primary group differ (common on macOS).
-    echo "$(get_invoking_chown_owner)"
-}
-
-get_invoking_chown_owner() {
-    echo "$(get_invoking_uid)"
+    done
 }
 
 get_microservice_ref() {
