@@ -91,6 +91,14 @@ test_build_scripts_source_catalog_and_pass_build_args() {
         "tftp build should pass BASE_IMAGE from catalog"
     assert_contains "$common" '--build-arg BASE_IMAGE="\$BASE_IMAGE_STORK_AGENT"' \
         "stork-agent build should pass BASE_IMAGE from catalog"
+    assert_contains "$common" 'build_local_image_for_tool\(\)' \
+        "common build path should define helper that guarantees local image availability"
+    assert_contains "$common" 'docker buildx build --load' \
+        "common build path should retry with buildx --load when docker build does not load image"
+    assert_contains "$common" 'docker save "\$IMAGE_TFTP" \| minikube image load -' \
+        "tftp minikube load should stream tarball to avoid daemon context mismatches"
+    assert_contains "$common" 'docker save "\$IMAGE_STORK_AGENT" \| minikube image load -' \
+        "stork-agent minikube load should stream tarball to avoid daemon context mismatches"
 
     assert_contains "$build_images" '--build-arg BASE_IMAGE="\$BASE_IMAGE_HTTP_SERVER"' \
         "http-server build should pass BASE_IMAGE from catalog"

@@ -337,6 +337,26 @@ build_images_if_needed() {
         minikube image ls | grep -q "$1"
     }
 
+    build_local_image_for_tool() {
+        local image="$1"
+        local context="$2"
+        shift 2
+        local build_args=("$@")
+
+        if [ "$container_tool" != "docker" ]; then
+            "$container_tool" build "${build_args[@]}" -t "$image" "$context"
+            return 0
+        fi
+
+        docker build "${build_args[@]}" -t "$image" "$context"
+        if docker image inspect "$image" >/dev/null 2>&1; then
+            return 0
+        fi
+
+        echo "docker build did not load '$image' locally; retrying with buildx --load."
+        docker buildx build --load "${build_args[@]}" -t "$image" "$context"
+    }
+
     local IMAGE_CHECK_CMD
     if [ "$orchestrator" == "quadlets" ]; then
         IMAGE_CHECK_CMD="$container_tool image exists"
@@ -391,10 +411,14 @@ build_images_if_needed() {
 
     if [ "$need_tftp" = true ]; then
         echo "Building tftp server..."
-        $container_tool build --build-arg BASE_IMAGE="$BASE_IMAGE_TFTP" -t "$IMAGE_TFTP" "$PROJECT_ROOT/ochami-helm/tftp/"
+        build_local_image_for_tool "$IMAGE_TFTP" "$PROJECT_ROOT/ochami-helm/tftp/" --build-arg BASE_IMAGE="$BASE_IMAGE_TFTP"
         if [ "$orchestrator" == "minikube" ]; then
             echo "Loading $IMAGE_TFTP into Minikube..."
-            minikube image load "$IMAGE_TFTP"
+            if [ "$container_tool" == "docker" ]; then
+                docker save "$IMAGE_TFTP" | minikube image load -
+            else
+                minikube image load "$IMAGE_TFTP"
+            fi
         fi
     else
         echo "Image $IMAGE_TFTP found. Skipping build."
@@ -420,10 +444,14 @@ build_images_if_needed() {
 
     if [ "$need_stork_agent" = true ]; then
         echo "Building stork-agent..."
-        $container_tool build --build-arg BASE_IMAGE="$BASE_IMAGE_STORK_AGENT" -t "$IMAGE_STORK_AGENT" "$PROJECT_ROOT/ochami-helm/stork-agent/"
+        build_local_image_for_tool "$IMAGE_STORK_AGENT" "$PROJECT_ROOT/ochami-helm/stork-agent/" --build-arg BASE_IMAGE="$BASE_IMAGE_STORK_AGENT"
         if [ "$orchestrator" == "minikube" ]; then
             echo "Loading $IMAGE_STORK_AGENT into Minikube..."
-            minikube image load "$IMAGE_STORK_AGENT"
+            if [ "$container_tool" == "docker" ]; then
+                docker save "$IMAGE_STORK_AGENT" | minikube image load -
+            else
+                minikube image load "$IMAGE_STORK_AGENT"
+            fi
         fi
     else
         echo "Image $IMAGE_STORK_AGENT found. Skipping build."
