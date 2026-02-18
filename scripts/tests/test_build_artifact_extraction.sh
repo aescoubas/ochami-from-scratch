@@ -35,8 +35,12 @@ test_vmlinuz_search_is_robust_for_macos_layouts() {
         "build script should copy /lib/modules when searching vmlinuz"
     assert_contains "$BUILD_SCRIPT" '\$CONTAINER_TOOL cp "\$CONTAINER_ID:/usr/lib/modules" \./usr_modules_tmp 2>/dev/null' \
         "build script should copy /usr/lib/modules when searching vmlinuz"
-    assert_contains "$BUILD_SCRIPT" 'find "\$search_dir" -type f -name "vmlinuz\*"' \
-        "build script should search vmlinuz with wildcard pattern across candidate dirs"
+    assert_contains "$BUILD_SCRIPT" 'KERNEL_PATTERNS=\("vmlinuz\*" "Image\*" "bzImage\*" "linux\*" "kernel\*"\)' \
+        "build script should search architecture-specific kernel naming variants"
+    assert_contains "$BUILD_SCRIPT" 'find -L "\$search_dir" -type f -name "\$pattern"' \
+        "build script should follow symlinks while searching kernel artifacts"
+    assert_contains "$BUILD_SCRIPT" 'find -L "\$search_dir" -type f -name "vmlinux\*"' \
+        "build script should include vmlinux fallback search"
     assert_contains "$BUILD_SCRIPT" 'for search_dir in "\$\{VMLINUZ_SEARCH_DIRS\[@\]\}"' \
         "build script should iterate over initialized vmlinuz search directories"
     assert_contains "$BUILD_SCRIPT" 'Searched directories: \$\{VMLINUZ_SEARCH_DIRS\[\*\]\}' \

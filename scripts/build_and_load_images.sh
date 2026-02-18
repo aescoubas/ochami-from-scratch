@@ -85,13 +85,32 @@ if $CONTAINER_TOOL cp "$CONTAINER_ID:/usr/lib/modules" ./usr_modules_tmp 2>/dev/
 fi
 
 VMLINUZ=""
+KERNEL_PATTERNS=("vmlinuz*" "Image*" "bzImage*" "linux*" "kernel*")
 for search_dir in "${VMLINUZ_SEARCH_DIRS[@]}"; do
-    candidate=$(find "$search_dir" -type f -name "vmlinuz*" | head -n 1 || true)
-    if [ -n "$candidate" ]; then
-        VMLINUZ="$candidate"
+    for pattern in "${KERNEL_PATTERNS[@]}"; do
+        candidate=$(find -L "$search_dir" -type f -name "$pattern" | head -n 1 || true)
+        if [ -n "$candidate" ]; then
+            VMLINUZ="$candidate"
+            break
+        fi
+    done
+
+    if [ -n "$VMLINUZ" ]; then
         break
     fi
 done
+
+if [ -z "$VMLINUZ" ]; then
+    # Last-resort fallback for layouts exposing only uncompressed vmlinux.
+    for search_dir in "${VMLINUZ_SEARCH_DIRS[@]}"; do
+        candidate=$(find -L "$search_dir" -type f -name "vmlinux*" | head -n 1 || true)
+        if [ -n "$candidate" ]; then
+            echo "Warning: using fallback kernel artifact '$candidate' (vmlinux*)." >&2
+            VMLINUZ="$candidate"
+            break
+        fi
+    done
+fi
 
 if [ -z "$VMLINUZ" ]; then
     echo "Error: vmlinuz not found in copied container paths."
