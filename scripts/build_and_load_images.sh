@@ -38,7 +38,7 @@ cat > "$BUILD_DIR/eth0.xml" <<XML
 XML
 
 # Create a Dockerfile to build the image
-cat > "$BUILD_DIR/Dockerfile" <<EOF
+cat > "$BUILD_DIR/Dockerfile" <<EOF_DOCKER
 FROM ${BASE_IMAGE_SLES_BUILDER}
 RUN zypper ref && zypper install -y kernel-default dracut squashfs iproute2 util-linux shadow device-mapper tar dhcp-client curl udev
 
@@ -54,7 +54,7 @@ COPY eth0.xml /tmp/netconfig/eth0.xml
 # Wicked usually looks in /etc/wicked/ifconfig/
 RUN KVER=\$(ls /lib/modules | head -n 1) && \
     dracut -v --add "network dmsquash-live livenet" --include /tmp/netconfig/eth0.xml /etc/wicked/ifconfig/eth0.xml --no-hostonly --kver \$KVER /boot/initrd.img
-EOF
+EOF_DOCKER
 
 # Build the image
 $CONTAINER_TOOL build -t custom-image-builder-sles "$BUILD_DIR"
@@ -64,33 +64,48 @@ CONTAINER_ID=$($CONTAINER_TOOL create custom-image-builder-sles)
 
 # Extract kernel and new initramfs
 $CONTAINER_TOOL cp "$CONTAINER_ID:/boot/initrd.img" ./initramfs-lts
-# Copy the entire /boot to find vmlinuz
-sudo rm -rf ./boot_tmp
+
+# Copy likely kernel locations and search vmlinuz across all of them.
+sudo rm -rf ./boot_tmp ./modules_tmp ./usr_modules_tmp
+VMLINUZ_SEARCH_DIRS=()
+
 mkdir -p ./boot_tmp
 $CONTAINER_TOOL cp "$CONTAINER_ID:/boot/." ./boot_tmp/
 relax_permissions ./boot_tmp
+VMLINUZ_SEARCH_DIRS+=("./boot_tmp")
 
-# Find the vmlinuz file
-VMLINUZ=$(find ./boot_tmp -name "vmlinuz*" -type f | head -n 1)
-
-if [ -z "$VMLINUZ" ]; then
-     echo "Checking /lib/modules for vmlinuz..."
-     $CONTAINER_TOOL cp "$CONTAINER_ID:/lib/modules" ./modules_tmp
-     VMLINUZ_MOD=$(find ./modules_tmp -name "vmlinuz" -type f | head -n 1)
-     if [ -n "$VMLINUZ_MOD" ]; then
-         echo "Found vmlinuz in modules"
-         cp "$VMLINUZ_MOD" ./vmlinuz-lts
-         rm -rf ./modules_tmp
-     else
-        echo "Error: vmlinuz not found"
-        ls -R ./boot_tmp
-        exit 1
-     fi
-else
-    cp "$VMLINUZ" ./vmlinuz-lts
+if $CONTAINER_TOOL cp "$CONTAINER_ID:/lib/modules" ./modules_tmp; then
+    relax_permissions ./modules_tmp
+    VMLINUZ_SEARCH_DIRS+=("./modules_tmp")
 fi
 
-rm -rf ./boot_tmp
+if $CONTAINER_TOOL cp "$CONTAINER_ID:/usr/lib/modules" ./usr_modules_tmp; then
+    relax_permissions ./usr_modules_tmp
+    VMLINUZ_SEARCH_DIRS+=("./usr_modules_tmp")
+fi
+
+VMLINUX=""
+for search_dir in "${VMLINUX_SEARCH_DIRS[@]}"; do
+    candidate=$(find "$search_dir" -type f -name "vmlinuz*" | head -n 1 || true)
+    if [ -n "$candidate" ]; then
+        VMLINUZ="$candidate"
+        break
+    fi
+done
+
+if [ -z "$VMLINUX" ]; then
+    echo "Error: vmlinuz not found in copied container paths."
+    echo "Searched directories: ${VMLINUX_SEARCH_DIRS[*]}"
+    for search_dir in "${VMLINUX_SEARCH_DIRS[@]}"; do
+        if [ -d "$search_dir" ]; then
+            ls -R "$search_dir"
+        fi
+    done
+    exit 1
+fi
+
+cp "$VMLINUX" ./vmlinuz-lts
+rm -rf ./boot_tmp ./modules_tmp ./usr_modules_tmp
 
 # Create a squashfs rootfs
 $CONTAINER_TOOL export "$CONTAINER_ID" > "$BUILD_DIR/rootfs.tar"

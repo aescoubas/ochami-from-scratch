@@ -6,3 +6,4 @@ test:
 	bash scripts/tests/test_magellan_discovery.sh
 	bash scripts/tests/test_reverse_proxy_routing.sh
 	bash scripts/tests/test_image_base_standardization.sh
+	bash scripts/tests/test_build_artifact_extraction.sh
