@@ -75,6 +75,10 @@ test_docker_build_loads_images_for_minikube() {
         "http-server image should be built via the robust helper"
     assert_contains "$BUILD_SCRIPT" 'build_local_image "localhost/redfish-emulator:latest"' \
         "redfish emulator image should be built via the robust helper"
+    assert_contains "$BUILD_SCRIPT" 'docker save "localhost/http-server:latest" \| minikube image load -' \
+        "http-server minikube load should stream tarball to avoid daemon context mismatches"
+    assert_contains "$BUILD_SCRIPT" 'docker save "localhost/redfish-emulator:latest" \| minikube image load -' \
+        "redfish minikube load should stream tarball to avoid daemon context mismatches"
 }
 
 run_test() {

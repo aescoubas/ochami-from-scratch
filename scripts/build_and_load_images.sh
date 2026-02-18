@@ -170,7 +170,11 @@ echo "--- Building and loading http-server image into Minikube ---"
 DOCKER_CONTEXT="ochami-helm/http-server/"
 build_local_image "localhost/http-server:latest" "$DOCKER_CONTEXT" --build-arg BASE_IMAGE="$BASE_IMAGE_HTTP_SERVER"
 if [ "$ORCHESTRATOR" == "minikube" ]; then
-    minikube image load localhost/http-server:latest
+    if [ "$CONTAINER_TOOL" == "docker" ]; then
+        docker save "localhost/http-server:latest" | minikube image load -
+    else
+        minikube image load localhost/http-server:latest
+    fi
 fi
 
 # Note: TFTP server is built into coresmd, no separate container needed
@@ -179,7 +183,11 @@ fi
 echo "--- Building redfish-emulator ---"
 build_local_image "localhost/redfish-emulator:latest" "ochami-helm/redfish-emulator/" --build-arg BASE_IMAGE="$BASE_IMAGE_REDFISH_EMULATOR"
 if [ "$ORCHESTRATOR" == "minikube" ]; then
-    minikube image load localhost/redfish-emulator:latest
+    if [ "$CONTAINER_TOOL" == "docker" ]; then
+        docker save "localhost/redfish-emulator:latest" | minikube image load -
+    else
+        minikube image load localhost/redfish-emulator:latest
+    fi
 fi
 
 echo "--- Done ---"
