@@ -30,9 +30,11 @@ spec:
           ports:
             - containerPort: 443
               name: https
+          {{- if .Values.emulator.libvirtSocket.enabled }}
           volumeMounts:
             - name: libvirt-sock
-              mountPath: /var/run/libvirt/libvirt-sock
+              mountPath: {{ .Values.emulator.libvirtSocket.mountPath | quote }}
+          {{- end }}
           livenessProbe:
             httpGet:
               path: /redfish/v1
@@ -47,9 +49,11 @@ spec:
               scheme: HTTPS
             initialDelaySeconds: 5
             periodSeconds: 5
+      {{- if .Values.emulator.libvirtSocket.enabled }}
       volumes:
         - name: libvirt-sock
           hostPath:
-            path: /var/run/libvirt/libvirt-sock
+            path: {{ .Values.emulator.libvirtSocket.hostPath | quote }}
             type: Socket
+      {{- end }}
 {{- end }}

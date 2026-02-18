@@ -220,6 +220,10 @@ emulator:
     tag: latest
     pullPolicy: IfNotPresent
   vmPrefix: "virtual-compute-node-"
+  libvirtSocket:
+    enabled: true
+    mountPath: "/var/run/libvirt/libvirt-sock"
+    hostPath: "/var/run/libvirt/libvirt-sock"
 
 # Cloud-init configuration
 cloudInit:

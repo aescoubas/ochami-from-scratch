@@ -135,6 +135,12 @@ emulator:
   enabled: true
   replicas: $NUM_VMS
 EOF
+if $IS_MACOS; then
+cat <<EOF >> "$VALUES_FILE"
+  libvirtSocket:
+    enabled: false
+EOF
+fi
 fi
 
 # Create namespace
