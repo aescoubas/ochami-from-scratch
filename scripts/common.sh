@@ -308,21 +308,14 @@ get_invoking_group() {
 }
 
 get_invoking_chown_spec() {
-    local user
-    local group
-    user="$(get_invoking_user)"
-    group="$(get_invoking_group)"
+    # Backward-compatible alias kept for call sites expecting a chown spec.
+    # We intentionally return owner-only numeric UID to avoid group-name issues
+    # on platforms where username and primary group differ (common on macOS).
+    echo "$(get_invoking_chown_owner)"
+}
 
-    if [ -n "$user" ] && [ -n "$group" ]; then
-        echo "${user}:${group}"
-        return 0
-    fi
-
-    if $IS_MACOS; then
-        echo "#$(get_invoking_uid):#$(get_invoking_gid)"
-    else
-        echo "$(get_invoking_uid_gid)"
-    fi
+get_invoking_chown_owner() {
+    echo "$(get_invoking_uid)"
 }
 
 get_microservice_ref() {

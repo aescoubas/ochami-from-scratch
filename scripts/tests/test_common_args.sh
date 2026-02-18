@@ -116,7 +116,7 @@ test_get_invoking_uid_gid_falls_back_to_current_user() {
     if [ -n "${original_sudo_user}" ]; then SUDO_USER="${original_sudo_user}"; else unset SUDO_USER; fi
 }
 
-test_get_invoking_chown_spec_uses_current_user_group() {
+test_get_invoking_chown_owner_uses_current_uid() {
     local original_sudo_uid="${SUDO_UID-}"
     local original_sudo_gid="${SUDO_GID-}"
     local original_sudo_user="${SUDO_USER-}"
@@ -124,28 +124,66 @@ test_get_invoking_chown_spec_uses_current_user_group() {
     unset SUDO_UID
     unset SUDO_GID
     unset SUDO_USER
-    assert_eq "$(get_invoking_chown_spec)" "$(id -un):$(id -gn)" "chown spec should use current user and primary group"
+    assert_eq "$(get_invoking_chown_owner)" "$(id -u)" "chown owner should use current uid"
 
     if [ -n "${original_sudo_uid}" ]; then SUDO_UID="${original_sudo_uid}"; else unset SUDO_UID; fi
     if [ -n "${original_sudo_gid}" ]; then SUDO_GID="${original_sudo_gid}"; else unset SUDO_GID; fi
     if [ -n "${original_sudo_user}" ]; then SUDO_USER="${original_sudo_user}"; else unset SUDO_USER; fi
 }
 
-test_get_invoking_chown_spec_uses_sudo_user_primary_group() {
+test_get_invoking_chown_owner_prefers_sudo_uid() {
     local original_sudo_uid="${SUDO_UID-}"
     local original_sudo_gid="${SUDO_GID-}"
     local original_sudo_user="${SUDO_USER-}"
-    local current_user
-    current_user="$(id -un)"
 
-    unset SUDO_UID
+    SUDO_UID="501"
     unset SUDO_GID
-    SUDO_USER="$current_user"
-    assert_eq "$(get_invoking_chown_spec)" "${current_user}:$(id -gn "$current_user")" "chown spec should use sudo user primary group"
+    SUDO_USER="ignored-user"
+    assert_eq "$(get_invoking_chown_owner)" "501" "chown owner should prefer sudo uid when present"
 
     if [ -n "${original_sudo_uid}" ]; then SUDO_UID="${original_sudo_uid}"; else unset SUDO_UID; fi
     if [ -n "${original_sudo_gid}" ]; then SUDO_GID="${original_sudo_gid}"; else unset SUDO_GID; fi
     if [ -n "${original_sudo_user}" ]; then SUDO_USER="${original_sudo_user}"; else unset SUDO_USER; fi
+}
+
+test_get_invoking_chown_spec_aliases_owner() {
+    local original_sudo_uid="${SUDO_UID-}"
+    local original_sudo_gid="${SUDO_GID-}"
+    local original_sudo_user="${SUDO_USER-}"
+
+    SUDO_UID="501"
+    unset SUDO_GID
+    SUDO_USER="ignored-user"
+    assert_eq "$(get_invoking_chown_spec)" "$(get_invoking_chown_owner)" "chown spec should alias owner helper"
+
+    if [ -n "${original_sudo_uid}" ]; then SUDO_UID="${original_sudo_uid}"; else unset SUDO_UID; fi
+    if [ -n "${original_sudo_gid}" ]; then SUDO_GID="${original_sudo_gid}"; else unset SUDO_GID; fi
+    if [ -n "${original_sudo_user}" ]; then SUDO_USER="${original_sudo_user}"; else unset SUDO_USER; fi
+}
+
+test_chown_calls_use_numeric_owner_helper() {
+    local deploy_script="$PROJECT_ROOT/scripts/deploy/minikube.sh"
+    local build_script="$PROJECT_ROOT/scripts/build_and_load_images.sh"
+
+    if rg -q '\$USER:\$USER' "$deploy_script" "$build_script"; then
+        echo "FAIL: chown call sites must not use USER:USER"
+        return 1
+    fi
+
+    if ! rg -q 'chown -R "\$\(get_invoking_chown_owner\)"' "$deploy_script"; then
+        echo "FAIL: minikube deploy should use get_invoking_chown_owner for recursive chown"
+        return 1
+    fi
+
+    if ! rg -q 'chown -R "\$\(get_invoking_chown_owner\)"' "$build_script"; then
+        echo "FAIL: build script should use get_invoking_chown_owner for recursive chown"
+        return 1
+    fi
+
+    if ! rg -q 'chown "\$\(get_invoking_chown_owner\)"' "$build_script"; then
+        echo "FAIL: build script should use get_invoking_chown_owner for file chown"
+        return 1
+    fi
 }
 
 run_test() {
@@ -164,5 +202,7 @@ run_test test_get_microservice_repo_uri
 run_test test_magellan_discovery_args
 run_test test_get_invoking_uid_gid_prefers_sudo_ids
 run_test test_get_invoking_uid_gid_falls_back_to_current_user
-run_test test_get_invoking_chown_spec_uses_current_user_group
-run_test test_get_invoking_chown_spec_uses_sudo_user_primary_group
+run_test test_get_invoking_chown_owner_uses_current_uid
+run_test test_get_invoking_chown_owner_prefers_sudo_uid
+run_test test_get_invoking_chown_spec_aliases_owner
+run_test test_chown_calls_use_numeric_owner_helper
