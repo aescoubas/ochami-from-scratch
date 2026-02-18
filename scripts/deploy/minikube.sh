@@ -53,7 +53,7 @@ if ! minikube status | grep -q "Running"; then
         minikube start --driver=docker --memory=4096 --cpus=2
     else
         sudo -E minikube start --driver=none --memory=4096 --cpus=2
-        sudo chown -R "$USER:$USER" "$HOME/.minikube" "$HOME/.kube"
+        sudo chown -R "$(get_invoking_uid_gid)" "$HOME/.minikube" "$HOME/.kube"
     fi
 else
     echo "Minikube is already running."

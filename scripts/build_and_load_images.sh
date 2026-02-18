@@ -4,7 +4,7 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck disable=SC1091
-source "$SCRIPT_DIR/image-bases.env"
+source "$SCRIPT_DIR/common.sh"
 
 # Configuration
 CONTAINER_TOOL=${CONTAINER_TOOL:-docker}
@@ -68,7 +68,7 @@ $CONTAINER_TOOL cp "$CONTAINER_ID:/boot/initrd.img" ./initramfs-lts
 sudo rm -rf ./boot_tmp
 mkdir -p ./boot_tmp
 $CONTAINER_TOOL cp "$CONTAINER_ID:/boot/." ./boot_tmp/
-sudo chown -R $USER:$USER ./boot_tmp
+sudo chown -R "$(get_invoking_uid_gid)" ./boot_tmp
 
 # Find the vmlinuz file
 VMLINUZ=$(find ./boot_tmp -name "vmlinuz*" -type f | head -n 1)
@@ -99,7 +99,7 @@ sudo tar -xf "$BUILD_DIR/rootfs.tar" -C "$BUILD_DIR/full_root"
 
 # Create squashfs
 sudo mksquashfs "$BUILD_DIR/full_root" ./rootfs.squashfs -noappend -wildcards -e "proc/*" -e "sys/*" -e "dev/*" -e "tmp/*" -e "boot/*" -e "var/cache/zypp/*"
-sudo chown $USER:$USER ./rootfs.squashfs
+sudo chown "$(get_invoking_uid_gid)" ./rootfs.squashfs
 
 # Clean up
 $CONTAINER_TOOL rm "$CONTAINER_ID"

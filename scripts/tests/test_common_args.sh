@@ -86,6 +86,36 @@ test_magellan_discovery_args() {
     assert_eq "${MAGELLAN_INSECURE}" "true" "magellan insecure parsing"
 }
 
+test_get_invoking_uid_gid_prefers_sudo_ids() {
+    local original_sudo_uid="${SUDO_UID-}"
+    local original_sudo_gid="${SUDO_GID-}"
+    local original_sudo_user="${SUDO_USER-}"
+
+    SUDO_UID="501"
+    SUDO_GID="20"
+    SUDO_USER="ignored-user"
+    assert_eq "$(get_invoking_uid_gid)" "501:20" "should prefer numeric sudo ids"
+
+    if [ -n "${original_sudo_uid}" ]; then SUDO_UID="${original_sudo_uid}"; else unset SUDO_UID; fi
+    if [ -n "${original_sudo_gid}" ]; then SUDO_GID="${original_sudo_gid}"; else unset SUDO_GID; fi
+    if [ -n "${original_sudo_user}" ]; then SUDO_USER="${original_sudo_user}"; else unset SUDO_USER; fi
+}
+
+test_get_invoking_uid_gid_falls_back_to_current_user() {
+    local original_sudo_uid="${SUDO_UID-}"
+    local original_sudo_gid="${SUDO_GID-}"
+    local original_sudo_user="${SUDO_USER-}"
+
+    unset SUDO_UID
+    unset SUDO_GID
+    unset SUDO_USER
+    assert_eq "$(get_invoking_uid_gid)" "$(id -u):$(id -g)" "should fall back to current uid/gid"
+
+    if [ -n "${original_sudo_uid}" ]; then SUDO_UID="${original_sudo_uid}"; else unset SUDO_UID; fi
+    if [ -n "${original_sudo_gid}" ]; then SUDO_GID="${original_sudo_gid}"; else unset SUDO_GID; fi
+    if [ -n "${original_sudo_user}" ]; then SUDO_USER="${original_sudo_user}"; else unset SUDO_USER; fi
+}
+
 run_test() {
     local test_name="$1"
     if "$test_name"; then
@@ -100,3 +130,5 @@ run_test test_custom_microservice_refs
 run_test test_get_microservice_ref
 run_test test_get_microservice_repo_uri
 run_test test_magellan_discovery_args
+run_test test_get_invoking_uid_gid_prefers_sudo_ids
+run_test test_get_invoking_uid_gid_falls_back_to_current_user

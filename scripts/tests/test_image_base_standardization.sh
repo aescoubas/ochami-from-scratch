@@ -84,8 +84,8 @@ test_build_scripts_source_catalog_and_pass_build_args() {
 
     assert_contains "$common" 'source "\$PROJECT_ROOT/scripts/image-bases.env"' \
         "common.sh should source centralized base image catalog"
-    assert_contains "$build_images" 'source "\$SCRIPT_DIR/image-bases.env"' \
-        "build_and_load_images.sh should source centralized base image catalog"
+    assert_contains "$build_images" 'source "\$SCRIPT_DIR/(common\.sh|image-bases\.env)"' \
+        "build_and_load_images.sh should source common.sh or image-bases.env for centralized base images"
 
     assert_contains "$common" '--build-arg BASE_IMAGE="\$BASE_IMAGE_TFTP"' \
         "tftp build should pass BASE_IMAGE from catalog"
