@@ -3,6 +3,7 @@ set -euo pipefail
 
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 BUILD_SCRIPT="$PROJECT_ROOT/scripts/build_and_load_images.sh"
+MACOS_PREREQ_SCRIPT="$PROJECT_ROOT/scripts/install_prerequisites_macos.sh"
 
 assert_contains() {
     local file="$1"
@@ -49,15 +50,18 @@ test_vmlinuz_search_is_robust_for_macos_layouts() {
         "build script should consistently use the VMLINUZ variable name"
 }
 
-test_mksquashfs_has_containerized_fallback() {
-    assert_contains "$BUILD_SCRIPT" 'if command_exists mksquashfs; then' \
-        "build script should use host mksquashfs when available"
-    assert_contains "$BUILD_SCRIPT" '\$CONTAINER_TOOL run --rm' \
-        "build script should provide containerized mksquashfs fallback"
-    assert_contains "$BUILD_SCRIPT" 'custom-image-builder-sles' \
-        "containerized mksquashfs fallback should reuse the builder image"
-    assert_contains "$BUILD_SCRIPT" 'mksquashfs /input /output/rootfs\.squashfs' \
-        "containerized fallback should produce rootfs.squashfs in the workspace"
+test_mksquashfs_is_host_requirement_with_macos_brew_install() {
+    assert_contains "$BUILD_SCRIPT" 'require_command mksquashfs' \
+        "build script should require host mksquashfs"
+    assert_not_contains "$BUILD_SCRIPT" '\$CONTAINER_TOOL run --rm' \
+        "build script should not use containerized mksquashfs fallback"
+    assert_contains "$BUILD_SCRIPT" 'sudo mksquashfs "\$BUILD_DIR/full_root" \./rootfs\.squashfs' \
+        "build script should create squashfs directly on host"
+
+    assert_contains "$MACOS_PREREQ_SCRIPT" 'brew install squashfs' \
+        "macOS prerequisites should install squashfs via brew"
+    assert_contains "$MACOS_PREREQ_SCRIPT" 'command_exists mksquashfs' \
+        "macOS prerequisites should check for mksquashfs"
 }
 
 test_docker_build_loads_images_for_minikube() {
@@ -80,5 +84,5 @@ run_test() {
 }
 
 run_test test_vmlinuz_search_is_robust_for_macos_layouts
-run_test test_mksquashfs_has_containerized_fallback
+run_test test_mksquashfs_is_host_requirement_with_macos_brew_install
 run_test test_docker_build_loads_images_for_minikube

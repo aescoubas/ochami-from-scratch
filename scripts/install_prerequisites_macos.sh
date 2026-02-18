@@ -81,4 +81,12 @@ else
     echo "helm is installed."
 fi
 
+# 8. Install squashfs tools (provides mksquashfs)
+if ! command_exists mksquashfs; then
+    echo -e "${GREEN}--> Installing squashfs tools (mksquashfs)...${NC}"
+    brew install squashfs
+else
+    echo "mksquashfs is installed."
+fi
+
 echo -e "${GREEN}=== macOS Prerequisites Check Complete ===${NC}"
