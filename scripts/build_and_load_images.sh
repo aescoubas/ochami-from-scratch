@@ -10,6 +10,26 @@ source "$SCRIPT_DIR/common.sh"
 CONTAINER_TOOL=${CONTAINER_TOOL:-docker}
 ORCHESTRATOR=${ORCHESTRATOR:-minikube}
 
+build_local_image() {
+    local image="$1"
+    local context="$2"
+    shift 2
+    local build_args=("$@")
+
+    if [ "$CONTAINER_TOOL" != "docker" ]; then
+        "$CONTAINER_TOOL" build "${build_args[@]}" -t "$image" "$context"
+        return 0
+    fi
+
+    docker build "${build_args[@]}" -t "$image" "$context"
+    if docker image inspect "$image" >/dev/null 2>&1; then
+        return 0
+    fi
+
+    echo "docker build did not load '$image' locally; retrying with buildx --load."
+    docker buildx build --load "${build_args[@]}" -t "$image" "$context"
+}
+
 echo "--- Building SLES 15 SP6 (openSUSE Leap 15.6) image artifacts using $CONTAINER_TOOL ---"
 
 # Create a temporary directory
@@ -156,7 +176,7 @@ echo "Artifacts staged in $ARTIFACTS_DIR"
 
 echo "--- Building and loading http-server image into Minikube ---"
 DOCKER_CONTEXT="ochami-helm/http-server/"
-$CONTAINER_TOOL build --build-arg BASE_IMAGE="$BASE_IMAGE_HTTP_SERVER" -t localhost/http-server:latest "$DOCKER_CONTEXT"
+build_local_image "localhost/http-server:latest" "$DOCKER_CONTEXT" --build-arg BASE_IMAGE="$BASE_IMAGE_HTTP_SERVER"
 if [ "$ORCHESTRATOR" == "minikube" ]; then
     minikube image load localhost/http-server:latest
 fi
@@ -165,7 +185,7 @@ fi
 # coresmd includes iPXE binaries (undionly.kpxe, ipxe.efi) for BIOS and UEFI boot
 
 echo "--- Building redfish-emulator ---"
-$CONTAINER_TOOL build --build-arg BASE_IMAGE="$BASE_IMAGE_REDFISH_EMULATOR" -t localhost/redfish-emulator:latest ochami-helm/redfish-emulator/
+build_local_image "localhost/redfish-emulator:latest" "ochami-helm/redfish-emulator/" --build-arg BASE_IMAGE="$BASE_IMAGE_REDFISH_EMULATOR"
 if [ "$ORCHESTRATOR" == "minikube" ]; then
     minikube image load localhost/redfish-emulator:latest
 fi

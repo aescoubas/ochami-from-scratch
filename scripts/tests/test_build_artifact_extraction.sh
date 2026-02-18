@@ -60,6 +60,19 @@ test_mksquashfs_has_containerized_fallback() {
         "containerized fallback should produce rootfs.squashfs in the workspace"
 }
 
+test_docker_build_loads_images_for_minikube() {
+    assert_contains "$BUILD_SCRIPT" 'build_local_image\(\)' \
+        "build script should define a helper to ensure local images exist after build"
+    assert_contains "$BUILD_SCRIPT" 'docker image inspect "\$image"' \
+        "build helper should verify image exists in local docker daemon"
+    assert_contains "$BUILD_SCRIPT" 'docker buildx build --load' \
+        "build helper should retry with buildx --load when docker build does not load image"
+    assert_contains "$BUILD_SCRIPT" 'build_local_image "localhost/http-server:latest"' \
+        "http-server image should be built via the robust helper"
+    assert_contains "$BUILD_SCRIPT" 'build_local_image "localhost/redfish-emulator:latest"' \
+        "redfish emulator image should be built via the robust helper"
+}
+
 run_test() {
     local test_name="$1"
     "$test_name"
@@ -68,3 +81,4 @@ run_test() {
 
 run_test test_vmlinuz_search_is_robust_for_macos_layouts
 run_test test_mksquashfs_has_containerized_fallback
+run_test test_docker_build_loads_images_for_minikube
