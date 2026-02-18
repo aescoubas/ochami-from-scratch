@@ -15,6 +15,11 @@ show_help() {
     add_common_deploy_args_help
 }
 
+if $IS_MACOS && [ "$(id -u)" -eq 0 ]; then
+    error "Minikube deployment on macOS must be run as a regular user (do not use sudo)."
+    exit 1
+fi
+
 # --- Parse Arguments ---
 rc=0
 parse_common_deploy_args "$@" || rc=$?
@@ -53,7 +58,7 @@ if ! minikube status | grep -q "Running"; then
         minikube start --driver=docker --memory=4096 --cpus=2
     else
         sudo -E minikube start --driver=none --memory=4096 --cpus=2
-        sudo chown -R "$(get_invoking_uid_gid)" "$HOME/.minikube" "$HOME/.kube"
+        sudo chown -R "$(get_invoking_chown_spec)" "$HOME/.minikube" "$HOME/.kube"
     fi
 else
     echo "Minikube is already running."

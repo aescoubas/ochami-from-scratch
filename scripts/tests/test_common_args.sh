@@ -116,6 +116,38 @@ test_get_invoking_uid_gid_falls_back_to_current_user() {
     if [ -n "${original_sudo_user}" ]; then SUDO_USER="${original_sudo_user}"; else unset SUDO_USER; fi
 }
 
+test_get_invoking_chown_spec_uses_current_user_group() {
+    local original_sudo_uid="${SUDO_UID-}"
+    local original_sudo_gid="${SUDO_GID-}"
+    local original_sudo_user="${SUDO_USER-}"
+
+    unset SUDO_UID
+    unset SUDO_GID
+    unset SUDO_USER
+    assert_eq "$(get_invoking_chown_spec)" "$(id -un):$(id -gn)" "chown spec should use current user and primary group"
+
+    if [ -n "${original_sudo_uid}" ]; then SUDO_UID="${original_sudo_uid}"; else unset SUDO_UID; fi
+    if [ -n "${original_sudo_gid}" ]; then SUDO_GID="${original_sudo_gid}"; else unset SUDO_GID; fi
+    if [ -n "${original_sudo_user}" ]; then SUDO_USER="${original_sudo_user}"; else unset SUDO_USER; fi
+}
+
+test_get_invoking_chown_spec_uses_sudo_user_primary_group() {
+    local original_sudo_uid="${SUDO_UID-}"
+    local original_sudo_gid="${SUDO_GID-}"
+    local original_sudo_user="${SUDO_USER-}"
+    local current_user
+    current_user="$(id -un)"
+
+    unset SUDO_UID
+    unset SUDO_GID
+    SUDO_USER="$current_user"
+    assert_eq "$(get_invoking_chown_spec)" "${current_user}:$(id -gn "$current_user")" "chown spec should use sudo user primary group"
+
+    if [ -n "${original_sudo_uid}" ]; then SUDO_UID="${original_sudo_uid}"; else unset SUDO_UID; fi
+    if [ -n "${original_sudo_gid}" ]; then SUDO_GID="${original_sudo_gid}"; else unset SUDO_GID; fi
+    if [ -n "${original_sudo_user}" ]; then SUDO_USER="${original_sudo_user}"; else unset SUDO_USER; fi
+}
+
 run_test() {
     local test_name="$1"
     if "$test_name"; then
@@ -132,3 +164,5 @@ run_test test_get_microservice_repo_uri
 run_test test_magellan_discovery_args
 run_test test_get_invoking_uid_gid_prefers_sudo_ids
 run_test test_get_invoking_uid_gid_falls_back_to_current_user
+run_test test_get_invoking_chown_spec_uses_current_user_group
+run_test test_get_invoking_chown_spec_uses_sudo_user_primary_group

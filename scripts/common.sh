@@ -284,6 +284,47 @@ get_invoking_uid_gid() {
     echo "$(get_invoking_uid):$(get_invoking_gid)"
 }
 
+get_invoking_user() {
+    if [ -n "${SUDO_USER:-}" ] && id -u "${SUDO_USER}" >/dev/null 2>&1; then
+        echo "${SUDO_USER}"
+        return 0
+    fi
+
+    id -un
+}
+
+get_invoking_group() {
+    local user
+    user="$(get_invoking_user)"
+
+    local primary_group
+    primary_group=$(id -gn "$user" 2>/dev/null || true)
+    if [ -n "$primary_group" ]; then
+        echo "$primary_group"
+        return 0
+    fi
+
+    id -gn
+}
+
+get_invoking_chown_spec() {
+    local user
+    local group
+    user="$(get_invoking_user)"
+    group="$(get_invoking_group)"
+
+    if [ -n "$user" ] && [ -n "$group" ]; then
+        echo "${user}:${group}"
+        return 0
+    fi
+
+    if $IS_MACOS; then
+        echo "#$(get_invoking_uid):#$(get_invoking_gid)"
+    else
+        echo "$(get_invoking_uid_gid)"
+    fi
+}
+
 get_microservice_ref() {
     local service="$1"
     case "$service" in
