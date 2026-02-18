@@ -49,6 +49,17 @@ test_vmlinuz_search_is_robust_for_macos_layouts() {
         "build script should consistently use the VMLINUZ variable name"
 }
 
+test_mksquashfs_has_containerized_fallback() {
+    assert_contains "$BUILD_SCRIPT" 'if command_exists mksquashfs; then' \
+        "build script should use host mksquashfs when available"
+    assert_contains "$BUILD_SCRIPT" '\$CONTAINER_TOOL run --rm' \
+        "build script should provide containerized mksquashfs fallback"
+    assert_contains "$BUILD_SCRIPT" 'custom-image-builder-sles' \
+        "containerized mksquashfs fallback should reuse the builder image"
+    assert_contains "$BUILD_SCRIPT" 'mksquashfs /input /output/rootfs\.squashfs' \
+        "containerized fallback should produce rootfs.squashfs in the workspace"
+}
+
 run_test() {
     local test_name="$1"
     "$test_name"
@@ -56,3 +67,4 @@ run_test() {
 }
 
 run_test test_vmlinuz_search_is_robust_for_macos_layouts
+run_test test_mksquashfs_has_containerized_fallback

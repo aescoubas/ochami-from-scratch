@@ -132,7 +132,16 @@ mkdir -p "$BUILD_DIR/full_root"
 sudo tar -xf "$BUILD_DIR/rootfs.tar" -C "$BUILD_DIR/full_root"
 
 # Create squashfs
-sudo mksquashfs "$BUILD_DIR/full_root" ./rootfs.squashfs -noappend -wildcards -e "proc/*" -e "sys/*" -e "dev/*" -e "tmp/*" -e "boot/*" -e "var/cache/zypp/*"
+if command_exists mksquashfs; then
+    sudo mksquashfs "$BUILD_DIR/full_root" ./rootfs.squashfs -noappend -wildcards -e "proc/*" -e "sys/*" -e "dev/*" -e "tmp/*" -e "boot/*" -e "var/cache/zypp/*"
+else
+    echo "mksquashfs not found on host; using containerized mksquashfs."
+    $CONTAINER_TOOL run --rm \
+        -v "$BUILD_DIR/full_root:/input:ro" \
+        -v "$(pwd):/output" \
+        custom-image-builder-sles \
+        mksquashfs /input /output/rootfs.squashfs -noappend -wildcards -e "proc/*" -e "sys/*" -e "dev/*" -e "tmp/*" -e "boot/*" -e "var/cache/zypp/*"
+fi
 relax_permissions ./rootfs.squashfs
 
 # Clean up
