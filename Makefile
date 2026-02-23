@@ -1,4 +1,4 @@
-.PHONY: test
+.PHONY: test test-vm test-vm-ubuntu test-vm-fedora test-vm-destroy
 
 test:
 	bash scripts/tests/test_common_args.sh
@@ -8,3 +8,16 @@ test:
 	bash scripts/tests/test_image_base_standardization.sh
 	bash scripts/tests/test_build_artifact_extraction.sh
 	bash scripts/tests/test_emulator_mount_behavior.sh
+
+test-vm: test-vm-ubuntu test-vm-fedora
+
+test-vm-ubuntu:
+	cd vagrant && vagrant up ubuntu --provision
+	cd vagrant && vagrant ssh ubuntu -- sudo /home/vagrant/ochami-from-scratch/vagrant/scripts/run_tests.sh
+
+test-vm-fedora:
+	cd vagrant && vagrant up fedora --provision
+	cd vagrant && vagrant ssh fedora -- sudo /home/vagrant/ochami-from-scratch/vagrant/scripts/run_tests.sh
+
+test-vm-destroy:
+	cd vagrant && vagrant destroy -f

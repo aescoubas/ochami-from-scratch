@@ -2,9 +2,14 @@
 set -e
 
 # On macOS, delegate to the macOS-specific prerequisites script
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 if [[ "$(uname -s)" == "Darwin" ]]; then
-    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
     exec bash "$SCRIPT_DIR/install_prerequisites_macos.sh"
+fi
+
+# On Fedora, delegate to the Fedora-specific prerequisites script
+if [ -f /etc/fedora-release ]; then
+    exec bash "$SCRIPT_DIR/install_prerequisites_fedora.sh"
 fi
 
 GREEN='\033[0;32m'
