@@ -34,11 +34,11 @@ Deploy OpenCHAMI on macOS using Docker Compose:
 
 Verify the deployment:
 ```bash
-# Check SMD is ready
-curl -s http://localhost:27779/hsm/v2/service/ready
+# Check SMD is ready (via HTTP server reverse proxy)
+curl -s http://localhost:80/hsm/v2/service/ready
 
-# Check BSS is ready
-curl -s http://localhost:27778/boot/v1/service/status
+# Check BSS is ready (via HTTP server reverse proxy)
+curl -s http://localhost:80/boot/v1/service/status
 
 # Check running services
 docker compose -p ochami -f ochami-docker-compose/docker-compose.yml -f ochami-docker-compose/docker-compose.macos.yml ps
@@ -147,7 +147,7 @@ The table below shows which combinations of **platform**, **deployment method**,
 
 ### For Minikube Deployment
 *   **Minikube** with the **`none` (bare-metal)** driver (Linux) or **`docker`** driver (macOS).
-    *   *Note (Linux): The deployment script will automatically install necessary system dependencies (like `conntrack`, `cri-dockerd`, `cri-tools`, and CNI plugins) for Debian/Ubuntu systems.*
+    *   *Note (Linux): The deployment script will automatically install necessary system dependencies (like `conntrack`, `cri-dockerd`, `cri-tools`, and CNI plugins) for Debian/Ubuntu/Fedora systems.*
 *   [Helm](https://helm.sh/docs/intro/install/)
 *   [Docker](https://docs.docker.com/get-docker/) (Required for building images and running the `none` driver)
 
@@ -158,7 +158,7 @@ The table below shows which combinations of **platform**, **deployment method**,
 
 ### For Docker Compose Deployment
 *   [Docker](https://docs.docker.com/get-docker/) with the **Compose plugin** (or standalone `docker-compose`)
-*   *Note: Docker Compose deployment uses standard Docker networking with port mappings*
+*   *Note: On Linux, Docker Compose uses `network_mode: host`; on macOS, it uses Docker bridge networking with explicit port mappings.*
 
 ### macOS Prerequisites
 *   [Docker Desktop](https://www.docker.com/products/docker-desktop/) (must be running)
@@ -209,13 +209,18 @@ To deploy with test VMs:
 *   `--method [minikube|quadlets|docker-compose]`: Choose the deployment method (required)
 *   `--vms N`: Automatically create N test VMs (named `virtual-compute-node-0`, `virtual-compute-node-1`, etc.)
 *   `--rebuild`: Force a rebuild of container images
+*   `--mode [libvirt|hardware]`: Deployment mode (default: `libvirt`)
+*   `--interface IFACE`: PXE interface name (default: `virbr-pxe`)
+*   `--phy-iface IFACE`: Physical interface for bare-metal/hardware mode
+*   `--dhcp-start IP`: DHCP range start
+*   `--dhcp-end IP`: DHCP range end
+*   `--dhcp-netmask MASK`: DHCP netmask
 *   `--smd-ref REF`: Git ref to use when rebuilding the local SMD image (default: `main`)
 *   `--bss-ref REF`: Git ref to use when rebuilding the local BSS image (default: `main`)
 *   `--pcs-ref REF`: Git ref to use when rebuilding the local PCS image (default: `main`)
 *   `--smd-repo-uri URI`: Git repository URI to use for SMD rebuilds
 *   `--bss-repo-uri URI`: Git repository URI to use for BSS rebuilds
 *   `--pcs-repo-uri URI`: Git repository URI to use for PCS rebuilds
-*   `--phy-iface IFACE`: Bridge a physical interface for bare-metal testing
 *   `--ip ADDRESS`: Set the PXE server IP (default: 192.168.100.2)
 *   `--cidr CIDR`: Set the network CIDR (default: 24)
 *   `--nodes-file FILE`: CSV file with hardware nodes to auto-register (see [Automated Hardware Node Registration](#4b-automated-hardware-node-registration))
@@ -268,6 +273,24 @@ To deploy with test VMs:
   --smd-ref your-smd-branch
 ```
 
+**How local rebuilds work (important):**
+- On deploy, if microservice images are missing (or `--rebuild` is set), the deploy scripts build from local Git clones.
+- By default, these repositories are cloned/updated and built:
+  - SMD: `https://github.com/aescoubas/ochami-smd.git`
+  - BSS: `https://github.com/aescoubas/ochami-bss.git`
+  - PCS: `https://github.com/OpenCHAMI/power-control.git`
+- Local clone location: `/tmp/<repo-name>` (for example: `/tmp/ochami-smd`, `/tmp/ochami-bss`, `/tmp/power-control`).
+- Built images are stored in your local container runtime and reused by deploy:
+  - `localhost/smd:local-smd`
+  - `localhost/bss:local-bss`
+  - `localhost/pcs:local-pcs`
+  - `localhost/http-server:latest`
+  - `localhost/redfish-emulator:latest`
+  - `localhost/tftp:latest`
+  - `localhost/stork-agent:latest`
+- For Minikube deployments, locally built images are also loaded into Minikube after build.
+- You can override SMD/BSS/PCS source repositories with `--smd-repo-uri`, `--bss-repo-uri`, `--pcs-repo-uri`, and select branches/tags with `--smd-ref`, `--bss-ref`, `--pcs-ref`.
+
 **Base image pinning for local image builds:**
 Local Dockerfile-based images (`http-server`, `redfish-emulator`, `tftp`, `stork-agent`) are built from centralized, digest-pinned base images in:
 
@@ -291,9 +314,10 @@ To boot physical machines, you can bridge a physical interface to the PXE networ
 ./deploy.sh --method minikube --phy-iface eth1
 ```
 
-*   `--phy-iface`: The physical interface on your host (e.g., `eth1`, `eno1`) to bridge to the PXE network.
-    *   **Note:** The interface will be brought UP and attached to the `virbr-pxe` bridge. Any existing IP configuration on this interface effectively becomes secondary to the bridge configuration.
-    *   **Warning:** Ensure this interface is connected to an isolated network switch. Do not connect it to a corporate LAN as it will serve DHCP.
+*   `--phy-iface`: Physical interface on your host for hardware mode (recommended, e.g., `eth1`, `eno1`).
+*   `--interface`: Interface name OpenCHAMI should bind to (`virbr-pxe` by default). In hardware mode, if `--interface` is left at default and `--phy-iface` is set, deployment automatically uses `--phy-iface` as the active PXE interface.
+    *   **Note:** The selected PXE interface will be brought up and configured for DHCP/PXE traffic.
+    *   **Warning:** Ensure this interface is connected to an isolated network. Do not connect it to a corporate LAN while DHCP is active.
 
 If your host has `libvirt` installed, its `dnsmasq` service may conflict with Kea DHCP. Use the `--mode hardware` option to automatically stop and disable libvirt's default network and skip creating the `pxe-net` virtual network (since you are using a physical interface).
 ```bash
@@ -312,7 +336,7 @@ To fully automate hardware deployment (services + node registration in one comma
 Static CSV registration:
 
 ```bash
-./deploy.sh --method minikube --mode hardware --interface ens160 \
+./deploy.sh --method minikube --mode hardware --phy-iface ens160 \
             --ip 148.187.1.68 --cidr 28 \
             --dhcp-start 148.187.1.69 --dhcp-end 148.187.1.78 \
             --nodes-file nodes.csv
@@ -323,7 +347,7 @@ See [Automated Hardware Node Registration](#4b-automated-hardware-node-registrat
 Dynamic Magellan discovery:
 
 ```bash
-./deploy.sh --method minikube --mode hardware --interface ens160 \
+./deploy.sh --method minikube --mode hardware --phy-iface ens160 \
             --ip 148.187.1.68 --cidr 28 \
             --dhcp-start 148.187.1.69 --dhcp-end 148.187.1.78 \
             --discovery-method magellan \
@@ -389,12 +413,12 @@ docker compose -p ochami -f ochami-docker-compose/docker-compose.yml logs
 Test that the core services are accessible:
 
 ```bash
-# Check SMD is ready
-curl -s http://localhost:27779/hsm/v2/service/ready
+# Check SMD is ready (via HTTP server reverse proxy)
+curl -s http://localhost:80/hsm/v2/service/ready
 # Expected: {"code":0,"message":"HSM is healthy"}
 
-# Check BSS is ready
-curl -s http://localhost:27778/boot/v1/service/status
+# Check BSS is ready (via HTTP server reverse proxy)
+curl -s http://localhost:80/boot/v1/service/status
 # Expected: {"status":"running"}
 
 # Check HTTP server is serving boot artifacts
@@ -464,14 +488,14 @@ If you prefer to understand the underlying API calls, you can perform the regist
 
 ```bash
 # 1. Get the VM's MAC address
-MAC=$(sudo virsh domiflist virtual-compute-node | grep virbr-pxe | awk '{print $5}')
+MAC=$(sudo virsh domiflist virtual-compute-node-0 | grep virbr-pxe | awk '{print $5}')
 echo "VM MAC: $MAC"
 
-# 2. Get SMD service IP
-SMD_IP=$(minikube kubectl -- get svc ochami-smd -n ochami -o jsonpath='{.spec.clusterIP}')
+# 2. Set reverse proxy base URL (HTTP server)
+HTTP_PROXY_BASE=${HTTP_PROXY_BASE:-http://192.168.100.2:30080}
 
 # 3. Add node component to SMD
-curl -X POST http://${SMD_IP}:27779/hsm/v2/State/Components \
+curl -X POST ${HTTP_PROXY_BASE}/hsm/v2/State/Components \
   -H "Content-Type: application/json" \
   -d '{
     "Components": [{
@@ -486,7 +510,7 @@ curl -X POST http://${SMD_IP}:27779/hsm/v2/State/Components \
   }'
 
 # 4. Add EthernetInterface linking MAC to production IP
-curl -X POST http://${SMD_IP}:27779/hsm/v2/Inventory/EthernetInterfaces \
+curl -X POST ${HTTP_PROXY_BASE}/hsm/v2/Inventory/EthernetInterfaces \
   -H "Content-Type: application/json" \
   -d "{
     \"Description\": \"Node NIC\",
@@ -505,8 +529,8 @@ After registration, wait a few seconds for the Sidecar to sync (default interval
 minikube kubectl -- logs -n ochami ochami-kea -c sidecar
 
 # Restart VM
-sudo virsh destroy virtual-compute-node
-sudo virsh start virtual-compute-node
+sudo virsh destroy virtual-compute-node-0
+sudo virsh start virtual-compute-node-0
 ```
 
 The VM should now receive the production IP (`192.168.100.50`).
@@ -601,7 +625,7 @@ You can register multiple hardware nodes automatically during deployment using a
 2.  **Deploy with automatic registration:**
 
     ```bash
-    ./deploy.sh --method minikube --mode hardware --interface ens160 \
+    ./deploy.sh --method minikube --mode hardware --phy-iface ens160 \
       --ip 148.187.1.68 --cidr 28 \
       --dhcp-start 148.187.1.69 --dhcp-end 148.187.1.78 \
       --nodes-file nodes.csv
@@ -624,7 +648,7 @@ Magellan can dynamically discover BMCs and populate SMD without maintaining a st
 2.  **Deploy with Magellan discovery enabled:**
 
     ```bash
-    ./deploy.sh --method minikube --mode hardware --interface ens160 \
+    ./deploy.sh --method minikube --mode hardware --phy-iface ens160 \
       --ip 148.187.1.68 --cidr 28 \
       --dhcp-start 148.187.1.69 --dhcp-end 148.187.1.78 \
       --discovery-method magellan \
@@ -771,12 +795,15 @@ All inter-service HTTP calls that need SMD now go through the Nginx reverse prox
 
 Deployment-specific reverse proxy base URL:
 
-| Deployment Method | Reverse Proxy Base URL Used by Services |
+| Deployment Method | Reverse Proxy Base URL |
 | :--- | :--- |
-| Minikube (Helm) | `http://ochami-http-server.<namespace>.svc.cluster.local:80` |
+| Minikube (Helm, in-cluster services) | `http://ochami-http-server.<namespace>.svc.cluster.local:80` |
+| Minikube (host access) | `http://192.168.100.2:30080` |
 | Docker Compose (Linux) | `http://localhost:80` |
 | Docker Compose (macOS) | `http://http-server:80` |
 | Quadlets | `http://localhost:80` |
+
+For host-side Minikube CLI/API calls, use `http://<--ip value>:30080` (default `http://192.168.100.2:30080`).
 
 ## 5. Using the Redfish Emulator
 
@@ -1067,8 +1094,8 @@ sudo virsh start virtual-compute-node-0
 # Service dependency tree
 echo "=== Service Tree ===" && systemctl list-dependencies openchami.target
 echo "=== Running Containers ===" && sudo podman ps
-echo "=== SMD Health ===" && curl -s http://localhost:27779/hsm/v2/service/ready
-echo "=== BSS Health ===" && curl -s http://localhost:27778/boot/v1/service/status
+echo "=== SMD Health ===" && curl -s http://localhost:80/hsm/v2/service/ready
+echo "=== BSS Health ===" && curl -s http://localhost:80/boot/v1/service/status
 echo "=== HTTP Server ===" && curl -s -o /dev/null -w "%{http_code}" http://localhost:80/boot.ipxe
 echo "=== VM Status ===" && sudo virsh list --all
 
@@ -1083,8 +1110,8 @@ sudo journalctl -u kea -f        # Follow logs for a service
 ```bash
 # Full system status
 echo "=== Running Services ===" && docker compose -p ochami -f ochami-docker-compose/docker-compose.yml ps
-echo "=== SMD Health ===" && curl -s http://localhost:27779/hsm/v2/service/ready
-echo "=== BSS Health ===" && curl -s http://localhost:27778/boot/v1/service/status
+echo "=== SMD Health ===" && curl -s http://localhost:80/hsm/v2/service/ready
+echo "=== BSS Health ===" && curl -s http://localhost:80/boot/v1/service/status
 echo "=== HTTP Server ===" && curl -s -o /dev/null -w "%{http_code}" http://localhost:80/boot.ipxe
 echo "=== VM Status ===" && sudo virsh list --all
 ```
