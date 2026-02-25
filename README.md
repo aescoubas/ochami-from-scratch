@@ -267,6 +267,8 @@ If you deploy with `--set-fs-protected-regular`, teardown restores the previous 
 
 ### What the deployment script does:
 
+Implementation note: deployment methods now share a common lifecycle pipeline in `scripts/deploy/lib/pipeline.sh` (bootstrap, prerequisites, post-deploy registration/VM flow). Quadlets and Docker Compose also share runtime env/template generation in `scripts/deploy/lib/runtime_config.sh`.
+
 | Step | Minikube | Quadlets | Docker Compose |
 |------|----------|----------|----------------|
 | 1. Prerequisites | Installs cri-dockerd, CNI plugins | Checks for podman, envsubst | Checks for docker compose |

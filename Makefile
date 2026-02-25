@@ -12,6 +12,8 @@ test:
 	bash scripts/tests/test_emulator_mount_behavior.sh
 	bash scripts/tests/test_registration_contract_consistency.sh
 	bash scripts/tests/test_deploy_policies_and_dedup.sh
+	bash scripts/tests/test_deploy_pipeline_dedup.sh
+	bash scripts/tests/test_runtime_config_generation_shared.sh
 	bash scripts/tests/test_helm_termination_grace_policy.sh
 	bash scripts/tests/test_prereq_sysctl_policy.sh
 	bash scripts/tests/test_libvirt_deploy_smoke_coverage.sh

@@ -5,6 +5,7 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/../common.sh"
+source "$SCRIPT_DIR/lib/pipeline.sh"
 
 # --- Help ---
 show_help() {
@@ -20,31 +21,10 @@ if $IS_MACOS && [ "$(id -u)" -eq 0 ]; then
     exit 1
 fi
 
-# --- Parse Arguments ---
-rc=0
-parse_common_deploy_args "$@" || rc=$?
-if [ $rc -eq 2 ]; then
-    show_help
-    exit 0
-elif [ $rc -ne 0 ]; then
-    exit $rc
-fi
-
-validate_common_deploy_args
-ensure_generated_secrets
-
-info "=== OpenCHAMI Minikube Deployment ==="
-
-if [ "$FORCE_REBUILD" = true ]; then
-    echo "Force rebuild enabled."
-fi
+common_deploy_bootstrap "OpenCHAMI Minikube Deployment" "$@"
 
 # 0. Install Prerequisites
-PREREQ_ARGS=()
-if [ "$SET_FS_PROTECTED_REGULAR" = true ]; then
-    PREREQ_ARGS+=(--set-fs-protected-regular)
-fi
-"$PROJECT_ROOT/scripts/install_prerequisites.sh" "${PREREQ_ARGS[@]}"
+common_install_prerequisites
 
 # 1. Check Prerequisites
 step "Checking prerequisites for minikube..."
@@ -206,34 +186,12 @@ fi
 
 register_bss_defaults "$BSS_IP" "$HOST_IP" "ds=nocloud-net;s=http://${HOST_IP}:${HTTP_PORT}/cloud-init/"
 
-# 5c. Discover/register hardware nodes
-if [ "$DISCOVERY_METHOD" == "magellan" ]; then
-    step "Running Magellan dynamic discovery..."
-    export ORCHESTRATOR="minikube"
-    run_magellan_discovery "$HOST_IP"
-elif [ -n "$NODES_FILE" ]; then
-    step "Registering hardware nodes from $NODES_FILE..."
-    validate_nodes_file "$NODES_FILE"
-    export ORCHESTRATOR="minikube"
-    register_hardware_nodes_from_file "$NODES_FILE" "$HOST_IP"
+# 5c/6. Discover/register hardware nodes and create VMs
+VM_CREATION_SUPPORTED=true
+if $IS_MACOS; then
+    VM_CREATION_SUPPORTED=false
 fi
-
-# 6. Create VMs
-if [ "$NUM_VMS" -gt 0 ]; then
-    if $IS_MACOS; then
-        warn "VM creation via libvirt is not available on macOS."
-        echo "Use ./scripts/register_hardware_node.sh to register physical nodes instead."
-    elif [ "$DISCOVERY_METHOD" == "magellan" ]; then
-        step "Creating $NUM_VMS VMs (Magellan discovery mode)..."
-        create_vms_only "$NUM_VMS"
-        step "Running Magellan discovery after VM creation..."
-        export ORCHESTRATOR="minikube"
-        run_magellan_discovery "$HOST_IP"
-    else
-        step "Creating $NUM_VMS VMs..."
-        create_and_register_vms "$NUM_VMS" "$HOST_IP"
-    fi
-fi
+common_run_post_deploy_flow "minikube" "$HOST_IP" "$VM_CREATION_SUPPORTED"
 
 # 7. Final Instructions
 info "=== Deployment Complete ==="
@@ -242,18 +200,4 @@ echo ""
 echo "You can now verify the pods are running:"
 echo "  minikube kubectl -- get pods -n ochami"
 echo ""
-if $IS_MACOS; then
-    echo "To register a hardware node:"
-    echo "  ./scripts/register_hardware_node.sh <MAC_ADDRESS> <IP_ADDRESS> <COMPONENT_ID> <NID> <BMC_IP> <BMC_USER> <BMC_PASS>"
-    echo ""
-    echo "Note: VM creation via libvirt is not available on macOS."
-elif [ "$NUM_VMS" -gt 0 ]; then
-    echo "To connect to the VM console, run:"
-    for i in $(seq 0 $((NUM_VMS - 1))); do
-        echo "  sudo virsh start --console virtual-compute-node-$i"
-    done
-else
-    echo "To create and boot a VM, run:"
-    echo "  sudo ./scripts/create_vm.sh"
-    echo "  sudo virsh start --console virtual-compute-node"
-fi
+common_print_vm_instructions "$VM_CREATION_SUPPORTED"

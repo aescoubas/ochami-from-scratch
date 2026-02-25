@@ -75,13 +75,13 @@ test_docker_compose_macos_routes_smd_calls_through_reverse_proxy() {
 }
 
 test_quadlets_route_smd_calls_through_reverse_proxy() {
-    assert_contains "$PROJECT_ROOT/scripts/deploy/quadlets.sh" \
+    assert_contains "$PROJECT_ROOT/scripts/deploy/lib/runtime_config.sh" \
         "HSM_URL=http://localhost:\\$\\{HTTP_PORT\\}" \
         "quadlets env should route HSM through reverse proxy"
-    assert_contains "$PROJECT_ROOT/scripts/deploy/quadlets.sh" \
+    assert_contains "$PROJECT_ROOT/scripts/deploy/lib/runtime_config.sh" \
         "SMS_SERVER=http://localhost:\\$\\{HTTP_PORT\\}" \
         "quadlets env should route SMS through reverse proxy"
-    assert_contains "$PROJECT_ROOT/scripts/deploy/quadlets.sh" \
+    assert_contains "$PROJECT_ROOT/scripts/deploy/lib/runtime_config.sh" \
         "STORK_AGENT_SERVER_URL=http://localhost:\\$\\{HTTP_PORT\\}" \
         "quadlets env should route stork agent through reverse proxy"
 

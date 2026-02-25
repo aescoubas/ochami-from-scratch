@@ -9,6 +9,7 @@ MINIKUBE_DEPLOY="$PROJECT_ROOT/scripts/deploy/minikube.sh"
 DOCKER_COMPOSE_DEPLOY="$PROJECT_ROOT/scripts/deploy/docker-compose.sh"
 CREATE_VM_SCRIPT="$PROJECT_ROOT/scripts/create_vm.sh"
 README_FILE="$PROJECT_ROOT/README.md"
+PIPELINE_LIB="$PROJECT_ROOT/scripts/deploy/lib/pipeline.sh"
 
 assert_contains() {
     local file="$1"
@@ -68,10 +69,12 @@ test_registration_contract_is_consistent() {
 
     assert_contains "$README_FILE" "$required_usage" \
         "README should document full hardware registration contract"
-    assert_contains "$MINIKUBE_DEPLOY" "$required_usage" \
-        "minikube deploy output should document full hardware registration contract"
-    assert_contains "$DOCKER_COMPOSE_DEPLOY" "$required_usage" \
-        "docker-compose deploy output should document full hardware registration contract"
+    assert_contains "$PIPELINE_LIB" "$required_usage" \
+        "shared deploy pipeline should document full hardware registration contract"
+    assert_contains "$MINIKUBE_DEPLOY" 'common_print_vm_instructions' \
+        "minikube deploy output should use shared registration guidance helper"
+    assert_contains "$DOCKER_COMPOSE_DEPLOY" 'common_print_vm_instructions' \
+        "docker-compose deploy output should use shared registration guidance helper"
     assert_contains "$CREATE_VM_SCRIPT" "$required_usage" \
         "create_vm macOS guidance should document full hardware registration contract"
     assert_contains "$REGISTER_LOCAL_VM" "$required_usage" \
@@ -79,10 +82,8 @@ test_registration_contract_is_consistent() {
 
     assert_not_contains "$README_FILE" "$legacy_usage" \
         "README should not document the old optional hardware registration contract"
-    assert_not_contains "$MINIKUBE_DEPLOY" "$legacy_usage" \
-        "minikube deploy output should not show old optional hardware registration contract"
-    assert_not_contains "$DOCKER_COMPOSE_DEPLOY" "$legacy_usage" \
-        "docker-compose deploy output should not show old optional hardware registration contract"
+    assert_not_contains "$PIPELINE_LIB" "$legacy_usage" \
+        "shared deploy pipeline should not show old optional hardware registration contract"
     assert_not_contains "$CREATE_VM_SCRIPT" 'register_hardware_node\.sh <MAC_ADDRESS> <IP_ADDRESS> \[COMPONENT_ID\]' \
         "create_vm should not show old optional registration contract"
     assert_not_contains "$REGISTER_LOCAL_VM" "$legacy_usage" \

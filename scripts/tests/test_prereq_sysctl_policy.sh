@@ -8,6 +8,7 @@ COMMON_SCRIPT="$PROJECT_ROOT/scripts/common.sh"
 MINIKUBE_DEPLOY_SCRIPT="$PROJECT_ROOT/scripts/deploy/minikube.sh"
 DOCKER_DEPLOY_SCRIPT="$PROJECT_ROOT/scripts/deploy/docker-compose.sh"
 QUADLETS_DEPLOY_SCRIPT="$PROJECT_ROOT/scripts/deploy/quadlets.sh"
+PIPELINE_LIB="$PROJECT_ROOT/scripts/deploy/lib/pipeline.sh"
 VM_RUNNER_SCRIPT="$PROJECT_ROOT/libvirt/scripts/run_tests.sh"
 MINIKUBE_TEARDOWN_SCRIPT="$PROJECT_ROOT/scripts/teardown/minikube.sh"
 DOCKER_TEARDOWN_SCRIPT="$PROJECT_ROOT/scripts/teardown/docker-compose.sh"
@@ -71,17 +72,19 @@ test_common_deploy_args_expose_sysctl_opt_in_flag() {
 }
 
 test_deploy_and_vm_runner_wire_opt_in_flag_explicitly() {
-    assert_contains "$MINIKUBE_DEPLOY_SCRIPT" 'PREREQ_ARGS=\(\)' \
-        "minikube deploy should build prerequisite arg list"
-    assert_contains "$MINIKUBE_DEPLOY_SCRIPT" 'PREREQ_ARGS\+=\(--set-fs-protected-regular\)' \
-        "minikube deploy should pass --set-fs-protected-regular when enabled"
-    assert_contains "$MINIKUBE_DEPLOY_SCRIPT" 'install_prerequisites\.sh" "\$\{PREREQ_ARGS\[@\]\}"' \
-        "minikube deploy should call prerequisites with explicit args"
+    assert_contains "$PIPELINE_LIB" 'prereq_args=\(\)' \
+        "shared pipeline should build prerequisite arg list"
+    assert_contains "$PIPELINE_LIB" 'prereq_args\+=\(--set-fs-protected-regular\)' \
+        "shared pipeline should pass --set-fs-protected-regular when enabled"
+    assert_contains "$PIPELINE_LIB" 'install_prerequisites\.sh" "\$\{prereq_args\[@\]\}"' \
+        "shared pipeline should call prerequisites with explicit args"
 
-    assert_contains "$DOCKER_DEPLOY_SCRIPT" 'PREREQ_ARGS\+=\(--set-fs-protected-regular\)' \
-        "docker-compose deploy should pass --set-fs-protected-regular when enabled"
-    assert_contains "$QUADLETS_DEPLOY_SCRIPT" 'PREREQ_ARGS\+=\(--set-fs-protected-regular\)' \
-        "quadlets deploy should pass --set-fs-protected-regular when enabled"
+    assert_contains "$MINIKUBE_DEPLOY_SCRIPT" 'common_install_prerequisites' \
+        "minikube deploy should use shared prerequisites helper"
+    assert_contains "$DOCKER_DEPLOY_SCRIPT" 'common_install_prerequisites' \
+        "docker-compose deploy should use shared prerequisites helper"
+    assert_contains "$QUADLETS_DEPLOY_SCRIPT" 'common_install_prerequisites' \
+        "quadlets deploy should use shared prerequisites helper"
 
     assert_contains "$VM_RUNNER_SCRIPT" 'SET_FS_PROTECTED_REGULAR_FOR_TESTS="\$\{SET_FS_PROTECTED_REGULAR_FOR_TESTS:-true\}"' \
         "VM runner should set explicit fs.protected_regular policy for integration tests"

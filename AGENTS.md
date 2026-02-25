@@ -21,3 +21,4 @@
 ## Verification
 *   Always run the build/test suite before finishing a turn.
 *   Command: `make test` (or `npm test`, `go test ./...`)
+*   GitHub Actions is out of scope for this repository. Keep verification local unless explicitly requested otherwise.

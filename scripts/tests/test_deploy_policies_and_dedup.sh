@@ -79,12 +79,14 @@ test_secret_generation_and_no_changeme_defaults() {
 
     assert_contains "$PROJECT_ROOT/scripts/common.sh" '^ensure_generated_secrets\(\)' \
         "common.sh should define ensure_generated_secrets helper"
-    assert_contains "$PROJECT_ROOT/scripts/deploy/minikube.sh" 'ensure_generated_secrets' \
-        "minikube deploy should generate secrets before deploy"
-    assert_contains "$PROJECT_ROOT/scripts/deploy/quadlets.sh" 'ensure_generated_secrets' \
-        "quadlets deploy should generate secrets before deploy"
-    assert_contains "$PROJECT_ROOT/scripts/deploy/docker-compose.sh" 'ensure_generated_secrets' \
-        "docker-compose deploy should generate secrets before deploy"
+    assert_contains "$PROJECT_ROOT/scripts/deploy/lib/pipeline.sh" 'ensure_generated_secrets' \
+        "shared deploy pipeline should generate secrets before deploy"
+    assert_contains "$PROJECT_ROOT/scripts/deploy/minikube.sh" 'common_deploy_bootstrap' \
+        "minikube deploy should use shared bootstrap helper"
+    assert_contains "$PROJECT_ROOT/scripts/deploy/quadlets.sh" 'common_deploy_bootstrap' \
+        "quadlets deploy should use shared bootstrap helper"
+    assert_contains "$PROJECT_ROOT/scripts/deploy/docker-compose.sh" 'common_deploy_bootstrap' \
+        "docker-compose deploy should use shared bootstrap helper"
 
     assert_contains "$PROJECT_ROOT/scripts/common.sh" 'local old_umask' \
         "ensure_generated_secrets should preserve the caller umask"
@@ -104,10 +106,12 @@ test_hardware_registration_is_deduplicated() {
 }
 
 test_nginx_template_generation_is_shared() {
-    assert_contains "$PROJECT_ROOT/scripts/deploy/docker-compose.sh" 'scripts/templates/nginx-default\.conf\.template' \
-        "docker-compose deploy should use shared nginx template"
-    assert_contains "$PROJECT_ROOT/scripts/deploy/quadlets.sh" 'scripts/templates/nginx-default\.conf\.template' \
-        "quadlets deploy should use shared nginx template"
+    assert_contains "$PROJECT_ROOT/scripts/deploy/lib/runtime_config.sh" 'scripts/templates/nginx-default\.conf\.template' \
+        "shared runtime config library should define shared nginx template path"
+    assert_contains "$PROJECT_ROOT/scripts/deploy/docker-compose.sh" 'SHARED_NGINX_TEMPLATE' \
+        "docker-compose deploy should use shared nginx template helper variable"
+    assert_contains "$PROJECT_ROOT/scripts/deploy/quadlets.sh" 'SHARED_NGINX_TEMPLATE' \
+        "quadlets deploy should use shared nginx template helper variable"
 
     assert_contains "$PROJECT_ROOT/scripts/templates/nginx-default.conf.template" 'location /hsm/' \
         "shared nginx template should include SMD route"

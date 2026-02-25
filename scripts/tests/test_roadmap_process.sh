@@ -31,6 +31,19 @@ assert_contains() {
     fi
 }
 
+assert_not_contains() {
+    local file="$1"
+    local pattern="$2"
+    local description="$3"
+
+    if rg -q -- "$pattern" "$file"; then
+        echo "FAIL: $description"
+        echo "  file: $file"
+        echo "  unexpected pattern: $pattern"
+        exit 1
+    fi
+}
+
 test_roadmap_file_exists() {
     assert_file_exists "$PROJECT_ROOT/ROADMAP.md" \
         "ROADMAP.md must exist at the repository root"
@@ -47,6 +60,18 @@ test_agents_and_roadmap_contract() {
         "ROADMAP.md should contain trackable checklist items"
 }
 
+test_ci_automation_policy() {
+    assert_contains "$PROJECT_ROOT/AGENTS.md" 'GitHub Actions is out of scope' \
+        "AGENTS.md should state that GitHub Actions is out of scope"
+    assert_not_contains "$PROJECT_ROOT/ROADMAP.md" 'Add CI' \
+        "ROADMAP.md should not require adding CI automation"
+
+    if [ -d "$PROJECT_ROOT/.github/workflows" ] && \
+       find "$PROJECT_ROOT/.github/workflows" -type f \( -name '*.yml' -o -name '*.yaml' \) | rg -q .; then
+        fail "Repository should not contain GitHub Actions workflow files"
+    fi
+}
+
 run_test() {
     local test_name="$1"
     "$test_name"
@@ -55,3 +80,4 @@ run_test() {
 
 run_test test_roadmap_file_exists
 run_test test_agents_and_roadmap_contract
+run_test test_ci_automation_policy
