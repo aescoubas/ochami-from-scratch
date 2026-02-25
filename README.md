@@ -46,7 +46,7 @@ docker compose -p ochami -f ochami-docker-compose/docker-compose.yml -f ochami-d
 
 To register a hardware node:
 ```bash
-ORCHESTRATOR=docker-compose ./scripts/register_hardware_node.sh <MAC_ADDRESS> <IP_ADDRESS> [COMPONENT_ID] [NID]
+ORCHESTRATOR=docker-compose ./scripts/register_hardware_node.sh <MAC_ADDRESS> <IP_ADDRESS> <COMPONENT_ID> <NID> <BMC_IP> <BMC_USER> <BMC_PASS>
 ```
 
 To teardown:
@@ -678,11 +678,11 @@ Magellan can dynamically discover BMCs and populate SMD without maintaining a st
 To register a single hardware node after deployment, use the standalone script:
 
 ```bash
-# Usage: ./scripts/register_hardware_node.sh <MAC_ADDRESS> <IP_ADDRESS> [COMPONENT_ID] [NID]
-./scripts/register_hardware_node.sh 00:11:22:33:44:55 192.168.50.50 x1000c0s0b0n0 1000
+# Usage: ./scripts/register_hardware_node.sh <MAC_ADDRESS> <IP_ADDRESS> <COMPONENT_ID> <NID> <BMC_IP> <BMC_USER> <BMC_PASS>
+./scripts/register_hardware_node.sh 00:11:22:33:44:55 192.168.50.50 x1000c0s0b0n0 1000 192.168.50.100 root password
 
 # For quadlets or docker-compose deployments, set the ORCHESTRATOR env var:
-ORCHESTRATOR=quadlets ./scripts/register_hardware_node.sh 00:11:22:33:44:55 192.168.50.50
+ORCHESTRATOR=quadlets ./scripts/register_hardware_node.sh 00:11:22:33:44:55 192.168.50.50 x1000c0s0b0n0 1000 192.168.50.100 root password
 ```
 
 ### 4e. Boot the Hardware

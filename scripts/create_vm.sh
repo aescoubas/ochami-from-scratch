@@ -9,7 +9,7 @@ set -e
 if [[ "$(uname -s)" == "Darwin" ]]; then
     echo "Error: VM creation requires libvirt/KVM and is not supported on macOS." >&2
     echo "To register physical hardware nodes, use:" >&2
-    echo "  ./scripts/register_hardware_node.sh <MAC_ADDRESS> <IP_ADDRESS> [COMPONENT_ID]" >&2
+    echo "  ./scripts/register_hardware_node.sh <MAC_ADDRESS> <IP_ADDRESS> <COMPONENT_ID> <NID> <BMC_IP> <BMC_USER> <BMC_PASS>" >&2
     exit 1
 fi
 

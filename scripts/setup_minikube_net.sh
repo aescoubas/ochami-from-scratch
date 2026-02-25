@@ -13,10 +13,12 @@ HOST_IFACE=${1:-"virbr-pxe"} # Corresponds to the bridge name defined in deploy.
 MINIKUBE_IP=${2:-"192.168.100.2"}
 CIDR=${3:-"24"}
 PHY_IFACE=${4:-""}
+NET_NAME=${5:-"pxe-net"}
 
 echo "=== Configuring Network for PXE ==="
 echo "Interface: $HOST_IFACE"
 echo "IP Address: $MINIKUBE_IP/$CIDR"
+echo "Libvirt Network: $NET_NAME"
 if [ -n "$PHY_IFACE" ]; then
     echo "Physical Bridge Port: $PHY_IFACE"
 fi

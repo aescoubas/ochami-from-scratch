@@ -3,11 +3,14 @@ set -e
 
 # This script registers a VM (or node) in SMD to transition it from discovery mode to production mode.
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/common.sh"
+
 # macOS guard: requires libvirt to fetch VM MAC address
-if [[ "$(uname -s)" == "Darwin" ]]; then
+if $IS_MACOS; then
     echo "Error: Local VM registration requires libvirt and is not supported on macOS." >&2
     echo "To register physical hardware nodes, use:" >&2
-    echo "  ./scripts/register_hardware_node.sh <MAC_ADDRESS> <IP_ADDRESS> [COMPONENT_ID] [NID]" >&2
+    echo "  ./scripts/register_hardware_node.sh <MAC_ADDRESS> <IP_ADDRESS> <COMPONENT_ID> <NID> <BMC_IP> <BMC_USER> <BMC_PASS>" >&2
     exit 1
 fi
 
@@ -53,13 +56,13 @@ echo "SMD IP: $SMD_IP"
 
 # 3. Create Component (Node)
 echo "Registering Node component in SMD (ID: $COMPONENT_ID, NID: $NID)..."
-curl -s -X POST "http://${SMD_IP}:27779/hsm/v2/State/Components" \
+curl -s -X POST "http://${SMD_IP}:${SMD_PORT}/hsm/v2/State/Components" \
   -H "Content-Type: application/json" \
   -d "{ \"Components\": [{ \"ID\": \"${COMPONENT_ID}\", \"Type\": \"Node\", \"State\": \"On\", \"Flag\": \"OK\", \"Role\": \"Compute\", \"NID\": ${NID}, \"NetType\": \"Sling\" }] }" > /dev/null
 
 # 4. Create EthernetInterface
 echo "Registering EthernetInterface ($IP_ADDRESS) for $COMPONENT_ID..."
-curl -s -X POST "http://${SMD_IP}:27779/hsm/v2/Inventory/EthernetInterfaces" \
+curl -s -X POST "http://${SMD_IP}:${SMD_PORT}/hsm/v2/Inventory/EthernetInterfaces" \
   -H "Content-Type: application/json" \
   -d "{ \"Description\": \"Node NIC\", \"MACAddress\": \"${MAC}\", \"IPAddresses\": [{\"IPAddress\": \"${IP_ADDRESS}\"}], \"ComponentID\": \"${COMPONENT_ID}\" }" > /dev/null
 
@@ -90,7 +93,7 @@ if [ -n "$VM_INDEX" ]; then
         # RediscoverOnUpdate=true triggers SMD to immediately query the emulator.
         
         # Try POST first
-        HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "http://${SMD_IP}:27779/hsm/v2/Inventory/RedfishEndpoints" \
+        HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "http://${SMD_IP}:${SMD_PORT}/hsm/v2/Inventory/RedfishEndpoints" \
           -H "Content-Type: application/json" \
           -d "{ 
             \"ID\": \"${BMC_ID}\", 
@@ -102,7 +105,7 @@ if [ -n "$VM_INDEX" ]; then
           
         if [ "$HTTP_CODE" -eq 409 ]; then
              echo "  -> Endpoint exists (409). Updating via PUT to trigger rediscovery..."
-             curl -s -X PUT "http://${SMD_IP}:27779/hsm/v2/Inventory/RedfishEndpoints/${BMC_ID}" \
+             curl -s -X PUT "http://${SMD_IP}:${SMD_PORT}/hsm/v2/Inventory/RedfishEndpoints/${BMC_ID}" \
               -H "Content-Type: application/json" \
               -d "{ 
                 \"ID\": \"${BMC_ID}\", 
@@ -120,7 +123,7 @@ if [ -n "$VM_INDEX" ]; then
         # Trigger SMD Redfish discovery to populate ComponentEndpoints
         # (needed for PCS power control to resolve Redfish URIs)
         echo "  Triggering SMD Redfish discovery for ${BMC_ID}..."
-        curl -s -X POST "http://${SMD_IP}:27779/hsm/v2/Inventory/Discover" \
+        curl -s -X POST "http://${SMD_IP}:${SMD_PORT}/hsm/v2/Inventory/Discover" \
           -H "Content-Type: application/json" \
           -d "{\"xnames\":[\"${BMC_ID}\"]}" > /dev/null
     else
@@ -144,11 +147,9 @@ else
     echo "BSS IP: $BSS_IP"
     echo "Registering default boot parameters in BSS for $COMPONENT_ID..."
     
-    # Artifacts URL base (assumes default setup on 192.168.100.2:30080)
-    # Ideally this should be dynamic, but for this script we match the default deployment.
-    ARTIFACTS_URL="${ARTIFACTS_URL:-http://192.168.100.2:30080/artifacts}"
+    ARTIFACTS_URL="${ARTIFACTS_URL:-http://${HOST_IP}:${HTTP_PORT}/artifacts}"
     
-    curl -s -X PUT "http://${BSS_IP}:27778/boot/v1/bootparameters" \
+    curl -s -X PUT "http://${BSS_IP}:${BSS_PORT}/boot/v1/bootparameters" \
       -H "Content-Type: application/json" \
       -d "{
         \"hosts\": [\"${COMPONENT_ID}\"],
@@ -165,7 +166,7 @@ else
     # Without nid, BSS treats the node as unknown/disabled.
     echo "Applying workaround: Updating boot_mac + nid in BSS database for $COMPONENT_ID..."
 
-    UPDATE_CMD="psql -U bss-user -d bssdb -c \"UPDATE nodes SET boot_mac = '$MAC', nid = $NID WHERE xname = '$COMPONENT_ID';\""
+    UPDATE_CMD="psql -U ${BSS_DB_USER} -d ${BSS_DB_NAME} -c \"UPDATE nodes SET boot_mac = '$MAC', nid = $NID WHERE xname = '$COMPONENT_ID';\""
     
     if [ "$ORCHESTRATOR" == "docker-compose" ]; then
         # Find postgres container via docker
