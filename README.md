@@ -169,6 +169,23 @@ The table below shows which combinations of **platform**, **deployment method**,
 *   Libvirt & `virt-install` (For local VM testing)
 *   `sudo` privileges (Required for networking and container management)
 
+### VM Integration Tests (Pure Libvirt)
+VM integration tests run directly on libvirt/KVM without Vagrant.
+
+```bash
+# Run distro-specific VM test loops
+make test-vm-ubuntu
+make test-vm-fedora
+
+# Run both distro loops
+make test-vm
+
+# Destroy libvirt test VMs created by the VM runner
+make test-vm-destroy
+```
+
+The host-side runner is `libvirt/scripts/vm_tests.sh`. It creates/starts cloud-image VMs with `virt-install`, synchronizes this repository via `rsync`, then executes `sudo /home/<cloud-user>/ochami-from-scratch/libvirt/scripts/run_tests.sh` in the guest.
+
 ## Step 1: Deployment
 
 ### Option A: Minikube Deployment

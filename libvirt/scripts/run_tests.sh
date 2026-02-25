@@ -2,12 +2,12 @@
 set -euo pipefail
 
 # run_tests.sh — Main test orchestrator for OpenCHAMI integration tests
-# Runs inside the Vagrant VM. Iterates over deployment methods, deploying,
+# Runs inside a libvirt VM. Iterates over deployment methods, deploying,
 # running smoke tests, and tearing down each one.
 #
 # Usage:
-#   sudo ./vagrant/scripts/run_tests.sh              # Run all methods for this distro
-#   sudo ./vagrant/scripts/run_tests.sh quadlets      # Run only the quadlets method
+#   sudo ./libvirt/scripts/run_tests.sh         # Run all methods for this distro
+#   sudo ./libvirt/scripts/run_tests.sh quadlets # Run only the quadlets method
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"

@@ -19,5 +19,5 @@ ochami-docker-compose/configs/boot.ipxe
 # Locally generated secrets used by deploy scripts
 .openchami-secrets.env
 
-# Vagrant state
-vagrant/.vagrant/
+# Libvirt VM test state
+libvirt/.state/
