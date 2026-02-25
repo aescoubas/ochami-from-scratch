@@ -47,6 +47,8 @@ test_base_image_catalog_exists_and_is_digest_pinned() {
         "tftp base image should be digest pinned"
     assert_matches "${BASE_IMAGE_STORK_AGENT:-}" '@sha256:[0-9a-f]{64}$' \
         "stork-agent base image should be digest pinned"
+    assert_matches "${BASE_IMAGE_KEA_SIDECAR:-}" '@sha256:[0-9a-f]{64}$' \
+        "kea-sidecar base image should be digest pinned"
     assert_matches "${BASE_IMAGE_SLES_BUILDER:-}" '@sha256:[0-9a-f]{64}$' \
         "sles builder base image should be digest pinned"
 }
@@ -56,6 +58,7 @@ test_local_dockerfiles_use_build_arg_base_image() {
     local redfish="$PROJECT_ROOT/ochami-helm/redfish-emulator/Dockerfile"
     local tftp="$PROJECT_ROOT/ochami-helm/tftp/Dockerfile"
     local stork_agent="$PROJECT_ROOT/ochami-helm/stork-agent/Dockerfile"
+    local kea_sidecar="$PROJECT_ROOT/ochami-helm/kea-sidecar/Dockerfile"
 
     assert_contains "$http_server" '^ARG BASE_IMAGE=' \
         "http-server Dockerfile must define BASE_IMAGE arg"
@@ -76,6 +79,11 @@ test_local_dockerfiles_use_build_arg_base_image() {
         "stork-agent Dockerfile must define BASE_IMAGE arg"
     assert_contains "$stork_agent" '^FROM \$\{BASE_IMAGE\}' \
         "stork-agent Dockerfile must use BASE_IMAGE arg"
+
+    assert_contains "$kea_sidecar" '^ARG BASE_IMAGE=' \
+        "kea-sidecar Dockerfile must define BASE_IMAGE arg"
+    assert_contains "$kea_sidecar" '^FROM \$\{BASE_IMAGE\}' \
+        "kea-sidecar Dockerfile must use BASE_IMAGE arg"
 }
 
 test_build_scripts_source_catalog_and_pass_build_args() {
@@ -91,6 +99,8 @@ test_build_scripts_source_catalog_and_pass_build_args() {
         "tftp build should pass BASE_IMAGE from catalog"
     assert_contains "$common" '--build-arg BASE_IMAGE="\$BASE_IMAGE_STORK_AGENT"' \
         "stork-agent build should pass BASE_IMAGE from catalog"
+    assert_contains "$common" '--build-arg BASE_IMAGE="\$BASE_IMAGE_KEA_SIDECAR"' \
+        "kea-sidecar build should pass BASE_IMAGE from catalog"
     assert_contains "$common" 'build_local_image_for_tool\(\)' \
         "common build path should define helper that guarantees local image availability"
     assert_contains "$common" 'docker buildx build --load' \
@@ -99,6 +109,8 @@ test_build_scripts_source_catalog_and_pass_build_args() {
         "tftp minikube load should stream tarball to avoid daemon context mismatches"
     assert_contains "$common" 'docker save "\$IMAGE_STORK_AGENT" \| minikube image load -' \
         "stork-agent minikube load should stream tarball to avoid daemon context mismatches"
+    assert_contains "$common" 'docker save "\$IMAGE_KEA_SIDECAR" \| minikube image load -' \
+        "kea-sidecar minikube load should stream tarball to avoid daemon context mismatches"
 
     assert_contains "$build_images" '--build-arg BASE_IMAGE="\$BASE_IMAGE_HTTP_SERVER"' \
         "http-server build should pass BASE_IMAGE from catalog"

@@ -78,6 +78,7 @@ if [ "$REMOVE_IMAGES" = true ]; then
         "localhost/pcs:local-pcs"
         "ghcr.io/openchami/cloud-init:v1.2.3"
         "localhost/stork-agent:latest"
+        "localhost/kea-sidecar:latest"
         "signalorange/stork:ubuntu24.04-1.19.0"
     )
     if command_exists docker; then

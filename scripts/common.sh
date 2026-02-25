@@ -62,6 +62,7 @@ IMAGE_HTTP="localhost/http-server:latest"
 IMAGE_TFTP="localhost/tftp:latest"
 IMAGE_EMULATOR="localhost/redfish-emulator:latest"
 IMAGE_STORK_AGENT="localhost/stork-agent:latest"
+IMAGE_KEA_SIDECAR="localhost/kea-sidecar:latest"
 MS_IMAGES=("localhost/smd:local-smd" "localhost/bss:local-bss" "localhost/pcs:local-pcs")
 
 # Database credentials (from ochami-helm/values.yaml)
@@ -539,6 +540,39 @@ build_images_if_needed() {
         fi
     else
         echo "Image $IMAGE_STORK_AGENT found. Skipping build."
+    fi
+
+    # Build Kea sidecar
+    local need_kea_sidecar=false
+    if [ "$force_rebuild" = true ]; then
+        need_kea_sidecar=true
+    elif [ "$orchestrator" == "docker-compose" ]; then
+        if ! docker image inspect "$IMAGE_KEA_SIDECAR" >/dev/null 2>&1; then
+            need_kea_sidecar=true
+        fi
+    elif [ "$orchestrator" == "quadlets" ]; then
+        if ! $container_tool image exists "$IMAGE_KEA_SIDECAR"; then
+            need_kea_sidecar=true
+        fi
+    else
+        if ! image_exists_in_minikube "$IMAGE_KEA_SIDECAR"; then
+            need_kea_sidecar=true
+        fi
+    fi
+
+    if [ "$need_kea_sidecar" = true ]; then
+        echo "Building kea-sidecar..."
+        build_local_image_for_tool "$IMAGE_KEA_SIDECAR" "$PROJECT_ROOT/ochami-helm/kea-sidecar/" --build-arg BASE_IMAGE="$BASE_IMAGE_KEA_SIDECAR"
+        if [ "$orchestrator" == "minikube" ]; then
+            echo "Loading $IMAGE_KEA_SIDECAR into Minikube..."
+            if [ "$container_tool" == "docker" ]; then
+                docker save "$IMAGE_KEA_SIDECAR" | minikube image load -
+            else
+                minikube image load "$IMAGE_KEA_SIDECAR"
+            fi
+        fi
+    else
+        echo "Image $IMAGE_KEA_SIDECAR found. Skipping build."
     fi
 
     # Build Microservices

@@ -113,8 +113,8 @@ kea:
       pullPolicy: IfNotPresent
   sidecar:
     image:
-      repository: python
-      tag: "3.9-slim"
+      repository: localhost/kea-sidecar
+      tag: "latest"
       pullPolicy: IfNotPresent
   db:
     host: "ochami-postgres"

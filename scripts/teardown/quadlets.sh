@@ -120,13 +120,13 @@ if [ "$REMOVE_IMAGES" = true ]; then
         "localhost/pcs:local-pcs"
         "ghcr.io/openchami/cloud-init:v1.2.3"
         "localhost/stork-agent:latest"
+        "localhost/kea-sidecar:latest"
         "localhost/redfish-emulator:latest"
         "signalorange/stork:ubuntu24.04-1.19.0"
         "postgres:11.5-alpine"
         "jonasal/kea-admin:3.1.4"
         "jonasal/kea-dhcp4:3.1.4"
         "jonasal/kea-ctrl-agent:3.1.4"
-        "python:3.9-slim"
     )
     if command_exists podman; then
         remove_images "sudo podman" "${IMAGES[@]}"

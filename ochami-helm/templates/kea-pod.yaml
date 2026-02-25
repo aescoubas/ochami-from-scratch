@@ -47,8 +47,7 @@ spec:
     - name: sidecar
       image: "{{ .Values.kea.sidecar.image.repository }}:{{ .Values.kea.sidecar.image.tag }}"
       imagePullPolicy: "{{ .Values.kea.sidecar.image.pullPolicy }}"
-      command: ["/bin/sh", "-c"]
-      args: ["pip install psycopg2-binary requests && python /scripts/smd_sync.py"]
+      command: ["python", "-u", "/app/smd_sync.py"]
       env:
         - name: SMD_URL
           value: {{ include "ochami-helm.reverseProxyUrl" . | quote }}
@@ -62,10 +61,6 @@ spec:
           value: "{{ .Values.kea.db.host }}"
         - name: DB_PORT
           value: {{ .Values.kea.db.port | quote }}
-      volumeMounts:
-        - name: kea-config
-          mountPath: /scripts/smd_sync.py
-          subPath: smd_sync.py
     {{- if .Values.stork.enabled }}
     - name: kea-ctrl-agent
       image: "{{ .Values.kea.ctrlAgent.image.repository }}:{{ .Values.kea.ctrlAgent.image.tag }}"

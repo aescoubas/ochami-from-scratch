@@ -95,6 +95,7 @@ if [ "$REMOVE_IMAGES" = true ]; then
         "localhost/redfish-emulator:latest"
         "localhost/pcs:local-pcs"
         "localhost/stork-agent:latest"
+        "localhost/kea-sidecar:latest"
         "signalorange/stork:ubuntu24.04-1.19.0"
     )
     if command_exists docker; then
