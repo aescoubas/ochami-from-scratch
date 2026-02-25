@@ -85,6 +85,11 @@ test_secret_generation_and_no_changeme_defaults() {
         "quadlets deploy should generate secrets before deploy"
     assert_contains "$PROJECT_ROOT/scripts/deploy/docker-compose.sh" 'ensure_generated_secrets' \
         "docker-compose deploy should generate secrets before deploy"
+
+    assert_contains "$PROJECT_ROOT/scripts/common.sh" 'local old_umask' \
+        "ensure_generated_secrets should preserve the caller umask"
+    assert_contains "$PROJECT_ROOT/scripts/common.sh" 'umask "\$old_umask"' \
+        "ensure_generated_secrets should restore umask after writing secrets"
 }
 
 test_hardware_registration_is_deduplicated() {

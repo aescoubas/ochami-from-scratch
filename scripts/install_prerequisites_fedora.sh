@@ -27,6 +27,14 @@ else
     echo "python3-pyyaml is installed."
 fi
 
+# 2b. Install Go toolchain (required for local microservice builds)
+if ! command_exists go; then
+    echo -e "${GREEN}--> Installing golang...${NC}"
+    sudo dnf install -y golang
+else
+    echo "go is installed."
+fi
+
 # 3. Install Docker CE
 if ! command_exists docker; then
     echo -e "${GREEN}--> Installing Docker CE...${NC}"

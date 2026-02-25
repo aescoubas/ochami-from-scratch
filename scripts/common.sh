@@ -365,6 +365,8 @@ ensure_generated_secrets() {
     generate_secret_if_unset STORK_DB_PASSWORD || return 1
     generate_secret_if_unset HYDRA_DB_PASSWORD || return 1
 
+    local old_umask
+    old_umask="$(umask)"
     umask 077
     cat > "$secrets_file" <<EOF
 POSTGRES_PASSWORD=$POSTGRES_PASSWORD
@@ -375,6 +377,7 @@ PCS_DB_PASSWORD=$PCS_DB_PASSWORD
 STORK_DB_PASSWORD=$STORK_DB_PASSWORD
 HYDRA_DB_PASSWORD=$HYDRA_DB_PASSWORD
 EOF
+    umask "$old_umask"
 }
 
 wait_for_url() {

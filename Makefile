@@ -10,15 +10,19 @@ test:
 	bash scripts/tests/test_emulator_mount_behavior.sh
 	bash scripts/tests/test_registration_contract_consistency.sh
 	bash scripts/tests/test_deploy_policies_and_dedup.sh
+	bash scripts/tests/test_vagrant_deploy_smoke_coverage.sh
+	bash scripts/tests/test_vm_runner_prereq_and_paths.sh
 
 test-vm: test-vm-ubuntu test-vm-fedora
 
 test-vm-ubuntu:
 	cd vagrant && vagrant up ubuntu --provision
+	cd vagrant && vagrant rsync ubuntu
 	cd vagrant && vagrant ssh ubuntu -- sudo /home/vagrant/ochami-from-scratch/vagrant/scripts/run_tests.sh
 
 test-vm-fedora:
 	cd vagrant && vagrant up fedora --provision
+	cd vagrant && vagrant rsync fedora
 	cd vagrant && vagrant ssh fedora -- sudo /home/vagrant/ochami-from-scratch/vagrant/scripts/run_tests.sh
 
 test-vm-destroy:

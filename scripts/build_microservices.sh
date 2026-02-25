@@ -110,6 +110,10 @@ prepare_repo() {
     git fetch --all --tags
     git checkout "$git_ref"
     git pull || true
+
+    # Normalize permissions to avoid shipping unreadable files (for example migrations)
+    # into container images when a prior run used a restrictive umask.
+    chmod -R a+rX "$repo_dir"
 }
 
 

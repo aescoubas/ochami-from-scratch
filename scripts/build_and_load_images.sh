@@ -161,13 +161,13 @@ $CONTAINER_TOOL rm "$CONTAINER_ID"
 $CONTAINER_TOOL rmi -f custom-image-builder-sles || true
 
 echo "--- Staging artifacts ---"
-ARTIFACTS_DIR="ochami-helm/http-server/artifacts"
+ARTIFACTS_DIR="$PROJECT_ROOT/ochami-helm/http-server/artifacts"
 mkdir -p "$ARTIFACTS_DIR"
 mv vmlinuz-lts initramfs-lts rootfs.squashfs "$ARTIFACTS_DIR/"
 echo "Artifacts staged in $ARTIFACTS_DIR"
 
 echo "--- Building and loading http-server image into Minikube ---"
-DOCKER_CONTEXT="ochami-helm/http-server/"
+DOCKER_CONTEXT="$PROJECT_ROOT/ochami-helm/http-server/"
 build_local_image "localhost/http-server:latest" "$DOCKER_CONTEXT" --build-arg BASE_IMAGE="$BASE_IMAGE_HTTP_SERVER"
 if [ "$ORCHESTRATOR" == "minikube" ]; then
     if [ "$CONTAINER_TOOL" == "docker" ]; then
@@ -181,7 +181,7 @@ fi
 # coresmd includes iPXE binaries (undionly.kpxe, ipxe.efi) for BIOS and UEFI boot
 
 echo "--- Building redfish-emulator ---"
-build_local_image "localhost/redfish-emulator:latest" "ochami-helm/redfish-emulator/" --build-arg BASE_IMAGE="$BASE_IMAGE_REDFISH_EMULATOR"
+build_local_image "localhost/redfish-emulator:latest" "$PROJECT_ROOT/ochami-helm/redfish-emulator/" --build-arg BASE_IMAGE="$BASE_IMAGE_REDFISH_EMULATOR"
 if [ "$ORCHESTRATOR" == "minikube" ]; then
     if [ "$CONTAINER_TOOL" == "docker" ]; then
         docker save "localhost/redfish-emulator:latest" | minikube image load -

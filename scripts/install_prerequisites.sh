@@ -50,6 +50,15 @@ else
     echo "python3-yaml is installed."
 fi
 
+# 2c. Install Go toolchain (required for local microservice builds)
+if ! command_exists go; then
+    echo -e "${GREEN}--> Installing golang-go...${NC}"
+    ensure_apt_update
+    sudo apt-get install -y golang-go
+else
+    echo "go is installed."
+fi
+
 # 3. Install cri-tools (crictl)
 if ! command_exists crictl; then
     echo -e "${GREEN}--> Installing cri-tools...${NC}"
@@ -131,6 +140,24 @@ else
 fi
 
 # 7. Fix fs.protected_regular (Fixes "boot lock: unable to open /tmp/juju-..." error)
+if ! command_exists minikube; then
+    echo -e "${GREEN}--> Installing minikube...${NC}"
+    curl -LO https://storage.googleapis.com/minikube/releases/latest/minikube-linux-amd64
+    sudo install minikube-linux-amd64 /usr/local/bin/minikube
+    rm -f minikube-linux-amd64
+else
+    echo "minikube is installed."
+fi
+
+# 7b. Install helm
+if ! command_exists helm; then
+    echo -e "${GREEN}--> Installing helm...${NC}"
+    curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+else
+    echo "helm is installed."
+fi
+
+# 8. Fix fs.protected_regular (Fixes "boot lock: unable to open /tmp/juju-..." error)
 PROTECTED_REGULAR=$(sysctl -n fs.protected_regular)
 if [ "$PROTECTED_REGULAR" != "0" ]; then
     echo -e "${GREEN}--> Setting fs.protected_regular=0...${NC}"

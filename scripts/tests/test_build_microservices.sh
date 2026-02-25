@@ -29,8 +29,21 @@ assert_contains() {
     fi
 }
 
+assert_file_contains() {
+    local file="$1"
+    local pattern="$2"
+    local msg="$3"
+    if ! rg -q -- "$pattern" "$file"; then
+        echo "FAIL: $msg"
+        echo "  file: $file"
+        echo "  expected pattern: $pattern"
+        return 1
+    fi
+}
+
 PREPARE_CAPTURED=""
 BUILD_CAPTURED=""
+BUILD_MICROSERVICES_FILE="$PROJECT_ROOT/scripts/build_microservices.sh"
 
 prepare_repo() {
     PREPARE_CAPTURED="$1|$2|$3"
@@ -56,6 +69,11 @@ test_build_smd_separates_git_ref_and_image_tag() {
     assert_contains "$BUILD_CAPTURED" "-t localhost/smd:local-smd" "build_smd should use explicit image tag"
 }
 
+test_prepare_repo_relaxes_permissions_for_container_builds() {
+    assert_file_contains "$BUILD_MICROSERVICES_FILE" 'chmod -R a\+rX "\$repo_dir"' \
+        "prepare_repo should relax repository permissions to avoid unreadable migration files in built images"
+}
+
 run_test() {
     local test_name="$1"
     if "$test_name"; then
@@ -66,3 +84,4 @@ run_test() {
 }
 
 run_test test_build_smd_separates_git_ref_and_image_tag
+run_test test_prepare_repo_relaxes_permissions_for_container_builds
