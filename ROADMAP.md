@@ -5,3 +5,4 @@
 
 ## Completed
 - [x] Make `fs.protected_regular` mutation opt-in and restore only when managed by OpenCHAMI.
+- [x] Enforce roadmap process contract by keeping `ROADMAP.md` at repo root and adding a regression test guard in `make test`.

@@ -1,6 +1,7 @@
 .PHONY: test test-vm test-vm-ubuntu test-vm-fedora test-vm-destroy
 
 test:
+	bash scripts/tests/test_roadmap_process.sh
 	bash scripts/tests/test_common_args.sh
 	bash scripts/tests/test_build_microservices.sh
 	bash scripts/tests/test_magellan_discovery.sh
