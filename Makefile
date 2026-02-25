@@ -18,6 +18,8 @@ test:
 	bash scripts/tests/test_prereq_sysctl_policy.sh
 	bash scripts/tests/test_libvirt_deploy_smoke_coverage.sh
 	bash scripts/tests/test_vm_runner_prereq_and_paths.sh
+	python3 scripts/tests/test_openchami_mcp.py
+	bash scripts/tests/test_mcp_minikube_integration.sh
 
 test-vm: test-vm-ubuntu test-vm-fedora
 

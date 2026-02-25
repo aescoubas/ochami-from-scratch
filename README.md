@@ -839,6 +839,42 @@ Deployment-specific reverse proxy base URL:
 
 For host-side Minikube CLI/API calls, use `http://<--ip value>:30080` (default `http://192.168.100.2:30080`).
 
+### OpenCHAMI MCP Server (Minikube only)
+
+A minimal Python MCP server is available for local OpenCHAMI control at:
+
+`scripts/mcp/openchami_mcp_server.py`
+
+Use the helper launcher (recommended):
+
+```bash
+./scripts/mcp/run_openchami_mcp.sh --mode read-only
+```
+
+After `./deploy.sh --method minikube`, defaults are written to `.openchami-mcp.env`:
+
+- `OPENCHAMI_BASE_URL=http://<host-ip>:30080`
+- `OPENCHAMI_MCP_MODE=read-only`
+- `OPENCHAMI_MCP_ENABLE_WRITES=false`
+
+Mode behavior:
+
+- `read-only`:
+  - health/readiness checks
+  - list/get components and HSM groups
+  - PCS power status queries
+- `read-write`:
+  - PCS transitions (power operations)
+  - HSM group create/delete/member updates
+
+To enable mutating operations, you must both select `read-write` mode and explicitly acknowledge writes:
+
+```bash
+OPENCHAMI_MCP_ENABLE_WRITES=true ./scripts/mcp/run_openchami_mcp.sh --mode read-write
+```
+
+Current scope: this MCP integration is only wired into the Minikube deployment path initially.
+
 ## 5. Using the Redfish Emulator
 
 The deployment includes an optional **Redfish Emulator** that mimics a Baseboard Management Controller (BMC) for each VM. This allows you to control the VM's power state (On, Off, Reboot) via standard Redfish API calls.
