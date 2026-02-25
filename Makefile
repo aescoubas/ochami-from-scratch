@@ -9,6 +9,7 @@ test:
 	bash scripts/tests/test_build_artifact_extraction.sh
 	bash scripts/tests/test_emulator_mount_behavior.sh
 	bash scripts/tests/test_registration_contract_consistency.sh
+	bash scripts/tests/test_deploy_policies_and_dedup.sh
 
 test-vm: test-vm-ubuntu test-vm-fedora
 

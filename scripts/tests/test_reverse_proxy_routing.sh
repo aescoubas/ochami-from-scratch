@@ -30,14 +30,10 @@ assert_not_contains() {
 }
 
 test_reverse_proxy_has_smd_route() {
-    assert_contains "$PROJECT_ROOT/ochami-docker-compose/configs/nginx-default.conf.template" \
-        "location /hsm/" "docker-compose nginx must proxy /hsm"
-    assert_contains "$PROJECT_ROOT/ochami-docker-compose/configs/nginx-default.conf.template" \
-        "location /api/" "docker-compose nginx must proxy /api to stork"
-    assert_contains "$PROJECT_ROOT/ochami-quadlets/configs/nginx-default.conf.template" \
-        "location /hsm/" "quadlets nginx must proxy /hsm"
-    assert_contains "$PROJECT_ROOT/ochami-quadlets/configs/nginx-default.conf.template" \
-        "location /api/" "quadlets nginx must proxy /api to stork"
+    assert_contains "$PROJECT_ROOT/scripts/templates/nginx-default.conf.template" \
+        "location /hsm/" "shared nginx template must proxy /hsm"
+    assert_contains "$PROJECT_ROOT/scripts/templates/nginx-default.conf.template" \
+        "location /api/" "shared nginx template must proxy /api to stork"
     assert_contains "$PROJECT_ROOT/ochami-helm/templates/http-server-nginx-configmap.yaml" \
         "location /hsm/" "helm nginx configmap must proxy /hsm"
     assert_contains "$PROJECT_ROOT/ochami-helm/templates/http-server-nginx-configmap.yaml" \

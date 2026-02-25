@@ -93,7 +93,7 @@ services:
       - "-u"
       - "${KEA_DB_USER:-kea-user}"
       - "-p"
-      - "${KEA_DB_PASSWORD:-CHANGEME}"
+      - "${KEA_DB_PASSWORD:?KEA_DB_PASSWORD is required}"
       - "-n"
       - "${KEA_DB_NAME:-kea}"
 

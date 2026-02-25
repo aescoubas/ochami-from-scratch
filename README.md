@@ -215,6 +215,8 @@ To deploy with test VMs:
 *   `--dhcp-start IP`: DHCP range start
 *   `--dhcp-end IP`: DHCP range end
 *   `--dhcp-netmask MASK`: DHCP netmask
+*   `--fail-on-conflict`: Fail if UDP/67 is already in use (default behavior)
+*   `--auto-kill`: Automatically kill conflicting UDP/67 processes
 *   `--smd-ref REF`: Git ref to use when rebuilding the local SMD image (default: `main`)
 *   `--bss-ref REF`: Git ref to use when rebuilding the local BSS image (default: `main`)
 *   `--pcs-ref REF`: Git ref to use when rebuilding the local PCS image (default: `main`)
@@ -232,6 +234,10 @@ To deploy with test VMs:
 *   `--magellan-bmc-id-map MAP`: BMC ID map value for Magellan collect (`@/path/to/map.yaml` or inline JSON/YAML)
 *   `--magellan-cache PATH`: Magellan cache path (default: `/tmp/$USER/magellan/assets.db`)
 *   `--magellan-insecure`: Skip TLS verification during Magellan scan and collect
+
+**Secret handling:**
+*   Deploy scripts automatically generate database secrets when not provided and persist them in `.openchami-secrets.env` for reuse across redeploys.
+*   You can override any generated value by exporting `POSTGRES_PASSWORD`, `SMD_DB_PASSWORD`, `BSS_DB_PASSWORD`, `KEA_DB_PASSWORD`, `PCS_DB_PASSWORD`, `STORK_DB_PASSWORD`, and `HYDRA_DB_PASSWORD` before running `deploy.sh`.
 
 ### What the deployment script does:
 

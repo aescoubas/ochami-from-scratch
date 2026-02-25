@@ -16,5 +16,8 @@ ochami-docker-compose/configs/kea-dhcp4.conf
 ochami-docker-compose/configs/nginx-default.conf
 ochami-docker-compose/configs/boot.ipxe
 
+# Locally generated secrets used by deploy scripts
+.openchami-secrets.env
+
 # Vagrant state
 vagrant/.vagrant/

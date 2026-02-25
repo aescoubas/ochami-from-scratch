@@ -31,6 +31,7 @@ elif [ $rc -ne 0 ]; then
 fi
 
 validate_common_deploy_args
+ensure_generated_secrets
 
 info "=== OpenCHAMI Minikube Deployment ==="
 
@@ -90,7 +91,7 @@ else
     "$PROJECT_ROOT/scripts/setup_minikube_net.sh" "$PXE_INTERFACE" "$PXE_IP" "$PXE_CIDR" "$PHY_IFACE"
 
     # 4b. Check for DHCP port conflicts (e.g. dnsmasq from libvirt)
-    check_dhcp_port_conflict "$PXE_INTERFACE"
+    check_dhcp_port_conflict "$PXE_INTERFACE" "$DHCP_CONFLICT_POLICY"
 fi
 
 # 5. Deploy
@@ -113,6 +114,16 @@ httpServer:
   hostNetwork: true
   port: 80
 
+postgres:
+  user: "$POSTGRES_USER"
+  password: "$POSTGRES_PASSWORD"
+  smd_password: "$SMD_DB_PASSWORD"
+  bss_password: "$BSS_DB_PASSWORD"
+  hydra_password: "$HYDRA_DB_PASSWORD"
+  kea_password: "$KEA_DB_PASSWORD"
+  pcs_password: "$PCS_DB_PASSWORD"
+  stork_password: "$STORK_DB_PASSWORD"
+
 bss:
   ipxe:
     server: "$HOST_IP"
@@ -123,9 +134,9 @@ kea:
   db:
     host: "ochami-postgres"
     port: 5432
-    name: "kea"
-    user: "kea-user"
-    password: "CHANGEME"
+    name: "$KEA_DB_NAME"
+    user: "$KEA_DB_USER"
+    password: "$KEA_DB_PASSWORD"
 bootScriptUrl: "http://$HOST_IP/boot/v1/bootscript?mac=\${mac}"
 EOF
 

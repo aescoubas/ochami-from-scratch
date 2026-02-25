@@ -7,6 +7,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/../common.sh"
 
 COMPOSE_DIR="$PROJECT_ROOT/ochami-docker-compose"
+SHARED_NGINX_TEMPLATE="$PROJECT_ROOT/scripts/templates/nginx-default.conf.template"
 
 # --- Help ---
 show_help() {
@@ -28,6 +29,7 @@ elif [ $rc -ne 0 ]; then
 fi
 
 validate_common_deploy_args
+ensure_generated_secrets
 
 info "=== OpenCHAMI Docker Compose Deployment ==="
 
@@ -88,7 +90,7 @@ else
     "$PROJECT_ROOT/scripts/setup_minikube_net.sh" "$PXE_INTERFACE" "$PXE_IP" "$PXE_CIDR" "$PHY_IFACE"
 
     # 3b. Check for DHCP port conflicts (e.g. dnsmasq from libvirt)
-    check_dhcp_port_conflict "$PXE_INTERFACE"
+    check_dhcp_port_conflict "$PXE_INTERFACE" "$DHCP_CONFLICT_POLICY"
 fi
 
 # 4. Generate configuration files
@@ -161,8 +163,8 @@ if [ -f "$COMPOSE_DIR/configs/kea-dhcp4.conf.template" ]; then
     echo "Generated kea-dhcp4.conf"
 fi
 
-if [ -f "$COMPOSE_DIR/configs/nginx-default.conf.template" ]; then
-    envsubst '${HTTP_PORT} ${SMD_PORT} ${BSS_PORT} ${CLOUD_INIT_PORT} ${PCS_PORT} ${STORK_PORT}' < "$COMPOSE_DIR/configs/nginx-default.conf.template" > "$COMPOSE_DIR/configs/nginx-default.conf"
+if [ -f "$SHARED_NGINX_TEMPLATE" ]; then
+    envsubst '${HTTP_PORT} ${SMD_PORT} ${BSS_PORT} ${CLOUD_INIT_PORT} ${PCS_PORT} ${STORK_PORT}' < "$SHARED_NGINX_TEMPLATE" > "$COMPOSE_DIR/configs/nginx-default.conf"
     echo "Generated nginx-default.conf"
 fi
 

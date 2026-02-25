@@ -45,13 +45,13 @@ service:
 
 postgres:
   user: ochami
-  password: "CHANGEME"
-  smd_password: "CHANGEME"
-  bss_password: "CHANGEME"
-  hydra_password: "CHANGEME"
-  kea_password: "CHANGEME"
-  pcs_password: "CHANGEME"
-  stork_password: "CHANGEME"
+  password: ""
+  smd_password: ""
+  bss_password: ""
+  hydra_password: ""
+  kea_password: ""
+  pcs_password: ""
+  stork_password: ""
 
 # pcsInit job configuration
 pcsInit:
@@ -121,7 +121,7 @@ kea:
     port: 5432
     name: "kea"
     user: "kea-user"
-    password: "CHANGEME"
+    password: ""
   
 bss:
   image:

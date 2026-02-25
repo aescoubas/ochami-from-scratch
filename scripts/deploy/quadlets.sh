@@ -12,6 +12,7 @@ QUADLETS_DIR="$PROJECT_ROOT/ochami-quadlets"
 QUADLETS_INSTALL_DIR="/etc/containers/systemd"
 OPENCHAMI_CONFIG_DIR="/etc/openchami"
 OPENCHAMI_CONFIGS_DIR="/etc/openchami/configs"
+SHARED_NGINX_TEMPLATE="$PROJECT_ROOT/scripts/templates/nginx-default.conf.template"
 
 # --- Help ---
 show_help() {
@@ -36,6 +37,7 @@ elif [ $rc -ne 0 ]; then
 fi
 
 validate_common_deploy_args
+ensure_generated_secrets
 
 info "=== OpenCHAMI Quadlets Deployment ==="
 
@@ -75,7 +77,7 @@ fi
 "$PROJECT_ROOT/scripts/setup_minikube_net.sh" "$PXE_INTERFACE" "$PXE_IP" "$PXE_CIDR" "$PHY_IFACE"
 
 # 3b. Check for DHCP port conflicts (e.g. dnsmasq from libvirt)
-check_dhcp_port_conflict "$PXE_INTERFACE"
+check_dhcp_port_conflict "$PXE_INTERFACE" "$DHCP_CONFLICT_POLICY"
 
 # 4. Deploy
 step "Deploying OpenCHAMI (Quadlets)..."
@@ -145,6 +147,11 @@ KEA_DB_NAME=${KEA_DB_NAME}
 KEA_DB_USER=${KEA_DB_USER}
 KEA_DB_PASSWORD=${KEA_DB_PASSWORD}
 
+# PCS Database
+PCS_DB_NAME=${PCS_DB_NAME}
+PCS_DB_USER=${PCS_DB_USER}
+PCS_DB_PASSWORD=${PCS_DB_PASSWORD}
+
 # Stork
 STORK_DB_NAME=${STORK_DB_NAME}
 STORK_DB_USER=${STORK_DB_USER}
@@ -168,17 +175,24 @@ export HOST_IP PXE_INTERFACE PXE_CIDR DHCP_START DHCP_END DHCP_NETMASK
 export HTTP_PORT SMD_PORT BSS_PORT POSTGRES_PORT CLOUD_INIT_PORT PCS_PORT STORK_PORT STORK_AGENT_PORT
 export KEA_DB_NAME KEA_DB_USER KEA_DB_PASSWORD
 export STORK_DB_NAME STORK_DB_USER STORK_DB_PASSWORD
+export PCS_DB_NAME PCS_DB_USER PCS_DB_PASSWORD
 
 # Template variables to substitute (exclude nginx $host, $remote_addr, etc.)
-ENVSUBST_VARS='${HOST_IP} ${PXE_INTERFACE} ${PXE_CIDR} ${DHCP_START} ${DHCP_END} ${DHCP_NETMASK} ${HTTP_PORT} ${SMD_PORT} ${BSS_PORT} ${POSTGRES_PORT} ${CLOUD_INIT_PORT} ${PCS_PORT} ${STORK_PORT} ${STORK_AGENT_PORT} ${KEA_DB_NAME} ${KEA_DB_USER} ${KEA_DB_PASSWORD} ${STORK_DB_NAME} ${STORK_DB_USER} ${STORK_DB_PASSWORD}'
+ENVSUBST_VARS='${HOST_IP} ${PXE_INTERFACE} ${PXE_CIDR} ${DHCP_START} ${DHCP_END} ${DHCP_NETMASK} ${HTTP_PORT} ${SMD_PORT} ${BSS_PORT} ${POSTGRES_PORT} ${CLOUD_INIT_PORT} ${PCS_PORT} ${STORK_PORT} ${STORK_AGENT_PORT} ${KEA_DB_NAME} ${KEA_DB_USER} ${KEA_DB_PASSWORD} ${STORK_DB_NAME} ${STORK_DB_USER} ${STORK_DB_PASSWORD} ${PCS_DB_NAME} ${PCS_DB_USER} ${PCS_DB_PASSWORD}'
 
 # Process .template files
 for tmpl in "$QUADLETS_DIR/configs/"*.template; do
     [ -f "$tmpl" ] || continue
     base=$(basename "$tmpl" .template)
+    if [ "$base" = "nginx-default.conf" ]; then
+        continue
+    fi
     echo "  Processing $base..."
     envsubst "$ENVSUBST_VARS" < "$tmpl" | sudo tee "$OPENCHAMI_CONFIGS_DIR/$base" > /dev/null
 done
+
+echo "  Processing nginx-default.conf from shared template..."
+envsubst "$ENVSUBST_VARS" < "$SHARED_NGINX_TEMPLATE" | sudo tee "$OPENCHAMI_CONFIGS_DIR/nginx-default.conf" > /dev/null
 
 # Copy static config files
 for static_file in "$QUADLETS_DIR/configs/"*.sh "$QUADLETS_DIR/configs/"*.py "$QUADLETS_DIR/configs/"*.conf "$QUADLETS_DIR/configs/"*.html "$QUADLETS_DIR/configs/user-data" "$QUADLETS_DIR/configs/meta-data"; do

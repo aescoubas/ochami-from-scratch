@@ -55,6 +55,7 @@ DEFAULT_SMD_REPO_URI="https://github.com/aescoubas/ochami-smd.git"
 DEFAULT_BSS_REPO_URI="https://github.com/aescoubas/ochami-bss.git"
 DEFAULT_PCS_REPO_URI="https://github.com/OpenCHAMI/power-control.git"
 DEFAULT_DISCOVERY_METHOD="static"
+DEFAULT_DHCP_CONFLICT_POLICY="fail"
 
 # Image names
 IMAGE_HTTP="localhost/http-server:latest"
@@ -64,24 +65,24 @@ IMAGE_STORK_AGENT="localhost/stork-agent:latest"
 MS_IMAGES=("localhost/smd:local-smd" "localhost/bss:local-bss" "localhost/pcs:local-pcs")
 
 # Database credentials (from ochami-helm/values.yaml)
-POSTGRES_USER="ochami"
-POSTGRES_PASSWORD="CHANGEME"
+POSTGRES_USER="${POSTGRES_USER:-ochami}"
+POSTGRES_PASSWORD="${POSTGRES_PASSWORD:-}"
 SMD_DB_NAME="hmsds"
 SMD_DB_USER="smd-user"
-SMD_DB_PASSWORD="CHANGEME"
+SMD_DB_PASSWORD="${SMD_DB_PASSWORD:-}"
 BSS_DB_NAME="bssdb"
 BSS_DB_USER="bss-user"
-BSS_DB_PASSWORD="CHANGEME"
+BSS_DB_PASSWORD="${BSS_DB_PASSWORD:-}"
 KEA_DB_NAME="kea"
 KEA_DB_USER="kea-user"
-KEA_DB_PASSWORD="CHANGEME"
+KEA_DB_PASSWORD="${KEA_DB_PASSWORD:-}"
 PCS_DB_NAME="pcsdb"
 PCS_DB_USER="pcs-user"
-PCS_DB_PASSWORD="CHANGEME"
+PCS_DB_PASSWORD="${PCS_DB_PASSWORD:-}"
 STORK_DB_NAME="stork"
 STORK_DB_USER="stork-user"
-STORK_DB_PASSWORD="CHANGEME"
-HYDRA_DB_PASSWORD="CHANGEME"
+STORK_DB_PASSWORD="${STORK_DB_PASSWORD:-}"
+HYDRA_DB_PASSWORD="${HYDRA_DB_PASSWORD:-}"
 
 # Service ports
 SMD_PORT=27779
@@ -294,6 +295,86 @@ require_command() {
         error "$msg"
         exit 1
     fi
+}
+
+generate_secret() {
+    if command_exists openssl; then
+        openssl rand -hex 24
+        return 0
+    fi
+    if command_exists python3; then
+        python3 -c 'import secrets; print(secrets.token_hex(24))'
+        return 0
+    fi
+    if [ -r /dev/urandom ]; then
+        od -An -N24 -tx1 /dev/urandom | tr -d ' \n'
+        return 0
+    fi
+    return 1
+}
+
+generate_secret_if_unset() {
+    local var_name="$1"
+    local current_value="${!var_name:-}"
+    if [ -n "$current_value" ]; then
+        return 0
+    fi
+
+    local generated
+    generated="$(generate_secret)" || {
+        error "Could not generate a secret for $var_name. Set it explicitly in the environment."
+        return 1
+    }
+    if [ -z "$generated" ]; then
+        error "Generated empty secret for $var_name. Set it explicitly in the environment."
+        return 1
+    fi
+
+    printf -v "$var_name" '%s' "$generated"
+    export "$var_name"
+}
+
+ensure_generated_secrets() {
+    local secrets_file="${OPENCHAMI_SECRETS_FILE:-$PROJECT_ROOT/.openchami-secrets.env}"
+    local override_postgres_password="${POSTGRES_PASSWORD:-}"
+    local override_smd_db_password="${SMD_DB_PASSWORD:-}"
+    local override_bss_db_password="${BSS_DB_PASSWORD:-}"
+    local override_kea_db_password="${KEA_DB_PASSWORD:-}"
+    local override_pcs_db_password="${PCS_DB_PASSWORD:-}"
+    local override_stork_db_password="${STORK_DB_PASSWORD:-}"
+    local override_hydra_db_password="${HYDRA_DB_PASSWORD:-}"
+
+    if [ -f "$secrets_file" ]; then
+        # shellcheck disable=SC1090
+        source "$secrets_file"
+    fi
+
+    [ -n "$override_postgres_password" ] && POSTGRES_PASSWORD="$override_postgres_password"
+    [ -n "$override_smd_db_password" ] && SMD_DB_PASSWORD="$override_smd_db_password"
+    [ -n "$override_bss_db_password" ] && BSS_DB_PASSWORD="$override_bss_db_password"
+    [ -n "$override_kea_db_password" ] && KEA_DB_PASSWORD="$override_kea_db_password"
+    [ -n "$override_pcs_db_password" ] && PCS_DB_PASSWORD="$override_pcs_db_password"
+    [ -n "$override_stork_db_password" ] && STORK_DB_PASSWORD="$override_stork_db_password"
+    [ -n "$override_hydra_db_password" ] && HYDRA_DB_PASSWORD="$override_hydra_db_password"
+
+    generate_secret_if_unset POSTGRES_PASSWORD || return 1
+    generate_secret_if_unset SMD_DB_PASSWORD || return 1
+    generate_secret_if_unset BSS_DB_PASSWORD || return 1
+    generate_secret_if_unset KEA_DB_PASSWORD || return 1
+    generate_secret_if_unset PCS_DB_PASSWORD || return 1
+    generate_secret_if_unset STORK_DB_PASSWORD || return 1
+    generate_secret_if_unset HYDRA_DB_PASSWORD || return 1
+
+    umask 077
+    cat > "$secrets_file" <<EOF
+POSTGRES_PASSWORD=$POSTGRES_PASSWORD
+SMD_DB_PASSWORD=$SMD_DB_PASSWORD
+BSS_DB_PASSWORD=$BSS_DB_PASSWORD
+KEA_DB_PASSWORD=$KEA_DB_PASSWORD
+PCS_DB_PASSWORD=$PCS_DB_PASSWORD
+STORK_DB_PASSWORD=$STORK_DB_PASSWORD
+HYDRA_DB_PASSWORD=$HYDRA_DB_PASSWORD
+EOF
 }
 
 wait_for_url() {
@@ -614,56 +695,34 @@ configure_firewall() {
 
 check_dhcp_port_conflict() {
     local pxe_interface="$1"
-    step "Checking for DHCP port conflicts on $pxe_interface..."
+    local conflict_policy="${2:-${DHCP_CONFLICT_POLICY:-$DEFAULT_DHCP_CONFLICT_POLICY}}"
+    step "Checking for DHCP port conflicts on $pxe_interface (policy: $conflict_policy)..."
 
-    if $IS_MACOS; then
-        # On macOS, use lsof to check for UDP port 67
-        local conflict
-        conflict=$(sudo lsof -i UDP:67 -P -n 2>/dev/null | grep -v "^COMMAND" || true)
-
-        if [ -z "$conflict" ]; then
-            echo "No DHCP port conflict detected."
-            return 0
-        fi
-
-        warn "Another process is already bound to UDP port 67 (DHCP):"
-        echo "$conflict"
-
-        local pids
-        pids=$(echo "$conflict" | awk '{print $2}' | sort -u || true)
-
-        if [ -z "$pids" ]; then
-            warn "Could not determine the conflicting PID. Please free port 67/UDP manually before deploying."
-            return 1
-        fi
-
-        for pid in $pids; do
-            local proc_name
-            proc_name=$(ps -p "$pid" -o comm= 2>/dev/null || echo "unknown")
-            echo ""
-            echo "Conflicting process: $proc_name (PID $pid)"
-
-            read -r -p "Kill $proc_name (PID $pid) to free port 67? (y/N) " answer
-            if [[ "$answer" =~ ^[Yy]$ ]]; then
-                sudo kill "$pid"
-                echo "Killed $proc_name (PID $pid)."
-                sleep 1
-            else
-                warn "Port 67/UDP is still in use. Kea DHCP may fail to start."
-                return 1
-            fi
-        done
-
-        echo "DHCP port conflict resolved."
-        return 0
+    if [[ "$conflict_policy" != "fail" && "$conflict_policy" != "auto-kill" ]]; then
+        error "Invalid DHCP conflict policy '$conflict_policy'. Use 'fail' or 'auto-kill'."
+        return 1
     fi
 
-    # Linux: Find any process bound to UDP port 67
-    # ss -ulnp with UDP-only filter uses "State" as header (no Netid column)
-    local conflict
-    conflict=$(sudo ss -ulnp 'sport = :67' 2>/dev/null | grep -v "^State" || true)
+    local conflict pids
+    if $IS_MACOS; then
+        conflict=$(sudo lsof -i UDP:67 -P -n 2>/dev/null | grep -v "^COMMAND" || true)
+        if [ -n "$conflict" ]; then
+            pids=$(echo "$conflict" | awk '{print $2}' | sort -u || true)
+        fi
+    else
+        # ss -ulnp with UDP-only filter uses "State" as header (no Netid column)
+        conflict=$(sudo ss -ulnp 'sport = :67' 2>/dev/null | grep -v "^State" || true)
+        if [ -n "$conflict" ]; then
+            # Extract PID(s) from ss output (format: pid=NNNN)
+            pids=$(echo "$conflict" | grep -oP 'pid=\K[0-9]+' | sort -u || true)
+            if [ -z "$pids" ]; then
+                # Fall back to fuser if ss doesn't report process info (requires root)
+                pids=$(sudo fuser 67/udp 2>/dev/null | tr -s ' ' '\n' | grep -E '^[0-9]+$' | sort -u || true)
+            fi
+        fi
+    fi
 
-    if [ -z "$conflict" ]; then
+    if [ -z "${conflict:-}" ]; then
         echo "No DHCP port conflict detected."
         return 0
     fi
@@ -671,38 +730,26 @@ check_dhcp_port_conflict() {
     warn "Another process is already bound to UDP port 67 (DHCP):"
     echo "$conflict"
 
-    # Extract PID(s) from ss output (format: pid=NNNN)
-    # Fall back to fuser if ss doesn't report process info (requires root)
-    local pids
-    pids=$(echo "$conflict" | grep -oP 'pid=\K[0-9]+' | sort -u || true)
-
-    if [ -z "$pids" ]; then
-        pids=$(sudo fuser 67/udp 2>/dev/null | tr -s ' ' '\n' | grep -E '^[0-9]+$' | sort -u || true)
+    if [ -z "${pids:-}" ]; then
+        warn "Could not determine conflicting PID(s). Please free port 67/UDP manually before deploying."
+        return 1
     fi
 
-    if [ -z "$pids" ]; then
-        warn "Could not determine the conflicting PID. Please free port 67/UDP manually before deploying."
+    if [ "$conflict_policy" = "fail" ]; then
+        warn "Port 67/UDP is in use. Deployment failed by policy (--fail-on-conflict)."
+        warn "Re-run with --auto-kill to terminate conflicting process(es) automatically."
         return 1
     fi
 
     for pid in $pids; do
         local proc_name
         proc_name=$(ps -p "$pid" -o comm= 2>/dev/null || echo "unknown")
-        echo ""
-        echo "Conflicting process: $proc_name (PID $pid)"
-
-        read -r -p "Kill $proc_name (PID $pid) to free port 67? (y/N) " answer
-        if [[ "$answer" =~ ^[Yy]$ ]]; then
-            sudo kill "$pid"
-            echo "Killed $proc_name (PID $pid)."
-            sleep 1
-        else
-            warn "Port 67/UDP is still in use. Kea DHCP may fail to start."
-            return 1
-        fi
+        echo "Killing conflicting process: $proc_name (PID $pid)"
+        sudo kill "$pid"
     done
 
-    echo "DHCP port conflict resolved."
+    sleep 1
+    echo "DHCP port conflict resolved by auto-kill policy."
     return 0
 }
 
@@ -743,26 +790,194 @@ register_bss_defaults() {
 
 # --- Hardware Node Registration ---
 
-register_hardware_nodes_from_file() {
-    local file="$1"
-    local host_ip="$2"
-    local orchestrator="${ORCHESTRATOR:-minikube}"
-    local artifacts_url="http://${host_ip}:${HTTP_PORT}/artifacts"
-
-    # Resolve SMD/BSS service IPs (orchestrator-aware)
+resolve_service_endpoints() {
+    local host_ip="$1"
+    local orchestrator="${2:-${ORCHESTRATOR:-minikube}}"
     local smd_ip bss_ip
+
     if [ "$orchestrator" == "quadlets" ] || [ "$orchestrator" == "docker-compose" ]; then
         smd_ip="$host_ip"
         bss_ip="$host_ip"
     else
-        smd_ip=$(minikube kubectl -- get svc ochami-smd -n ochami -o jsonpath='{.spec.clusterIP}')
-        bss_ip=$(minikube kubectl -- get svc ochami-bss -n ochami -o jsonpath='{.spec.clusterIP}')
+        smd_ip=$(minikube kubectl -- get svc ochami-smd -n ochami -o jsonpath='{.spec.clusterIP}' 2>/dev/null || true)
+        bss_ip=$(minikube kubectl -- get svc ochami-bss -n ochami -o jsonpath='{.spec.clusterIP}' 2>/dev/null || true)
     fi
 
     if [ -z "$smd_ip" ] || [ -z "$bss_ip" ]; then
         error "Could not resolve SMD or BSS service IP."
         return 1
     fi
+
+    printf '%s %s\n' "$smd_ip" "$bss_ip"
+}
+
+apply_bss_nodes_workaround() {
+    local mac="$1"
+    local nid="$2"
+    local component_id="$3"
+    local orchestrator="$4"
+
+    local update_cmd="psql -U ${BSS_DB_USER} -d ${BSS_DB_NAME} -c \"UPDATE nodes SET boot_mac = '${mac}', nid = ${nid} WHERE xname = '${component_id}';\""
+
+    if [ "$orchestrator" == "docker-compose" ]; then
+        local pg_container
+        pg_container=$(docker ps --format "{{.Names}}" | grep postgres | head -n 1)
+        if [ -n "$pg_container" ]; then
+            if docker exec "$pg_container" bash -c "$update_cmd" >/dev/null 2>&1; then
+                echo "  -> Database updated (Docker Compose)"
+            else
+                warn "  Failed to update boot_mac in database (Docker Compose)"
+            fi
+        else
+            warn "  Postgres container not found (Docker Compose)"
+        fi
+    elif [ "$orchestrator" == "quadlets" ]; then
+        local pg_container
+        pg_container=$(sudo podman ps --format "{{.Names}}" | grep postgres | head -n 1)
+        if [ -n "$pg_container" ]; then
+            if sudo podman exec "$pg_container" bash -c "$update_cmd" >/dev/null 2>&1; then
+                echo "  -> Database updated (Quadlets)"
+            else
+                warn "  Failed to update boot_mac in database (Quadlets)"
+            fi
+        else
+            warn "  Postgres container not found (Quadlets)"
+        fi
+    else
+        if minikube kubectl -- exec -n ochami ochami-postgres -- bash -c "$update_cmd" >/dev/null 2>&1; then
+            echo "  -> Database updated (Minikube)"
+        else
+            warn "  Failed to update boot_mac in database (Minikube)"
+        fi
+    fi
+}
+
+register_hardware_node_with_endpoints() {
+    local mac="$1"
+    local ip="$2"
+    local component_id="$3"
+    local nid="$4"
+    local bmc_ip="$5"
+    local bmc_user="$6"
+    local bmc_pass="$7"
+    local smd_ip="$8"
+    local bss_ip="$9"
+    local host_ip="${10}"
+    local orchestrator="${11:-${ORCHESTRATOR:-minikube}}"
+    local context="${12:-$component_id}"
+    local artifacts_url="${ARTIFACTS_URL:-http://${host_ip}:${HTTP_PORT}/artifacts}"
+    local bmc_xname="${component_id%n[0-9]*}"
+    local http_code
+
+    echo ""
+    step "Registering ${context}: $component_id (MAC=$mac, IP=$ip, NID=$nid, BMC=$bmc_ip)"
+
+    # 1. Register Component in SMD
+    echo "  Creating Node Component in SMD..."
+    http_code=$(curl -s -o /dev/null -w "%{http_code}" -X POST \
+        "http://${smd_ip}:${SMD_PORT}/hsm/v2/State/Components" \
+        -H "Content-Type: application/json" \
+        -d "{
+            \"Components\": [{
+                \"ID\": \"${component_id}\",
+                \"Type\": \"Node\",
+                \"State\": \"On\",
+                \"Flag\": \"OK\",
+                \"Role\": \"Compute\",
+                \"NID\": ${nid},
+                \"NetType\": \"Sling\"
+            }]
+        }")
+    if [[ "$http_code" -ge 200 && "$http_code" -lt 300 ]]; then
+        echo "  -> Component created ($http_code)"
+    else
+        echo "  -> Component registration returned $http_code (may already exist)"
+    fi
+
+    # 2. Register EthernetInterface in SMD
+    echo "  Registering EthernetInterface in SMD..."
+    http_code=$(curl -s -o /dev/null -w "%{http_code}" -X POST \
+        "http://${smd_ip}:${SMD_PORT}/hsm/v2/Inventory/EthernetInterfaces" \
+        -H "Content-Type: application/json" \
+        -d "{
+            \"Description\": \"Hardware Node NIC\",
+            \"MACAddress\": \"${mac}\",
+            \"IPAddresses\": [{\"IPAddress\": \"${ip}\"}],
+            \"ComponentID\": \"${component_id}\"
+        }")
+    if [[ "$http_code" -ge 200 && "$http_code" -lt 300 ]]; then
+        echo "  -> EthernetInterface created ($http_code)"
+    else
+        echo "  -> EthernetInterface registration returned $http_code (may already exist)"
+    fi
+
+    # 3. Register RedfishEndpoint in SMD
+    echo "  Registering RedfishEndpoint for BMC ($bmc_xname) at $bmc_ip..."
+    http_code=$(curl -s -o /dev/null -w "%{http_code}" -X POST \
+        "http://${smd_ip}:${SMD_PORT}/hsm/v2/Inventory/RedfishEndpoints" \
+        -H "Content-Type: application/json" \
+        -d "{
+            \"ID\": \"${bmc_xname}\",
+            \"RediscoverOnUpdate\": true,
+            \"Hostname\": \"${bmc_ip}\",
+            \"User\": \"${bmc_user}\",
+            \"Password\": \"${bmc_pass}\"
+        }")
+    if [ "$http_code" -eq 409 ]; then
+        echo "  -> Endpoint exists (409). Updating via PUT to trigger rediscovery..."
+        curl -s -X PUT "http://${smd_ip}:${SMD_PORT}/hsm/v2/Inventory/RedfishEndpoints/${bmc_xname}" \
+            -H "Content-Type: application/json" \
+            -d "{
+                \"ID\": \"${bmc_xname}\",
+                \"RediscoverOnUpdate\": true,
+                \"Hostname\": \"${bmc_ip}\",
+                \"User\": \"${bmc_user}\",
+                \"Password\": \"${bmc_pass}\"
+            }" > /dev/null
+    elif [[ "$http_code" -ge 200 && "$http_code" -lt 300 ]]; then
+        echo "  -> RedfishEndpoint created ($http_code)"
+    else
+        echo "  -> RedfishEndpoint registration returned $http_code"
+    fi
+
+    # 4. Trigger Redfish Discovery
+    echo "  Triggering SMD Redfish discovery for ${bmc_xname}..."
+    curl -s -X POST "http://${smd_ip}:${SMD_PORT}/hsm/v2/Inventory/Discover" \
+        -H "Content-Type: application/json" \
+        -d "{\"xnames\":[\"${bmc_xname}\"]}" > /dev/null
+
+    # 5. Register per-node boot params in BSS
+    echo "  Registering boot parameters in BSS..."
+    http_code=$(curl -s -o /dev/null -w "%{http_code}" -X PUT \
+        "http://${bss_ip}:${BSS_PORT}/boot/v1/bootparameters" \
+        -H "Content-Type: application/json" \
+        -d "{
+            \"hosts\": [\"${component_id}\"],
+            \"macs\": [\"${mac}\"],
+            \"kernel\": \"${artifacts_url}/vmlinuz-lts\",
+            \"initrd\": \"${artifacts_url}/initramfs-lts\",
+            \"params\": \"console=ttyS0 ip=dhcp rd.neednet=1 root=live:${artifacts_url}/rootfs.squashfs\"
+        }")
+    if [[ "$http_code" -ge 200 && "$http_code" -lt 300 ]]; then
+        echo "  -> Boot parameters registered ($http_code)"
+    else
+        echo "  -> Boot parameters registration returned $http_code"
+    fi
+
+    # 6. Apply boot_mac + nid database workaround
+    # BSS API doesn't properly save boot_mac or nid in the nodes table.
+    # Without boot_mac, BSS can't look up boot params by MAC.
+    # Without nid, BSS treats the node as unknown/disabled.
+    echo "  Applying BSS nodes table workaround (boot_mac + nid)..."
+    apply_bss_nodes_workaround "$mac" "$nid" "$component_id" "$orchestrator"
+}
+
+register_hardware_nodes_from_file() {
+    local file="$1"
+    local host_ip="$2"
+    local orchestrator="${ORCHESTRATOR:-minikube}"
+    local smd_ip bss_ip
+    read -r smd_ip bss_ip < <(resolve_service_endpoints "$host_ip" "$orchestrator") || return 1
 
     echo "SMD endpoint: http://${smd_ip}:${SMD_PORT}"
     echo "BSS endpoint: http://${bss_ip}:${BSS_PORT}"
@@ -782,144 +997,10 @@ register_hardware_nodes_from_file() {
         bmc_user="${bmc_user// /}"
         bmc_pass="${bmc_pass// /}"
 
-        # Derive BMC xname by stripping the node suffix (e.g., x1000c0s0b0n0 -> x1000c0s0b0)
-        local bmc_xname="${component_id%n[0-9]*}"
-
         node_count=$((node_count + 1))
-        echo ""
-        step "Registering node $node_count: $component_id (MAC=$mac, IP=$ip, NID=$nid, BMC=$bmc_ip)"
-
-        # 1. Register Component in SMD
-        echo "  Creating Node Component in SMD..."
-        local http_code
-        http_code=$(curl -s -o /dev/null -w "%{http_code}" -X POST \
-            "http://${smd_ip}:${SMD_PORT}/hsm/v2/State/Components" \
-            -H "Content-Type: application/json" \
-            -d "{
-                \"Components\": [{
-                    \"ID\": \"${component_id}\",
-                    \"Type\": \"Node\",
-                    \"State\": \"On\",
-                    \"Flag\": \"OK\",
-                    \"Role\": \"Compute\",
-                    \"NID\": ${nid},
-                    \"NetType\": \"Sling\"
-                }]
-            }")
-        if [[ "$http_code" -ge 200 && "$http_code" -lt 300 ]]; then
-            echo "  -> Component created ($http_code)"
-        else
-            echo "  -> Component registration returned $http_code (may already exist)"
-        fi
-
-        # 2. Register EthernetInterface in SMD
-        echo "  Registering EthernetInterface in SMD..."
-        http_code=$(curl -s -o /dev/null -w "%{http_code}" -X POST \
-            "http://${smd_ip}:${SMD_PORT}/hsm/v2/Inventory/EthernetInterfaces" \
-            -H "Content-Type: application/json" \
-            -d "{
-                \"Description\": \"Hardware Node NIC\",
-                \"MACAddress\": \"${mac}\",
-                \"IPAddresses\": [{\"IPAddress\": \"${ip}\"}],
-                \"ComponentID\": \"${component_id}\"
-            }")
-        if [[ "$http_code" -ge 200 && "$http_code" -lt 300 ]]; then
-            echo "  -> EthernetInterface created ($http_code)"
-        else
-            echo "  -> EthernetInterface registration returned $http_code (may already exist)"
-        fi
-
-        # 3. Register RedfishEndpoint in SMD
-        echo "  Registering RedfishEndpoint for BMC ($bmc_xname) at $bmc_ip..."
-        http_code=$(curl -s -o /dev/null -w "%{http_code}" -X POST \
-            "http://${smd_ip}:${SMD_PORT}/hsm/v2/Inventory/RedfishEndpoints" \
-            -H "Content-Type: application/json" \
-            -d "{
-                \"ID\": \"${bmc_xname}\",
-                \"RediscoverOnUpdate\": true,
-                \"Hostname\": \"${bmc_ip}\",
-                \"User\": \"${bmc_user}\",
-                \"Password\": \"${bmc_pass}\"
-            }")
-        if [ "$http_code" -eq 409 ]; then
-            echo "  -> Endpoint exists (409). Updating via PUT to trigger rediscovery..."
-            curl -s -X PUT "http://${smd_ip}:${SMD_PORT}/hsm/v2/Inventory/RedfishEndpoints/${bmc_xname}" \
-                -H "Content-Type: application/json" \
-                -d "{
-                    \"ID\": \"${bmc_xname}\",
-                    \"RediscoverOnUpdate\": true,
-                    \"Hostname\": \"${bmc_ip}\",
-                    \"User\": \"${bmc_user}\",
-                    \"Password\": \"${bmc_pass}\"
-                }" > /dev/null
-        elif [[ "$http_code" -ge 200 && "$http_code" -lt 300 ]]; then
-            echo "  -> RedfishEndpoint created ($http_code)"
-        else
-            echo "  -> RedfishEndpoint registration returned $http_code"
-        fi
-
-        # 4. Trigger Redfish Discovery
-        echo "  Triggering SMD Redfish discovery for ${bmc_xname}..."
-        curl -s -X POST "http://${smd_ip}:${SMD_PORT}/hsm/v2/Inventory/Discover" \
-            -H "Content-Type: application/json" \
-            -d "{\"xnames\":[\"${bmc_xname}\"]}" > /dev/null
-
-        # 5. Register per-node boot params in BSS
-        echo "  Registering boot parameters in BSS..."
-        http_code=$(curl -s -o /dev/null -w "%{http_code}" -X PUT \
-            "http://${bss_ip}:${BSS_PORT}/boot/v1/bootparameters" \
-            -H "Content-Type: application/json" \
-            -d "{
-                \"hosts\": [\"${component_id}\"],
-                \"macs\": [\"${mac}\"],
-                \"kernel\": \"${artifacts_url}/vmlinuz-lts\",
-                \"initrd\": \"${artifacts_url}/initramfs-lts\",
-                \"params\": \"console=ttyS0 ip=dhcp rd.neednet=1 root=live:${artifacts_url}/rootfs.squashfs\"
-            }")
-        if [[ "$http_code" -ge 200 && "$http_code" -lt 300 ]]; then
-            echo "  -> Boot parameters registered ($http_code)"
-        else
-            echo "  -> Boot parameters registration returned $http_code"
-        fi
-
-        # 6. Apply boot_mac + nid database workaround
-        # BSS API doesn't properly save boot_mac or nid in the nodes table.
-        # Without boot_mac, BSS can't look up boot params by MAC.
-        # Without nid, BSS treats the node as unknown/disabled.
-        echo "  Applying BSS nodes table workaround (boot_mac + nid)..."
-        local update_cmd="psql -U ${BSS_DB_USER} -d ${BSS_DB_NAME} -c \"UPDATE nodes SET boot_mac = '${mac}', nid = ${nid} WHERE xname = '${component_id}';\""
-
-        if [ "$orchestrator" == "docker-compose" ]; then
-            local pg_container
-            pg_container=$(docker ps --format "{{.Names}}" | grep postgres | head -n 1)
-            if [ -n "$pg_container" ]; then
-                if docker exec "$pg_container" bash -c "$update_cmd" >/dev/null 2>&1; then
-                    echo "  -> Database updated (Docker Compose)"
-                else
-                    warn "  Failed to update boot_mac in database (Docker Compose)"
-                fi
-            else
-                warn "  Postgres container not found (Docker Compose)"
-            fi
-        elif [ "$orchestrator" == "quadlets" ]; then
-            local pg_container
-            pg_container=$(sudo podman ps --format "{{.Names}}" | grep postgres | head -n 1)
-            if [ -n "$pg_container" ]; then
-                if sudo podman exec "$pg_container" bash -c "$update_cmd" >/dev/null 2>&1; then
-                    echo "  -> Database updated (Quadlets)"
-                else
-                    warn "  Failed to update boot_mac in database (Quadlets)"
-                fi
-            else
-                warn "  Postgres container not found (Quadlets)"
-            fi
-        else
-            if minikube kubectl -- exec -n ochami ochami-postgres -- bash -c "$update_cmd" >/dev/null 2>&1; then
-                echo "  -> Database updated (Minikube)"
-            else
-                warn "  Failed to update boot_mac in database (Minikube)"
-            fi
-        fi
+        register_hardware_node_with_endpoints \
+            "$mac" "$ip" "$component_id" "$nid" "$bmc_ip" "$bmc_user" "$bmc_pass" \
+            "$smd_ip" "$bss_ip" "$host_ip" "$orchestrator" "node $node_count"
     done < "$file"
 
     echo ""
@@ -1066,6 +1147,7 @@ parse_common_deploy_args() {
     DHCP_START=""
     DHCP_END=""
     DHCP_NETMASK=""
+    DHCP_CONFLICT_POLICY="$DEFAULT_DHCP_CONFLICT_POLICY"
     PXE_INTERFACE="$DEFAULT_PXE_INTERFACE"
     PXE_IP="$DEFAULT_PXE_IP"
     PXE_CIDR="$DEFAULT_PXE_CIDR"
@@ -1095,6 +1177,8 @@ parse_common_deploy_args() {
             --dhcp-start) DHCP_START="$2"; shift ;;
             --dhcp-end) DHCP_END="$2"; shift ;;
             --dhcp-netmask) DHCP_NETMASK="$2"; shift ;;
+            --fail-on-conflict) DHCP_CONFLICT_POLICY="fail" ;;
+            --auto-kill) DHCP_CONFLICT_POLICY="auto-kill" ;;
             --interface) PXE_INTERFACE="$2"; shift ;;
             --ip) PXE_IP="$2"; shift ;;
             --cidr) PXE_CIDR="$2"; shift ;;
@@ -1154,6 +1238,10 @@ validate_common_deploy_args() {
 
     if [ -n "$DHCP_NETMASK" ]; then
         validate_ip "$DHCP_NETMASK" "--dhcp-netmask" || exit 1
+    fi
+    if [[ "$DHCP_CONFLICT_POLICY" != "fail" && "$DHCP_CONFLICT_POLICY" != "auto-kill" ]]; then
+        error "DHCP conflict policy must be 'fail' or 'auto-kill'."
+        exit 1
     fi
 
     # Validate nodes file
@@ -1220,6 +1308,8 @@ Common options:
   --dhcp-start IP        DHCP pool start (default: $DEFAULT_DHCP_START)
   --dhcp-end IP          DHCP pool end (default: $DEFAULT_DHCP_END)
   --dhcp-netmask MASK    DHCP netmask (default: $DEFAULT_DHCP_NETMASK)
+  --fail-on-conflict     Abort if UDP/67 is already in use (default behavior)
+  --auto-kill            Kill conflicting UDP/67 process(es) automatically
   --interface NAME       PXE interface (default: $DEFAULT_PXE_INTERFACE)
   --ip IP                Host IP on PXE interface (default: $DEFAULT_PXE_IP)
   --cidr N               CIDR prefix (default: $DEFAULT_PXE_CIDR)
