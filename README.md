@@ -148,6 +148,7 @@ The table below shows which combinations of **platform**, **deployment method**,
 ### For Minikube Deployment
 *   **Minikube** with the **`none` (bare-metal)** driver (Linux) or **`docker`** driver (macOS).
     *   *Note (Linux): The deployment script will automatically install necessary system dependencies (like `conntrack`, `cri-dockerd`, `cri-tools`, and CNI plugins) for Debian/Ubuntu/Fedora systems.*
+    *   *Host sysctl safety:* Prerequisite scripts do **not** change `fs.protected_regular` by default. Use `--set-fs-protected-regular` only when you explicitly want OpenCHAMI to set `fs.protected_regular=0` for Minikube none-driver compatibility.
 *   [Helm](https://helm.sh/docs/intro/install/)
 *   [Docker](https://docs.docker.com/get-docker/) (Required for building images and running the `none` driver)
 
@@ -234,6 +235,7 @@ To deploy with test VMs:
 *   `--dhcp-netmask MASK`: DHCP netmask
 *   `--fail-on-conflict`: Fail if UDP/67 is already in use (default behavior)
 *   `--auto-kill`: Automatically kill conflicting UDP/67 processes
+*   `--set-fs-protected-regular`: Opt in to setting host `fs.protected_regular=0` during prerequisite installation
 *   `--smd-ref REF`: Git ref to use when rebuilding the local SMD image (default: `main`)
 *   `--bss-ref REF`: Git ref to use when rebuilding the local BSS image (default: `main`)
 *   `--pcs-ref REF`: Git ref to use when rebuilding the local PCS image (default: `main`)
@@ -251,6 +253,8 @@ To deploy with test VMs:
 *   `--magellan-bmc-id-map MAP`: BMC ID map value for Magellan collect (`@/path/to/map.yaml` or inline JSON/YAML)
 *   `--magellan-cache PATH`: Magellan cache path (default: `/tmp/$USER/magellan/assets.db`)
 *   `--magellan-insecure`: Skip TLS verification during Magellan scan and collect
+
+If you deploy with `--set-fs-protected-regular`, teardown restores the previous `fs.protected_regular` value only when it was changed by OpenCHAMI.
 
 **Secret handling:**
 *   Deploy scripts automatically generate database secrets when not provided and persist them in `.openchami-secrets.env` for reuse across redeploys.

@@ -66,6 +66,7 @@ echo "Methods to test: ${ALL_METHODS[*]}"
 echo ""
 PXE_TEST_INTERFACE="${PXE_TEST_INTERFACE:-ochami-pxe0}"
 REBUILD_LOCAL_IMAGES="${REBUILD_LOCAL_IMAGES:-true}"
+SET_FS_PROTECTED_REGULAR_FOR_TESTS="${SET_FS_PROTECTED_REGULAR_FOR_TESTS:-true}"
 
 require_binary() {
     local binary="$1"
@@ -126,7 +127,11 @@ mkdir -p "$LOG_DIR"
 
 # --- Install prerequisites ---
 echo "=== Installing prerequisites ==="
-bash "$PROJECT_ROOT/scripts/install_prerequisites.sh" 2>&1 | tee "$LOG_DIR/${DISTRO}-prerequisites.log"
+prereq_args=()
+if [ "$SET_FS_PROTECTED_REGULAR_FOR_TESTS" = "true" ]; then
+    prereq_args+=(--set-fs-protected-regular)
+fi
+bash "$PROJECT_ROOT/scripts/install_prerequisites.sh" "${prereq_args[@]}" 2>&1 | tee "$LOG_DIR/${DISTRO}-prerequisites.log"
 echo ""
 
 cd "$PROJECT_ROOT"

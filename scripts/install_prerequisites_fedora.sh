@@ -3,6 +3,34 @@ set -e
 
 GREEN='\033[0;32m'
 NC='\033[0m' # No Color
+SET_FS_PROTECTED_REGULAR=false
+FS_PROTECTED_REGULAR_STATE_FILE="${FS_PROTECTED_REGULAR_STATE_FILE:-/tmp/openchami-fs-protected-regular.state}"
+
+show_help() {
+    cat <<EOF
+Usage: $0 [OPTIONS]
+
+Options:
+  --set-fs-protected-regular  Opt in to setting host fs.protected_regular=0
+  -h, --help                  Show this help message
+EOF
+}
+
+while [[ "$#" -gt 0 ]]; do
+    case "$1" in
+        --set-fs-protected-regular) SET_FS_PROTECTED_REGULAR=true ;;
+        -h|--help)
+            show_help
+            exit 0
+            ;;
+        *)
+            echo "Error: Unknown option '$1'" >&2
+            show_help >&2
+            exit 1
+            ;;
+    esac
+    shift
+done
 
 echo -e "${GREEN}=== Checking and Installing Prerequisites for Fedora ===${NC}"
 
@@ -160,13 +188,31 @@ else
     echo "envsubst (gettext) is installed."
 fi
 
-# 11. Fix fs.protected_regular (Fixes "boot lock: unable to open /tmp/juju-..." error)
-PROTECTED_REGULAR=$(sysctl -n fs.protected_regular)
-if [ "$PROTECTED_REGULAR" != "0" ]; then
-    echo -e "${GREEN}--> Setting fs.protected_regular=0...${NC}"
-    sudo sysctl -w fs.protected_regular=0
+# 11. Optionally adjust fs.protected_regular for minikube none-driver compatibility
+PROTECTED_REGULAR="$(sysctl -n fs.protected_regular 2>/dev/null || true)"
+if [ "$SET_FS_PROTECTED_REGULAR" = true ]; then
+    if [ -z "$PROTECTED_REGULAR" ]; then
+        echo "Could not read fs.protected_regular; skipping requested update."
+    elif [ "$PROTECTED_REGULAR" != "0" ]; then
+        echo -e "${GREEN}--> Setting fs.protected_regular=0...${NC}"
+        sudo sysctl -w fs.protected_regular=0
+        if [ "$(sysctl -n fs.protected_regular 2>/dev/null || true)" = "0" ]; then
+            printf '%s\n' "$PROTECTED_REGULAR" > "$FS_PROTECTED_REGULAR_STATE_FILE"
+            echo "Saved previous fs.protected_regular=$PROTECTED_REGULAR to $FS_PROTECTED_REGULAR_STATE_FILE"
+        else
+            echo "Error: failed to set fs.protected_regular=0." >&2
+            exit 1
+        fi
+    else
+        echo "fs.protected_regular is already 0."
+    fi
 else
-    echo "fs.protected_regular is already 0."
+    if [ -z "$PROTECTED_REGULAR" ]; then
+        echo "Could not read fs.protected_regular. Not modifying by default."
+    else
+        echo "fs.protected_regular is $PROTECTED_REGULAR. Not modifying fs.protected_regular by default."
+        echo "If needed for minikube none-driver, re-run with --set-fs-protected-regular."
+    fi
 fi
 
 echo -e "${GREEN}=== Fedora Prerequisites Check Complete ===${NC}"

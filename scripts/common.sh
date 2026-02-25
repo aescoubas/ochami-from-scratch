@@ -56,6 +56,7 @@ DEFAULT_BSS_REPO_URI="https://github.com/aescoubas/ochami-bss.git"
 DEFAULT_PCS_REPO_URI="https://github.com/OpenCHAMI/power-control.git"
 DEFAULT_DISCOVERY_METHOD="static"
 DEFAULT_DHCP_CONFLICT_POLICY="fail"
+DEFAULT_SET_FS_PROTECTED_REGULAR=false
 
 # Image names
 IMAGE_HTTP="localhost/http-server:latest"
@@ -95,6 +96,7 @@ CLOUD_INIT_PORT=27777
 PCS_PORT=28007
 STORK_PORT=28010
 STORK_AGENT_PORT=28011
+FS_PROTECTED_REGULAR_STATE_FILE="${FS_PROTECTED_REGULAR_STATE_FILE:-/tmp/openchami-fs-protected-regular.state}"
 
 # --- Logging ---
 
@@ -249,6 +251,45 @@ relax_permissions() {
             sudo chmod -R a+rwX "$target"
         fi
     done
+}
+
+restore_fs_protected_regular_if_managed() {
+    if $IS_MACOS; then
+        return 0
+    fi
+
+    if [ ! -f "$FS_PROTECTED_REGULAR_STATE_FILE" ]; then
+        echo "fs.protected_regular was not managed by this deployment. Skipping restore."
+        return 0
+    fi
+
+    local previous_value
+    previous_value="$(cat "$FS_PROTECTED_REGULAR_STATE_FILE" 2>/dev/null || true)"
+    if ! [[ "$previous_value" =~ ^[0-9]+$ ]]; then
+        warn "Invalid fs.protected_regular state file content in $FS_PROTECTED_REGULAR_STATE_FILE; removing marker."
+        rm -f "$FS_PROTECTED_REGULAR_STATE_FILE"
+        return 0
+    fi
+
+    local current_value
+    current_value="$(sysctl -n fs.protected_regular 2>/dev/null || true)"
+    if [ -z "$current_value" ]; then
+        warn "Could not read fs.protected_regular during teardown. Leaving marker for manual cleanup."
+        return 0
+    fi
+
+    if [ "$current_value" = "$previous_value" ]; then
+        echo "fs.protected_regular already set to $previous_value."
+        rm -f "$FS_PROTECTED_REGULAR_STATE_FILE"
+        return 0
+    fi
+
+    step "Restoring fs.protected_regular to $previous_value (managed by OpenCHAMI)..."
+    if sudo sysctl -w "fs.protected_regular=$previous_value" >/dev/null 2>&1; then
+        rm -f "$FS_PROTECTED_REGULAR_STATE_FILE"
+    else
+        warn "Failed to restore fs.protected_regular to $previous_value. Marker retained at $FS_PROTECTED_REGULAR_STATE_FILE."
+    fi
 }
 
 get_microservice_ref() {
@@ -1185,6 +1226,7 @@ parse_common_deploy_args() {
     DHCP_END=""
     DHCP_NETMASK=""
     DHCP_CONFLICT_POLICY="$DEFAULT_DHCP_CONFLICT_POLICY"
+    SET_FS_PROTECTED_REGULAR="$DEFAULT_SET_FS_PROTECTED_REGULAR"
     PXE_INTERFACE="$DEFAULT_PXE_INTERFACE"
     PXE_IP="$DEFAULT_PXE_IP"
     PXE_CIDR="$DEFAULT_PXE_CIDR"
@@ -1216,6 +1258,7 @@ parse_common_deploy_args() {
             --dhcp-netmask) DHCP_NETMASK="$2"; shift ;;
             --fail-on-conflict) DHCP_CONFLICT_POLICY="fail" ;;
             --auto-kill) DHCP_CONFLICT_POLICY="auto-kill" ;;
+            --set-fs-protected-regular) SET_FS_PROTECTED_REGULAR=true ;;
             --interface) PXE_INTERFACE="$2"; shift ;;
             --ip) PXE_IP="$2"; shift ;;
             --cidr) PXE_CIDR="$2"; shift ;;
@@ -1278,6 +1321,10 @@ validate_common_deploy_args() {
     fi
     if [[ "$DHCP_CONFLICT_POLICY" != "fail" && "$DHCP_CONFLICT_POLICY" != "auto-kill" ]]; then
         error "DHCP conflict policy must be 'fail' or 'auto-kill'."
+        exit 1
+    fi
+    if [[ "$SET_FS_PROTECTED_REGULAR" != "true" && "$SET_FS_PROTECTED_REGULAR" != "false" ]]; then
+        error "fs.protected_regular policy must be 'true' or 'false'."
         exit 1
     fi
 
@@ -1347,6 +1394,8 @@ Common options:
   --dhcp-netmask MASK    DHCP netmask (default: $DEFAULT_DHCP_NETMASK)
   --fail-on-conflict     Abort if UDP/67 is already in use (default behavior)
   --auto-kill            Kill conflicting UDP/67 process(es) automatically
+  --set-fs-protected-regular
+                         Opt in to setting host fs.protected_regular=0 during prerequisite install
   --interface NAME       PXE interface (default: $DEFAULT_PXE_INTERFACE)
   --ip IP                Host IP on PXE interface (default: $DEFAULT_PXE_IP)
   --cidr N               CIDR prefix (default: $DEFAULT_PXE_CIDR)

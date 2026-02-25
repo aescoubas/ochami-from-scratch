@@ -138,4 +138,7 @@ fi
 # 8. Remove Artifacts
 cleanup_build_artifacts
 
+# Restore sysctl only when managed by OpenCHAMI prereqs
+restore_fs_protected_regular_if_managed
+
 info "=== Teardown Complete ==="

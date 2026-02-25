@@ -40,7 +40,11 @@ if [ "$FORCE_REBUILD" = true ]; then
 fi
 
 # 0. Install Prerequisites
-"$PROJECT_ROOT/scripts/install_prerequisites.sh"
+PREREQ_ARGS=()
+if [ "$SET_FS_PROTECTED_REGULAR" = true ]; then
+    PREREQ_ARGS+=(--set-fs-protected-regular)
+fi
+"$PROJECT_ROOT/scripts/install_prerequisites.sh" "${PREREQ_ARGS[@]}"
 
 # 1. Check Prerequisites
 step "Checking prerequisites for minikube..."
