@@ -14,6 +14,9 @@ dhcpStart: "192.168.100.100"
 dhcpEnd: "192.168.100.200"
 dhcpNetmask: "255.255.255.0"
 
+# Local PXE profile: favor fast pod recycle during iterative development.
+terminationGracePeriodSeconds: 0
+
 # IP address for the TFTP server (usually same as externalIp)
 tftpServerIp: "192.168.100.2"
 

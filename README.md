@@ -260,6 +260,11 @@ If you deploy with `--set-fs-protected-regular`, teardown restores the previous 
 *   Deploy scripts automatically generate database secrets when not provided and persist them in `.openchami-secrets.env` for reuse across redeploys.
 *   You can override any generated value by exporting `POSTGRES_PASSWORD`, `SMD_DB_PASSWORD`, `BSS_DB_PASSWORD`, `KEA_DB_PASSWORD`, `PCS_DB_PASSWORD`, `STORK_DB_PASSWORD`, and `HYDRA_DB_PASSWORD` before running `deploy.sh`.
 
+**Helm pod termination grace period:**
+*   The base Helm values (`ochami-helm/values.yaml`) set `terminationGracePeriodSeconds: 30` for production-safe shutdown.
+*   The PXE profile (`ochami-helm/values-pxe.yaml`) overrides this to `terminationGracePeriodSeconds: 0` for faster local/dev recycle loops.
+*   The SMD, BSS, and PCS pod templates read this value from Helm values instead of hard-coding `0`.
+
 ### What the deployment script does:
 
 | Step | Minikube | Quadlets | Docker Compose |

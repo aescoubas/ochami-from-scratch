@@ -6,7 +6,7 @@ metadata:
     {{- include "ochami-helm.selectorLabels" . | nindent 4 }}
     app.kubernetes.io/component: bss
 spec:
-  terminationGracePeriodSeconds: 0  # TODO: remove this line for production
+  terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds }}
   initContainers:
     - name: wait-for-postgres
       image: "{{ .Values.image.postgres.repository }}:{{ .Values.image.postgres.tag }}"

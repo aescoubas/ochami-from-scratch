@@ -20,6 +20,10 @@ imagePullSecrets: []
 nameOverride: ""
 fullnameOverride: "ochami"
 
+# Default pod shutdown grace period (seconds) for core services.
+# Keep this production-safe in base values; use profile-specific overrides for dev speed.
+terminationGracePeriodSeconds: 30
+
 service:
   smd:
     type: ClusterIP
