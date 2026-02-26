@@ -274,7 +274,7 @@ Implementation note: deployment methods now share a common lifecycle pipeline in
 | 1. Prerequisites | Installs cri-dockerd, CNI plugins | Checks for podman, envsubst | Checks for docker compose |
 | 2. Build Images | Builds with Docker, loads into Minikube | Builds with Podman | Builds with Docker |
 | 3. Start Orchestrator | Starts Minikube with `none` driver | N/A (uses systemd) | N/A (uses Docker daemon) |
-| 4. Configure Network | Creates `virbr-pxe` bridge, assigns 192.168.100.2 | Same | Same |
+| 4. Configure Network | macOS: skip host network setup. Linux: `hardware` mode configures physical interface and skips libvirt network creation; `libvirt` mode configures libvirt network. Both Linux modes run `setup_minikube_net.sh`. | Linux only: `hardware` mode configures physical interface and skips libvirt network creation; `libvirt` mode configures libvirt network. Both modes run `setup_minikube_net.sh`. | macOS: skip host network setup. Linux: `hardware` mode configures physical interface and skips libvirt network creation; `libvirt` mode configures libvirt network. Both Linux modes run `setup_minikube_net.sh`. |
 | 5. Deploy Services | Helm install to Kubernetes | Installs `.container` quadlet files + `openchami.target` | Docker Compose up |
 | 6. Register Hardware Nodes | Registers from CSV (`--nodes-file`) or runs Magellan discovery (`--discovery-method magellan`) | Same | Same |
 | 7. Create VMs | Creates Libvirt VMs if `--vms` specified | Same | Same |
