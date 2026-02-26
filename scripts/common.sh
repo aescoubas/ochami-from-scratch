@@ -1471,6 +1471,7 @@ destroy_pxe_network() {
 cleanup_host_networking() {
     local host_iface="${1:-virbr-pxe}"
     local host_ip="${2:-192.168.100.2}"
+    local host_cidr="${3:-24}"
 
     if $IS_MACOS; then
         echo "macOS: Docker Desktop manages its own networking. Skipping host networking cleanup."
@@ -1489,8 +1490,10 @@ cleanup_host_networking() {
     fi
 
     if ip addr show "$host_iface" 2>/dev/null | grep -q "inet $host_ip/"; then
-        step "Removing IP $host_ip from $host_iface..."
-        sudo ip addr del "$host_ip/24" dev "$host_iface"
+        step "Removing IP $host_ip/$host_cidr from $host_iface..."
+        if ! sudo ip addr del "$host_ip/$host_cidr" dev "$host_iface" 2>/dev/null; then
+            warn "Could not remove $host_ip/$host_cidr from $host_iface. If a different CIDR was used at deploy time, rerun teardown with --cidr."
+        fi
     fi
 }
 
@@ -1506,17 +1509,27 @@ parse_common_teardown_args() {
     REMOVE_IMAGES=false
     VM_NAME="$DEFAULT_VM_NAME"
     SKIP_CONFIRM=false
+    PXE_INTERFACE="$DEFAULT_PXE_INTERFACE"
+    PXE_IP="$DEFAULT_PXE_IP"
+    PXE_CIDR="$DEFAULT_PXE_CIDR"
 
     while [[ "$#" -gt 0 ]]; do
         case $1 in
             --remove-images) REMOVE_IMAGES=true ;;
             --vm-name) VM_NAME="$2"; shift ;;
+            --interface) PXE_INTERFACE="$2"; shift ;;
+            --ip) PXE_IP="$2"; shift ;;
+            --cidr) PXE_CIDR="$2"; shift ;;
             -y|--yes) SKIP_CONFIRM=true ;;
             -h|--help) return 2 ;;
             *) error "Unknown parameter: $1"; exit 1 ;;
         esac
         shift
     done
+
+    validate_ip "$PXE_IP" "--ip" || return 1
+    validate_cidr "$PXE_CIDR" || return 1
+
     return 0
 }
 
@@ -1525,6 +1538,9 @@ add_common_teardown_args_help() {
 Options:
   --remove-images        Also remove container images
   --vm-name NAME         VM name pattern (default: $DEFAULT_VM_NAME)
+  --interface NAME      PXE interface to clean up (default: $DEFAULT_PXE_INTERFACE)
+  --ip IP               PXE IP to remove from interface (default: $DEFAULT_PXE_IP)
+  --cidr N              PXE CIDR prefix for IP cleanup (default: $DEFAULT_PXE_CIDR)
   -y, --yes              Skip confirmation
   -h, --help             Show help
 EOF

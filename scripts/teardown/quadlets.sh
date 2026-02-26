@@ -108,7 +108,7 @@ done
 destroy_pxe_network
 
 # 6. Clean up host networking
-cleanup_host_networking
+cleanup_host_networking "$PXE_INTERFACE" "$PXE_IP" "$PXE_CIDR"
 
 # 7. Remove Podman Images (Optional)
 if [ "$REMOVE_IMAGES" = true ]; then

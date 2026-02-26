@@ -51,7 +51,7 @@ destroy_vms "$VM_NAME"
 destroy_pxe_network
 
 # 3. Clean up host networking
-cleanup_host_networking
+cleanup_host_networking "$PXE_INTERFACE" "$PXE_IP" "$PXE_CIDR"
 
 # 4. Delete Minikube
 step "Deleting Minikube cluster..."

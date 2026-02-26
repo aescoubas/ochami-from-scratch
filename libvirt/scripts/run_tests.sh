@@ -65,6 +65,8 @@ fi
 echo "Methods to test: ${ALL_METHODS[*]}"
 echo ""
 PXE_TEST_INTERFACE="${PXE_TEST_INTERFACE:-ochami-pxe0}"
+PXE_TEST_IP="${PXE_TEST_IP:-192.168.100.2}"
+PXE_TEST_CIDR="${PXE_TEST_CIDR:-24}"
 REBUILD_LOCAL_IMAGES="${REBUILD_LOCAL_IMAGES:-true}"
 SET_FS_PROTECTED_REGULAR_FOR_TESTS="${SET_FS_PROTECTED_REGULAR_FOR_TESTS:-true}"
 
@@ -172,6 +174,7 @@ for method in "${ALL_METHODS[@]}"; do
     # Deploy
     if [ "$method_rc" -eq 0 ]; then
         deploy_args=(--method "$method" --mode hardware --vms 0 --interface "$PXE_TEST_INTERFACE")
+        deploy_args+=(--ip "$PXE_TEST_IP" --cidr "$PXE_TEST_CIDR")
         if [ "$first_method" = true ] && [ "$REBUILD_LOCAL_IMAGES" = "true" ]; then
             deploy_args+=(--rebuild)
         fi
@@ -199,7 +202,7 @@ for method in "${ALL_METHODS[@]}"; do
 
     # Teardown (always runs, even on failure)
     echo "--> Tearing down method $method ..."
-    bash "$PROJECT_ROOT/teardown.sh" --method "$method" -y 2>&1 | tee -a "$LOG_FILE" || true
+    bash "$PROJECT_ROOT/teardown.sh" --method "$method" --interface "$PXE_TEST_INTERFACE" --ip "$PXE_TEST_IP" --cidr "$PXE_TEST_CIDR" -y 2>&1 | tee -a "$LOG_FILE" || true
     echo "--> Teardown complete"
     echo ""
 

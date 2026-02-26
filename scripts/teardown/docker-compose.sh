@@ -75,7 +75,7 @@ fi
 destroy_pxe_network
 
 # 4. Clean up host networking
-cleanup_host_networking
+cleanup_host_networking "$PXE_INTERFACE" "$PXE_IP" "$PXE_CIDR"
 
 # 5. Remove generated config files
 step "Removing generated config files..."

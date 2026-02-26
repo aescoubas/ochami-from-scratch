@@ -58,14 +58,20 @@ test_libvirt_runner_enforces_cwd_safe_execution() {
         "libvirt runner should change cwd to PROJECT_ROOT before deployment loop"
     assert_contains "$RUNNER_SCRIPT" 'PXE_TEST_INTERFACE="\$\{PXE_TEST_INTERFACE:-ochami-pxe0\}"' \
         "libvirt runner should define a dedicated PXE test interface"
+    assert_contains "$RUNNER_SCRIPT" 'PXE_TEST_IP="\$\{PXE_TEST_IP:-192.168.100.2\}"' \
+        "libvirt runner should define a test PXE IP"
+    assert_contains "$RUNNER_SCRIPT" 'PXE_TEST_CIDR="\$\{PXE_TEST_CIDR:-24\}"' \
+        "libvirt runner should define a test PXE CIDR"
     assert_contains "$RUNNER_SCRIPT" '^ensure_test_pxe_interface\(\)' \
         "libvirt runner should define a helper to ensure the PXE interface exists"
     assert_contains "$RUNNER_SCRIPT" 'deploy_args=\(--method "\$method" --mode hardware --vms 0 --interface "\$PXE_TEST_INTERFACE"\)' \
         "libvirt runner should construct deploy args with explicit interface"
+    assert_contains "$RUNNER_SCRIPT" 'deploy_args\+=\(--ip "\$PXE_TEST_IP" --cidr "\$PXE_TEST_CIDR"\)' \
+        "libvirt runner should pass explicit IP/CIDR for deterministic teardown cleanup"
     assert_contains "$RUNNER_SCRIPT" 'deploy_args\+=\(--rebuild\)' \
         "libvirt runner should support forced rebuild for deterministic test runs"
-    assert_contains "$RUNNER_SCRIPT" 'bash "\$PROJECT_ROOT/teardown\.sh" --method "\$method" -y' \
-        "libvirt runner should teardown using project-root script path"
+    assert_contains "$RUNNER_SCRIPT" 'bash "\$PROJECT_ROOT/teardown\.sh" --method "\$method" --interface "\$PXE_TEST_INTERFACE" --ip "\$PXE_TEST_IP" --cidr "\$PXE_TEST_CIDR" -y' \
+        "libvirt runner should teardown using project-root script path and explicit PXE cleanup args"
 }
 
 test_libvirt_runner_checks_method_specific_prerequisites() {

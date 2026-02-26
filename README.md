@@ -740,6 +740,9 @@ To remove the VM, cluster/services, network artifacts, and generated files:
 | `--method METHOD` | Deployment method to tear down: `minikube`, `quadlets`, or `docker-compose` (required) |
 | `--remove-images` | Also delete Docker/Podman images and CNI plugins |
 | `--vm-name NAME` | Specify VM name to remove (default: virtual-compute-node) |
+| `--interface NAME` | PXE interface to clean up (default: virbr-pxe) |
+| `--ip IP` | PXE IP to remove during host cleanup (default: 192.168.100.2) |
+| `--cidr N` | PXE CIDR prefix to use for host cleanup (default: 24) |
 | `-y, --yes` | Skip confirmation prompt |
 | `-h, --help` | Show help |
 

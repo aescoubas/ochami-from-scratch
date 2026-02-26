@@ -16,6 +16,7 @@ test:
 	bash scripts/tests/test_runtime_config_generation_shared.sh
 	bash scripts/tests/test_helm_termination_grace_policy.sh
 	bash scripts/tests/test_prereq_sysctl_policy.sh
+	bash scripts/tests/test_teardown_network_alignment.sh
 	bash scripts/tests/test_libvirt_deploy_smoke_coverage.sh
 	bash scripts/tests/test_libvirt_network_idempotence.sh
 	bash scripts/tests/test_libvirt_cloud_init_ssh.sh
