@@ -15,7 +15,7 @@ if [ "$#" -lt 7 ]; then
     echo "Environment variables:"
     echo "  ORCHESTRATOR   Deployment method: minikube, quadlets, or docker-compose (default: minikube)"
     echo "  HOST_IP        Host IP for service discovery in quadlets/docker-compose mode (default: 192.168.100.2)"
-    echo "  ARTIFACTS_URL  Base URL for boot artifacts (default: http://HOST_IP:HTTP_PORT/artifacts)"
+    echo "  ARTIFACTS_URL  Base URL for boot artifacts (default: http://HOST_IP:HTTP_PORT/artifacts/opensuse)"
     exit 1
 fi
 

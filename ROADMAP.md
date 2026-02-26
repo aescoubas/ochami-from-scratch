@@ -9,7 +9,7 @@
   - [x] Both deploy methods source `scripts/deploy/lib/runtime_config.sh`.
   - [x] Both methods use shared env exports and template rendering helpers.
 - [x] Add a minimal Python MCP server for local OpenCHAMI control with explicit read-only/read-write modes.
-  - [x] Implement MCP tools for health/status, SMD component/group reads, PCS power status, and gated write operations (power transitions + group CRUD/member updates).
+  - [x] Implement MCP tools for health/status, SMD component/group reads, BSS reads/writes, PCS power status, and gated write operations (power transitions + group CRUD/member updates).
   - [x] Integrate usage guidance only in `scripts/deploy/minikube.sh` (no Quadlets/Docker Compose wiring yet).
   - [x] Add regression tests and README usage docs for minikube-only MCP workflow.
 

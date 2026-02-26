@@ -57,6 +57,7 @@ DEFAULT_PCS_REPO_URI="https://github.com/OpenCHAMI/power-control.git"
 DEFAULT_DISCOVERY_METHOD="static"
 DEFAULT_DHCP_CONFLICT_POLICY="fail"
 DEFAULT_SET_FS_PROTECTED_REGULAR=false
+DEFAULT_ARTIFACT_PROFILE="opensuse"
 
 # Image names
 IMAGE_HTTP="localhost/http-server:latest"
@@ -114,6 +115,12 @@ error() {
 
 step() {
     echo -e "${GREEN}--> $*${NC}"
+}
+
+artifact_base_url() {
+    local host_ip="$1"
+    local artifact_profile="${2:-$DEFAULT_ARTIFACT_PROFILE}"
+    echo "http://${host_ip}:${HTTP_PORT}/artifacts/${artifact_profile}"
 }
 
 # --- Validation ---
@@ -844,7 +851,8 @@ register_bss_defaults() {
     local bss_ip="$1"
     local host_ip="$2"
     local extra_params="${3:-}"
-    local artifacts_url="http://${host_ip}:${HTTP_PORT}/artifacts"
+    local artifacts_url
+    artifacts_url="$(artifact_base_url "$host_ip")"
     local params="console=ttyS0 ip=dhcp rd.neednet=1 root=live:${artifacts_url}/rootfs.squashfs"
     if [ -n "$extra_params" ]; then
         params="$params $extra_params"
@@ -950,7 +958,7 @@ register_hardware_node_with_endpoints() {
     local host_ip="${10}"
     local orchestrator="${11:-${ORCHESTRATOR:-minikube}}"
     local context="${12:-$component_id}"
-    local artifacts_url="${ARTIFACTS_URL:-http://${host_ip}:${HTTP_PORT}/artifacts}"
+    local artifacts_url="${ARTIFACTS_URL:-$(artifact_base_url "$host_ip")}"
     local bmc_xname="${component_id%n[0-9]*}"
     local http_code
 
@@ -1188,7 +1196,8 @@ run_magellan_discovery() {
 create_and_register_vms() {
     local num_vms="$1"
     local host_ip="$2"
-    local artifacts_url="http://${host_ip}:${HTTP_PORT}/artifacts"
+    local artifacts_url
+    artifacts_url="$(artifact_base_url "$host_ip")"
     local current_ip_octet=50
 
     export ARTIFACTS_URL="$artifacts_url"
@@ -1506,6 +1515,8 @@ cleanup_host_networking() {
 
 cleanup_build_artifacts() {
     step "Cleaning up build artifacts..."
+    rm -rf "$PROJECT_ROOT/ochami-helm/http-server/artifacts/opensuse"
+    rm -rf "$PROJECT_ROOT/ochami-helm/http-server/artifacts/ubuntu"
     rm -f "$PROJECT_ROOT/ochami-helm/http-server/artifacts/vmlinuz-lts"
     rm -f "$PROJECT_ROOT/ochami-helm/http-server/artifacts/initramfs-lts"
     rm -f "$PROJECT_ROOT/ochami-helm/http-server/artifacts/rootfs.squashfs"

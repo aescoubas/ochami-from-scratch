@@ -53,8 +53,8 @@ test_register_local_vm_uses_shared_ports_and_dynamic_artifacts_url() {
         "register_local_vm should use shared SMD port constant"
     assert_contains "$REGISTER_LOCAL_VM" 'http://\$\{BSS_IP\}:\$\{BSS_PORT\}/boot/v1/bootparameters' \
         "register_local_vm should use shared BSS port constant"
-    assert_contains "$REGISTER_LOCAL_VM" 'ARTIFACTS_URL="\$\{ARTIFACTS_URL:-http://\$\{HOST_IP\}:\$\{HTTP_PORT\}/artifacts\}"' \
-        "register_local_vm should derive artifact URL from HOST_IP and HTTP_PORT defaults"
+    assert_contains "$REGISTER_LOCAL_VM" 'ARTIFACTS_URL="\$\{ARTIFACTS_URL:-http://\$\{HOST_IP\}:\$\{HTTP_PORT\}/artifacts/opensuse\}"' \
+        "register_local_vm should derive default opensuse artifact URL from HOST_IP and HTTP_PORT"
     assert_not_contains "$REGISTER_LOCAL_VM" 'http://\$\{SMD_IP\}:27779' \
         "register_local_vm must not hardcode SMD port 27779"
     assert_not_contains "$REGISTER_LOCAL_VM" 'http://\$\{BSS_IP\}:27778' \

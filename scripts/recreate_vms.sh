@@ -4,7 +4,7 @@ set -e
 # Configuration
 NUM_VMS=2
 HOST_IP="192.168.100.2"
-ARTIFACTS_URL="http://$HOST_IP:30080/artifacts"
+ARTIFACTS_URL="http://$HOST_IP:30080/artifacts/opensuse"
 
 export ARTIFACTS_URL
 

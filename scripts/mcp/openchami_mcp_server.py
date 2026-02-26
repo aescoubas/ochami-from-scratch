@@ -9,7 +9,7 @@ import os
 import pathlib
 import sys
 from typing import Any, Callable, Dict, Iterable, Optional
-from urllib.parse import quote
+from urllib.parse import quote, urlencode
 
 CURRENT_DIR = pathlib.Path(__file__).resolve().parent
 if str(CURRENT_DIR) not in sys.path:
@@ -22,6 +22,8 @@ READ_ONLY_MODE = "read-only"
 READ_WRITE_MODE = "read-write"
 DEFAULT_PROTOCOL_VERSION = "2024-11-05"
 TRUE_VALUES = {"1", "true", "yes", "on"}
+FRAMING_JSONL = "jsonl"
+FRAMING_CONTENT_LENGTH = "content-length"
 
 
 class OpenChamiMcpServer:
@@ -44,6 +46,11 @@ class OpenChamiMcpServer:
             "hsm_create_group",
             "hsm_delete_group",
             "hsm_update_group_members",
+            "bss_put_bootparameters",
+            "bss_post_bootparameters",
+            "bss_patch_bootparameters",
+            "bss_delete_bootparameters",
+            "bss_hosts_post",
         }
 
     def list_tools(self) -> list[Dict[str, Any]]:
@@ -106,6 +113,93 @@ class OpenChamiMcpServer:
                     "required": ["xnames"],
                 },
                 read_only=True,
+            ),
+            self._tool_def(
+                name="bss_service_status",
+                description="Get BSS service status.",
+                input_schema={"type": "object", "properties": {}},
+                read_only=True,
+            ),
+            self._tool_def(
+                name="bss_get_bootparameters",
+                description="List BSS boot parameter records.",
+                input_schema={"type": "object", "properties": {}},
+                read_only=True,
+            ),
+            self._tool_def(
+                name="bss_get_bootscript",
+                description="Fetch a BSS bootscript by mac, name, or nid.",
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "mac": {"type": "string"},
+                        "name": {"type": "string"},
+                        "nid": {"anyOf": [{"type": "string"}, {"type": "integer"}]},
+                        "retry": {"type": "integer", "minimum": 0},
+                    },
+                    "anyOf": [
+                        {"required": ["mac"]},
+                        {"required": ["name"]},
+                        {"required": ["nid"]},
+                    ],
+                },
+                read_only=True,
+            ),
+            self._tool_def(
+                name="bss_list_hosts",
+                description="List BSS hosts.",
+                input_schema={"type": "object", "properties": {}},
+                read_only=True,
+            ),
+            self._tool_def(
+                name="bss_put_bootparameters",
+                description="Replace/update BSS boot parameters (read-write mode only).",
+                input_schema={
+                    "type": "object",
+                    "properties": {"payload": {"type": "object"}},
+                    "required": ["payload"],
+                },
+                read_only=False,
+            ),
+            self._tool_def(
+                name="bss_post_bootparameters",
+                description="Create BSS boot parameters (read-write mode only).",
+                input_schema={
+                    "type": "object",
+                    "properties": {"payload": {"type": "object"}},
+                    "required": ["payload"],
+                },
+                read_only=False,
+            ),
+            self._tool_def(
+                name="bss_patch_bootparameters",
+                description="Patch BSS boot parameters (read-write mode only).",
+                input_schema={
+                    "type": "object",
+                    "properties": {"payload": {"type": "object"}},
+                    "required": ["payload"],
+                },
+                read_only=False,
+            ),
+            self._tool_def(
+                name="bss_delete_bootparameters",
+                description="Delete BSS boot parameters (read-write mode only).",
+                input_schema={
+                    "type": "object",
+                    "properties": {"payload": {"type": "object"}},
+                    "required": ["payload"],
+                },
+                read_only=False,
+            ),
+            self._tool_def(
+                name="bss_hosts_post",
+                description="Create/update BSS hosts (read-write mode only).",
+                input_schema={
+                    "type": "object",
+                    "properties": {"payload": {"type": "object"}},
+                    "required": ["payload"],
+                },
+                read_only=False,
             ),
             self._tool_def(
                 name="pcs_transition",
@@ -208,6 +302,15 @@ class OpenChamiMcpServer:
             "hsm_list_groups": self._tool_hsm_list_groups,
             "hsm_get_group": self._tool_hsm_get_group,
             "pcs_power_status": self._tool_pcs_power_status,
+            "bss_service_status": self._tool_bss_service_status,
+            "bss_get_bootparameters": self._tool_bss_get_bootparameters,
+            "bss_get_bootscript": self._tool_bss_get_bootscript,
+            "bss_list_hosts": self._tool_bss_list_hosts,
+            "bss_put_bootparameters": self._tool_bss_put_bootparameters,
+            "bss_post_bootparameters": self._tool_bss_post_bootparameters,
+            "bss_patch_bootparameters": self._tool_bss_patch_bootparameters,
+            "bss_delete_bootparameters": self._tool_bss_delete_bootparameters,
+            "bss_hosts_post": self._tool_bss_hosts_post,
             "pcs_transition": self._tool_pcs_transition,
             "hsm_create_group": self._tool_hsm_create_group,
             "hsm_delete_group": self._tool_hsm_delete_group,
@@ -247,6 +350,67 @@ class OpenChamiMcpServer:
         xnames = self._required_string_list(args, "xnames")
         payload = {"xname": xnames}
         return self.api_client.request("POST", "/power-control/v1/power-status", payload=payload)
+
+    def _tool_bss_service_status(self, _args: Dict[str, Any]) -> Any:
+        return self.api_client.request("GET", "/boot/v1/service/status")
+
+    def _tool_bss_get_bootparameters(self, _args: Dict[str, Any]) -> Any:
+        return self.api_client.request("GET", "/boot/v1/bootparameters")
+
+    def _tool_bss_get_bootscript(self, args: Dict[str, Any]) -> Any:
+        query: Dict[str, str] = {}
+        for key in ("mac", "name"):
+            value = args.get(key)
+            if value is None:
+                continue
+            if not isinstance(value, str) or not value.strip():
+                raise ValueError(f"'{key}' must be a non-empty string")
+            query[key] = value.strip()
+
+        nid_value = args.get("nid")
+        if nid_value is not None:
+            if isinstance(nid_value, int):
+                query["nid"] = str(nid_value)
+            elif isinstance(nid_value, str) and nid_value.strip():
+                query["nid"] = nid_value.strip()
+            else:
+                raise ValueError("'nid' must be an integer or non-empty string")
+
+        retry_value = args.get("retry")
+        if retry_value is not None:
+            if isinstance(retry_value, int) and retry_value >= 0:
+                query["retry"] = str(retry_value)
+            else:
+                raise ValueError("'retry' must be a non-negative integer")
+
+        if not any(selector in query for selector in ("mac", "name", "nid")):
+            raise ValueError("One of 'mac', 'name', or 'nid' is required")
+
+        path = self._path_with_query("/boot/v1/bootscript", query)
+        return self.api_client.request("GET", path)
+
+    def _tool_bss_list_hosts(self, _args: Dict[str, Any]) -> Any:
+        return self.api_client.request("GET", "/boot/v1/hosts")
+
+    def _tool_bss_put_bootparameters(self, args: Dict[str, Any]) -> Any:
+        payload = self._required_object(args, "payload")
+        return self.api_client.request("PUT", "/boot/v1/bootparameters", payload=payload)
+
+    def _tool_bss_post_bootparameters(self, args: Dict[str, Any]) -> Any:
+        payload = self._required_object(args, "payload")
+        return self.api_client.request("POST", "/boot/v1/bootparameters", payload=payload)
+
+    def _tool_bss_patch_bootparameters(self, args: Dict[str, Any]) -> Any:
+        payload = self._required_object(args, "payload")
+        return self.api_client.request("PATCH", "/boot/v1/bootparameters", payload=payload)
+
+    def _tool_bss_delete_bootparameters(self, args: Dict[str, Any]) -> Any:
+        payload = self._required_object(args, "payload")
+        return self.api_client.request("DELETE", "/boot/v1/bootparameters", payload=payload)
+
+    def _tool_bss_hosts_post(self, args: Dict[str, Any]) -> Any:
+        payload = self._required_object(args, "payload")
+        return self.api_client.request("POST", "/boot/v1/hosts", payload=payload)
 
     def _tool_pcs_transition(self, args: Dict[str, Any]) -> Any:
         operation = self._required_str(args, "operation")
@@ -306,6 +470,17 @@ class OpenChamiMcpServer:
             out.append(item)
         return out
 
+    def _required_object(self, args: Dict[str, Any], key: str) -> Dict[str, Any]:
+        value = args.get(key)
+        if not isinstance(value, dict) or not value:
+            raise ValueError(f"'{key}' must be a non-empty object")
+        return value
+
+    def _path_with_query(self, path: str, query: Dict[str, str]) -> str:
+        if not query:
+            return path
+        return f"{path}?{urlencode(query)}"
+
     def _require_write_enabled(self, tool_name: str) -> None:
         if self.mode != READ_WRITE_MODE:
             raise PermissionError(
@@ -335,13 +510,25 @@ class OpenChamiMcpServer:
         }
 
 
-def read_jsonrpc_message(stdin: Any) -> Optional[Dict[str, Any]]:
-    headers: Dict[str, str] = {}
-    line = stdin.buffer.readline()
+def _read_non_empty_line(stream: Any) -> bytes:
+    line = stream.readline()
     while line in (b"\r\n", b"\n"):
-        line = stdin.buffer.readline()
-    if not line:
-        return None
+        line = stream.readline()
+    return line
+
+
+def _looks_like_json(line: bytes) -> bool:
+    stripped = line.lstrip()
+    return stripped.startswith(b"{") or stripped.startswith(b"[")
+
+
+def _parse_jsonl_message(line: bytes) -> Dict[str, Any]:
+    return json.loads(line.decode("utf-8", errors="replace").strip())
+
+
+def _parse_content_length_message(stream: Any, first_line: bytes) -> Dict[str, Any]:
+    headers: Dict[str, str] = {}
+    line = first_line
 
     while line and line not in (b"\r\n", b"\n"):
         decoded = line.decode("utf-8", errors="replace").strip()
@@ -349,23 +536,63 @@ def read_jsonrpc_message(stdin: Any) -> Optional[Dict[str, Any]]:
             raise ValueError(f"Invalid header line: {decoded}")
         key, value = decoded.split(":", 1)
         headers[key.strip().lower()] = value.strip()
-        line = stdin.buffer.readline()
+        line = stream.readline()
 
     content_length_raw = headers.get("content-length")
     if content_length_raw is None:
         raise ValueError("Missing Content-Length header")
     content_length = int(content_length_raw)
-    body = stdin.buffer.read(content_length)
+    body = stream.read(content_length)
     if len(body) != content_length:
         raise EOFError("Unexpected EOF while reading JSON-RPC payload")
     return json.loads(body.decode("utf-8"))
 
 
-def write_jsonrpc_message(stdout: Any, payload: Dict[str, Any]) -> None:
+def read_jsonrpc_message(
+    stdin: Any,
+    framing_state: Optional[Dict[str, str]] = None,
+) -> Optional[Dict[str, Any]]:
+    mode = None
+    if framing_state is not None:
+        mode = framing_state.get("mode")
+
+    line = _read_non_empty_line(stdin.buffer)
+    if not line:
+        return None
+
+    if mode is None:
+        mode = FRAMING_JSONL if _looks_like_json(line) else FRAMING_CONTENT_LENGTH
+        if framing_state is not None:
+            framing_state["mode"] = mode
+
+    if mode == FRAMING_JSONL:
+        return _parse_jsonl_message(line)
+    if mode == FRAMING_CONTENT_LENGTH:
+        return _parse_content_length_message(stdin.buffer, line)
+
+    raise ValueError(f"Unsupported framing mode: {mode}")
+
+
+def write_jsonrpc_message(
+    stdout: Any,
+    payload: Dict[str, Any],
+    framing_state: Optional[Dict[str, str]] = None,
+) -> None:
+    mode = FRAMING_JSONL
+    if framing_state is not None and framing_state.get("mode"):
+        mode = framing_state["mode"]
+
     body = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
-    header = f"Content-Length: {len(body)}\r\n\r\n".encode("ascii")
-    stdout.buffer.write(header)
-    stdout.buffer.write(body)
+
+    if mode == FRAMING_CONTENT_LENGTH:
+        header = f"Content-Length: {len(body)}\r\n\r\n".encode("ascii")
+        stdout.buffer.write(header)
+        stdout.buffer.write(body)
+    elif mode == FRAMING_JSONL:
+        stdout.buffer.write(body + b"\n")
+    else:
+        raise ValueError(f"Unsupported framing mode: {mode}")
+
     stdout.buffer.flush()
 
 
@@ -464,14 +691,15 @@ def handle_request(
 
 
 def serve_stdio(server: OpenChamiMcpServer) -> int:
+    framing_state: Dict[str, str] = {}
     while True:
         try:
-            message = read_jsonrpc_message(sys.stdin)
+            message = read_jsonrpc_message(sys.stdin, framing_state)
             if message is None:
                 return 0
             response = handle_request(server, message)
             if response is not None and response.get("id") is not None:
-                write_jsonrpc_message(sys.stdout, response)
+                write_jsonrpc_message(sys.stdout, response, framing_state)
         except SystemExit:
             return 0
         except EOFError:

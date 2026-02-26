@@ -23,7 +23,7 @@ _smoke_wait_for_bootscript() {
     local elapsed=0
 
     while [ "$elapsed" -lt "$timeout" ]; do
-        if curl -s -f "$url" 2>/dev/null | grep -q '/artifacts/vmlinuz-lts'; then
+        if curl -s -f "$url" 2>/dev/null | grep -q '/artifacts/opensuse/vmlinuz-lts'; then
             return 0
         fi
         sleep "$interval"
@@ -69,9 +69,10 @@ _smoke_check_services() {
 _smoke_check_boot_artifacts() {
     local failures=0
     local artifact_urls=(
-        "http://localhost/artifacts/vmlinuz-lts"
-        "http://localhost/artifacts/initramfs-lts"
-        "http://localhost/artifacts/rootfs.squashfs"
+        "http://localhost/artifacts/opensuse/vmlinuz-lts"
+        "http://localhost/artifacts/opensuse/initramfs-lts"
+        "http://localhost/artifacts/opensuse/rootfs.squashfs"
+        "http://localhost/artifacts/ubuntu/rootfs.squashfs"
     )
 
     echo "Checking boot artifact reachability through HTTP server..."
@@ -85,7 +86,7 @@ _smoke_check_boot_artifacts() {
         fi
     done
 
-    if curl -s -f "http://localhost/boot.ipxe" 2>/dev/null | grep -q '/artifacts/vmlinuz-lts'; then
+    if curl -s -f "http://localhost/boot.ipxe" 2>/dev/null | grep -q '/artifacts/opensuse/vmlinuz-lts'; then
         echo "  PASS: /boot.ipxe references boot artifacts"
     else
         echo "  FAIL: /boot.ipxe does not reference expected artifact paths"

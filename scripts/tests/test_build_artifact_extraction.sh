@@ -55,8 +55,8 @@ test_mksquashfs_is_host_requirement_with_macos_brew_install() {
         "build script should require host mksquashfs"
     assert_not_contains "$BUILD_SCRIPT" '\$CONTAINER_TOOL run --rm' \
         "build script should not use containerized mksquashfs fallback"
-    assert_contains "$BUILD_SCRIPT" 'sudo mksquashfs "\$BUILD_DIR/full_root" \./rootfs\.squashfs' \
-        "build script should create squashfs directly on host"
+    assert_contains "$BUILD_SCRIPT" 'sudo mksquashfs "\$variant_root" "\$output_squashfs"' \
+        "build script should create squashfs variants directly on host"
 
     assert_contains "$MACOS_PREREQ_SCRIPT" 'brew install squashfs' \
         "macOS prerequisites should install squashfs via brew"
@@ -81,6 +81,21 @@ test_docker_build_loads_images_for_minikube() {
         "redfish minikube load should stream tarball to avoid daemon context mismatches"
 }
 
+test_build_stages_opensuse_and_ubuntu_artifact_variants() {
+    assert_contains "$BUILD_SCRIPT" 'OPENSUSE_ARTIFACTS_DIR="\$ARTIFACTS_DIR/opensuse"' \
+        "build script should stage default artifacts under artifacts/opensuse"
+    assert_contains "$BUILD_SCRIPT" 'UBUNTU_ARTIFACTS_DIR="\$ARTIFACTS_DIR/ubuntu"' \
+        "build script should stage secondary artifacts under artifacts/ubuntu"
+    assert_contains "$BUILD_SCRIPT" 'prepare_rootfs_variant "\$BUILD_DIR/full_root" "opensuse" "opensuse" "\$BUILD_DIR/rootfs-opensuse\.squashfs"' \
+        "build script should build an opensuse rootfs variant"
+    assert_contains "$BUILD_SCRIPT" 'prepare_rootfs_variant "\$BUILD_DIR/full_root" "ubuntu" "ubuntu" "\$BUILD_DIR/rootfs-ubuntu\.squashfs"' \
+        "build script should build an ubuntu rootfs variant"
+    assert_contains "$BUILD_SCRIPT" '99-openchami-ps1\.sh' \
+        "build script should inject a profile script to set the root prompt"
+    assert_contains "$BUILD_SCRIPT" 'export PS1="<\\\$\{xname\}> ' \
+        "build script should format root prompt with xname prefix"
+}
+
 run_test() {
     local test_name="$1"
     "$test_name"
@@ -90,3 +105,4 @@ run_test() {
 run_test test_vmlinuz_search_is_robust_for_macos_layouts
 run_test test_mksquashfs_is_host_requirement_with_macos_brew_install
 run_test test_docker_build_loads_images_for_minikube
+run_test test_build_stages_opensuse_and_ubuntu_artifact_variants

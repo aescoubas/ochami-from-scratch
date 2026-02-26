@@ -40,6 +40,25 @@ test_reverse_proxy_has_smd_route() {
         "location /api/" "helm nginx configmap must proxy /api to stork"
 }
 
+test_pcs_reverse_proxy_rewrites_prefix_for_v1_routes() {
+    local shared="$PROJECT_ROOT/scripts/templates/nginx-default.conf.template"
+    local helm="$PROJECT_ROOT/ochami-helm/templates/http-server-nginx-configmap.yaml"
+
+    assert_contains "$shared" "location /power-control/" \
+        "shared nginx template must expose /power-control prefix"
+    assert_contains "$shared" "proxy_pass http://localhost:\\$\\{PCS_PORT\\}/;" \
+        "shared nginx template must strip /power-control prefix when proxying to PCS"
+    assert_not_contains "$shared" "proxy_pass http://localhost:\\$\\{PCS_PORT\\}/power-control/;" \
+        "shared nginx template must not forward /power-control prefix to PCS"
+
+    assert_contains "$helm" "location /power-control/" \
+        "helm nginx configmap must expose /power-control prefix"
+    assert_contains "$helm" "proxy_pass http://ochami-pcs\\.\\{\\{ \\.Release\\.Namespace \\}\\}\\.svc\\.cluster\\.local:\\{\\{ \\.Values\\.service\\.pcs\\.port \\}\\}/;" \
+        "helm nginx configmap must strip /power-control prefix when proxying to PCS"
+    assert_not_contains "$helm" "proxy_pass http://ochami-pcs\\.\\{\\{ \\.Release\\.Namespace \\}\\}\\.svc\\.cluster\\.local:\\{\\{ \\.Values\\.service\\.pcs\\.port \\}\\}/power-control/;" \
+        "helm nginx configmap must not forward /power-control prefix to PCS"
+}
+
 test_docker_compose_routes_smd_calls_through_reverse_proxy() {
     local file="$PROJECT_ROOT/ochami-docker-compose/docker-compose.yml"
     assert_contains "$file" "HSM_URL: \"http://localhost:\\$\\{HTTP_PORT:-80\\}\"" \
@@ -146,6 +165,7 @@ run_test() {
 }
 
 run_test test_reverse_proxy_has_smd_route
+run_test test_pcs_reverse_proxy_rewrites_prefix_for_v1_routes
 run_test test_docker_compose_routes_smd_calls_through_reverse_proxy
 run_test test_docker_compose_macos_routes_smd_calls_through_reverse_proxy
 run_test test_quadlets_route_smd_calls_through_reverse_proxy

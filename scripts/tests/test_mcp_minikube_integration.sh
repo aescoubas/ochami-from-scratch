@@ -8,6 +8,7 @@ DOCKER_COMPOSE_DEPLOY="$PROJECT_ROOT/scripts/deploy/docker-compose.sh"
 MCP_SERVER="$PROJECT_ROOT/scripts/mcp/openchami_mcp_server.py"
 MCP_API="$PROJECT_ROOT/scripts/mcp/openchami_api.py"
 MCP_RUNNER="$PROJECT_ROOT/scripts/mcp/run_openchami_mcp.sh"
+README_FILE="$PROJECT_ROOT/README.md"
 
 assert_contains() {
     local file="$1"
@@ -69,6 +70,25 @@ test_non_minikube_deploys_do_not_wire_mcp() {
         "docker-compose deploy should not generate MCP env file"
 }
 
+test_readme_mcp_setup_is_current() {
+    assert_contains "$README_FILE" 'startup_timeout_sec' \
+        "README should document MCP startup timeout tuning for codex clients"
+    assert_contains "$README_FILE" '\[mcp_servers\.openchami\]' \
+        "README should include codex config.toml MCP server example"
+    assert_contains "$README_FILE" 'openchami_health' \
+        "README should list read-only MCP tool names"
+    assert_contains "$README_FILE" 'pcs_transition' \
+        "README should list write-capable PCS MCP tool name"
+    assert_contains "$README_FILE" 'bss_get_bootscript' \
+        "README should list BSS read MCP tool name"
+    assert_contains "$README_FILE" 'bss_patch_bootparameters' \
+        "README should list BSS write MCP tool name"
+    assert_contains "$README_FILE" '--enable-writes' \
+        "README should document run_openchami_mcp.sh write-ack flag"
+    assert_contains "$README_FILE" 'OPENCHAMI_BASE_URL=http://<host-ip>:30080' \
+        "README should document minikube-generated MCP base URL source"
+}
+
 run_test() {
     local test_name="$1"
     "$test_name"
@@ -78,3 +98,4 @@ run_test() {
 run_test test_mcp_server_files_exist
 run_test test_minikube_deploy_mentions_mcp_workflow
 run_test test_non_minikube_deploys_do_not_wire_mcp
+run_test test_readme_mcp_setup_is_current

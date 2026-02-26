@@ -147,7 +147,7 @@ else
     echo "BSS IP: $BSS_IP"
     echo "Registering default boot parameters in BSS for $COMPONENT_ID..."
     
-    ARTIFACTS_URL="${ARTIFACTS_URL:-http://${HOST_IP}:${HTTP_PORT}/artifacts}"
+    ARTIFACTS_URL="${ARTIFACTS_URL:-http://${HOST_IP}:${HTTP_PORT}/artifacts/opensuse}"
     
     curl -s -X PUT "http://${BSS_IP}:${BSS_PORT}/boot/v1/bootparameters" \
       -H "Content-Type: application/json" \

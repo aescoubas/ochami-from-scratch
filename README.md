@@ -459,6 +459,16 @@ curl -s http://localhost:80/boot/v1/service/status
 curl -s -I http://localhost:80/boot.ipxe
 # Expected: HTTP/1.1 200 OK
 
+# Check default (opensuse) artifact set
+curl -s -I http://localhost:80/artifacts/opensuse/vmlinuz-lts
+curl -s -I http://localhost:80/artifacts/opensuse/initramfs-lts
+curl -s -I http://localhost:80/artifacts/opensuse/rootfs.squashfs
+
+# Check secondary (ubuntu) artifact set
+curl -s -I http://localhost:80/artifacts/ubuntu/vmlinuz-lts
+curl -s -I http://localhost:80/artifacts/ubuntu/initramfs-lts
+curl -s -I http://localhost:80/artifacts/ubuntu/rootfs.squashfs
+
 # Check TFTP is listening (from another machine or VM)
 # tftp 192.168.100.2 -c get undionly.kpxe
 ```
@@ -474,6 +484,12 @@ curl -s http://localhost:80/boot.ipxe
 curl -s "http://localhost:80/boot/v1/bootscript?mac=00:00:00:00:00:00"
 # Should return a boot script (may be a chain script for unknown MACs)
 ```
+
+By default, VMs boot the `opensuse` artifact profile (`/artifacts/opensuse/*`).
+An `ubuntu` profile is also available at `/artifacts/ubuntu/*`; it uses the same kernel/initramfs/rootfs content except for the root shell prompt:
+
+- opensuse profile: `<xname> opensuse :`
+- ubuntu profile: `<xname> ubuntu :`
 
 ## Step 3: Create and Boot the VM (Local Mode)
 
@@ -592,9 +608,9 @@ sudo journalctl -u http-server --no-pager -n 20
 
 # You should see requests for:
 # - /boot.ipxe (or /boot/v1/bootscript for Minikube)
-# - /artifacts/vmlinuz-lts
-# - /artifacts/initramfs-lts
-# - /artifacts/rootfs.squashfs
+# - /artifacts/opensuse/vmlinuz-lts
+# - /artifacts/opensuse/initramfs-lts
+# - /artifacts/opensuse/rootfs.squashfs
 ```
 
 **For Docker Compose:**
@@ -842,13 +858,11 @@ Deployment-specific reverse proxy base URL:
 
 For host-side Minikube CLI/API calls, use `http://<--ip value>:30080` (default `http://192.168.100.2:30080`).
 
-### OpenCHAMI MCP Server (Minikube only)
+### OpenCHAMI MCP Server (Minikube defaults)
 
-A minimal Python MCP server is available for local OpenCHAMI control at:
+The MCP server lives at `scripts/mcp/openchami_mcp_server.py`.
 
-`scripts/mcp/openchami_mcp_server.py`
-
-Use the helper launcher (recommended):
+Recommended launcher:
 
 ```bash
 ./scripts/mcp/run_openchami_mcp.sh --mode read-only
@@ -860,23 +874,66 @@ After `./deploy.sh --method minikube`, defaults are written to `.openchami-mcp.e
 - `OPENCHAMI_MCP_MODE=read-only`
 - `OPENCHAMI_MCP_ENABLE_WRITES=false`
 
-Mode behavior:
+`run_openchami_mcp.sh` resolves base URL in this order:
 
-- `read-only`:
-  - health/readiness checks
-  - list/get components and HSM groups
-  - PCS power status queries
-- `read-write`:
-  - PCS transitions (power operations)
-  - HSM group create/delete/member updates
+1. `OPENCHAMI_BASE_URL` from `.openchami-mcp.env` (if present)
+2. `http://$(minikube ip):30080` (if `minikube ip` is available)
+3. Fallback `http://192.168.100.2:30080`
 
-To enable mutating operations, you must both select `read-write` mode and explicitly acknowledge writes:
+All MCP API calls are expected to go through the HTTP reverse proxy base URL (for example `http://<host-ip>:30080`), not direct pod/service ports.
+
+Read-only tools:
+
+- `openchami_health`
+- `hsm_list_components`
+- `hsm_get_component`
+- `hsm_list_groups`
+- `hsm_get_group`
+- `pcs_power_status`
+- `bss_service_status`
+- `bss_get_bootparameters`
+- `bss_get_bootscript`
+- `bss_list_hosts`
+
+Write-capable tools:
+
+- `pcs_transition`
+- `hsm_create_group`
+- `hsm_delete_group`
+- `hsm_update_group_members`
+- `bss_put_bootparameters`
+- `bss_post_bootparameters`
+- `bss_patch_bootparameters`
+- `bss_delete_bootparameters`
+- `bss_hosts_post`
+
+Write gating:
+
+- `--mode read-write` is required for write-capable tools.
+- Write acknowledgement is also required: either export `OPENCHAMI_MCP_ENABLE_WRITES=true` or use `--enable-writes` with `run_openchami_mcp.sh`.
+
+Examples:
 
 ```bash
-OPENCHAMI_MCP_ENABLE_WRITES=true ./scripts/mcp/run_openchami_mcp.sh --mode read-write
+# Read-only mode
+./scripts/mcp/run_openchami_mcp.sh --mode read-only
+
+# Read-write mode with explicit write acknowledgement
+./scripts/mcp/run_openchami_mcp.sh --mode read-write --enable-writes
 ```
 
-Current scope: this MCP integration is only wired into the Minikube deployment path initially.
+Codex client config example (`~/.codex/config.toml`):
+
+```toml
+[mcp_servers.openchami]
+command = "bash"
+args = ["-lc", "cd /path/to/ochami-from-scratch && ./scripts/mcp/run_openchami_mcp.sh --mode read-only"]
+startup_timeout_sec = 60
+```
+
+If startup times out, increase `startup_timeout_sec` (for example `60` or `90`).
+
+Current scope: MCP defaults/env generation are only wired into the Minikube deployment path.
 
 ## 5. Using the Redfish Emulator
 
@@ -1144,9 +1201,9 @@ sudo virsh start virtual-compute-node-0
 # You should see:
 # 1. DHCP DISCOVER/OFFER/REQUEST/ACK in Kea logs
 # 2. GET /boot.ipxe in HTTP logs
-# 3. GET /artifacts/vmlinuz-lts
-# 4. GET /artifacts/initramfs-lts
-# 5. GET /artifacts/rootfs.squashfs
+# 3. GET /artifacts/opensuse/vmlinuz-lts
+# 4. GET /artifacts/opensuse/initramfs-lts
+# 5. GET /artifacts/opensuse/rootfs.squashfs
 ```
 
 **For Docker Compose:**

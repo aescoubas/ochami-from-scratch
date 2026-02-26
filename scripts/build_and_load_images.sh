@@ -17,6 +17,31 @@ run_container_tool() {
     $CONTAINER_TOOL "$@"
 }
 
+prepare_rootfs_variant() {
+    local source_root="$1"
+    local variant_name="$2"
+    local prompt_label="$3"
+    local output_squashfs="$4"
+    local variant_root="$BUILD_DIR/full_root_${variant_name}"
+
+    sudo rm -rf "$variant_root"
+    sudo mkdir -p "$variant_root"
+    sudo cp -a "$source_root/." "$variant_root/"
+
+    sudo mkdir -p "$variant_root/etc/profile.d"
+    cat <<EOF_PROMPT | sudo tee "$variant_root/etc/profile.d/99-openchami-ps1.sh" >/dev/null
+#!/bin/sh
+if [ "\$(id -u)" -eq 0 ]; then
+    xname="\$(hostname -s 2>/dev/null || hostname)"
+    export PS1="<\${xname}> ${prompt_label} : "
+fi
+EOF_PROMPT
+    sudo chmod 0644 "$variant_root/etc/profile.d/99-openchami-ps1.sh"
+
+    sudo mksquashfs "$variant_root" "$output_squashfs" -noappend -wildcards -e "proc/*" -e "sys/*" -e "dev/*" -e "tmp/*" -e "boot/*" -e "var/cache/zypp/*"
+    relax_permissions "$output_squashfs"
+}
+
 build_local_image() {
     local image="$1"
     local context="$2"
@@ -158,10 +183,10 @@ run_container_tool export "$CONTAINER_ID" > "$BUILD_DIR/rootfs.tar"
 mkdir -p "$BUILD_DIR/full_root"
 sudo tar -xf "$BUILD_DIR/rootfs.tar" -C "$BUILD_DIR/full_root"
 
-# Create squashfs
+# Create squashfs variants
 require_command mksquashfs "mksquashfs is required. On macOS run ./scripts/install_prerequisites_macos.sh (installs 'squashfs' via brew)."
-sudo mksquashfs "$BUILD_DIR/full_root" ./rootfs.squashfs -noappend -wildcards -e "proc/*" -e "sys/*" -e "dev/*" -e "tmp/*" -e "boot/*" -e "var/cache/zypp/*"
-relax_permissions ./rootfs.squashfs
+prepare_rootfs_variant "$BUILD_DIR/full_root" "opensuse" "opensuse" "$BUILD_DIR/rootfs-opensuse.squashfs"
+prepare_rootfs_variant "$BUILD_DIR/full_root" "ubuntu" "ubuntu" "$BUILD_DIR/rootfs-ubuntu.squashfs"
 
 # Clean up
 run_container_tool rm "$CONTAINER_ID"
@@ -169,9 +194,16 @@ run_container_tool rmi -f custom-image-builder-sles || true
 
 echo "--- Staging artifacts ---"
 ARTIFACTS_DIR="$PROJECT_ROOT/ochami-helm/http-server/artifacts"
-mkdir -p "$ARTIFACTS_DIR"
-mv vmlinuz-lts initramfs-lts rootfs.squashfs "$ARTIFACTS_DIR/"
-echo "Artifacts staged in $ARTIFACTS_DIR"
+OPENSUSE_ARTIFACTS_DIR="$ARTIFACTS_DIR/opensuse"
+UBUNTU_ARTIFACTS_DIR="$ARTIFACTS_DIR/ubuntu"
+rm -f "$ARTIFACTS_DIR/vmlinuz-lts" "$ARTIFACTS_DIR/initramfs-lts" "$ARTIFACTS_DIR/rootfs.squashfs"
+rm -rf "$OPENSUSE_ARTIFACTS_DIR" "$UBUNTU_ARTIFACTS_DIR"
+mkdir -p "$OPENSUSE_ARTIFACTS_DIR" "$UBUNTU_ARTIFACTS_DIR"
+cp vmlinuz-lts initramfs-lts "$OPENSUSE_ARTIFACTS_DIR/"
+cp vmlinuz-lts initramfs-lts "$UBUNTU_ARTIFACTS_DIR/"
+mv "$BUILD_DIR/rootfs-opensuse.squashfs" "$OPENSUSE_ARTIFACTS_DIR/rootfs.squashfs"
+mv "$BUILD_DIR/rootfs-ubuntu.squashfs" "$UBUNTU_ARTIFACTS_DIR/rootfs.squashfs"
+echo "Artifacts staged in $OPENSUSE_ARTIFACTS_DIR and $UBUNTU_ARTIFACTS_DIR"
 
 echo "--- Building and loading http-server image into Minikube ---"
 DOCKER_CONTEXT="$PROJECT_ROOT/ochami-helm/http-server/"

@@ -113,8 +113,8 @@ test_scripts_use_relax_permissions_and_avoid_chown() {
         return 1
     fi
 
-    if ! rg -q 'relax_permissions \./rootfs\.squashfs' "$build_script"; then
-        echo "FAIL: build script should use relax_permissions for rootfs artifact"
+    if ! rg -q 'relax_permissions "\$output_squashfs"' "$build_script"; then
+        echo "FAIL: build script should use relax_permissions for variant rootfs artifacts"
         return 1
     fi
 

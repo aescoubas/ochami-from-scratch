@@ -34,12 +34,14 @@ assert_not_contains() {
 }
 
 test_smoke_checks_boot_artifacts() {
-    assert_contains "$SMOKE_TEST" '/artifacts/vmlinuz-lts' \
-        "libvirt smoke test should validate kernel artifact reachability"
-    assert_contains "$SMOKE_TEST" '/artifacts/initramfs-lts' \
-        "libvirt smoke test should validate initramfs artifact reachability"
-    assert_contains "$SMOKE_TEST" '/artifacts/rootfs\.squashfs' \
-        "libvirt smoke test should validate rootfs artifact reachability"
+    assert_contains "$SMOKE_TEST" '/artifacts/opensuse/vmlinuz-lts' \
+        "libvirt smoke test should validate default opensuse kernel artifact reachability"
+    assert_contains "$SMOKE_TEST" '/artifacts/opensuse/initramfs-lts' \
+        "libvirt smoke test should validate default opensuse initramfs artifact reachability"
+    assert_contains "$SMOKE_TEST" '/artifacts/opensuse/rootfs\.squashfs' \
+        "libvirt smoke test should validate default opensuse rootfs artifact reachability"
+    assert_contains "$SMOKE_TEST" '/artifacts/ubuntu/rootfs\.squashfs' \
+        "libvirt smoke test should also validate ubuntu variant rootfs artifact reachability"
 }
 
 test_smoke_checks_bss_smd_integration() {
