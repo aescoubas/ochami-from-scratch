@@ -173,26 +173,105 @@ ensure_ssh_key() {
     fi
 }
 
+network_exists() {
+    virsh net-info "$LIBVIRT_NETWORK" >/dev/null 2>&1
+}
+
+network_is_active() {
+    virsh net-info "$LIBVIRT_NETWORK" 2>/dev/null | grep -Eq 'Active:[[:space:]]+yes'
+}
+
+wait_for_network_active() {
+    local attempts="${1:-5}"
+    local delay_seconds="${2:-1}"
+    local attempt
+
+    for attempt in $(seq 1 "$attempts"); do
+        if network_is_active; then
+            return 0
+        fi
+        sleep "$delay_seconds"
+    done
+
+    return 1
+}
+
+print_network_diagnostics() {
+    echo "libvirt network diagnostics for '$LIBVIRT_NETWORK':" >&2
+    virsh net-info "$LIBVIRT_NETWORK" >&2 || true
+    virsh net-list --all >&2 || true
+}
+
+start_network_if_needed() {
+    local net_start_error=""
+
+    if network_is_active; then
+        return 0
+    fi
+
+    log "Starting libvirt network '$LIBVIRT_NETWORK'"
+    if net_start_error="$(virsh net-start "$LIBVIRT_NETWORK" 2>&1 >/dev/null)"; then
+        return 0
+    fi
+
+    if echo "$net_start_error" | grep -qi "already active"; then
+        log "libvirt network '$LIBVIRT_NETWORK' is already active; continuing"
+        return 0
+    fi
+
+    # Race-safe path: libvirt can report "already active" if state changed
+    # between the active check and net-start call.
+    if wait_for_network_active 5 1; then
+        log "libvirt network '$LIBVIRT_NETWORK' became active while starting; continuing"
+        return 0
+    fi
+
+    echo "ERROR: failed to start libvirt network '$LIBVIRT_NETWORK'" >&2
+    if [ -n "${net_start_error}" ]; then
+        echo "net-start error: ${net_start_error}" >&2
+    fi
+    print_network_diagnostics
+    return 1
+}
+
 ensure_libvirt_network() {
-    if ! virsh net-info "$LIBVIRT_NETWORK" >/dev/null 2>&1; then
+    if ! network_exists; then
         echo "ERROR: libvirt network '$LIBVIRT_NETWORK' does not exist" >&2
         exit 1
     fi
 
-    if ! virsh net-info "$LIBVIRT_NETWORK" | grep -Eq 'Active:[[:space:]]+yes'; then
-        log "Starting libvirt network '$LIBVIRT_NETWORK'"
-        virsh net-start "$LIBVIRT_NETWORK" >/dev/null
+    if ! start_network_if_needed; then
+        exit 1
     fi
 
     virsh net-autostart "$LIBVIRT_NETWORK" >/dev/null || true
 }
 
 write_cloud_init_files() {
+    if [ -z "${SSH_PUB_KEY_PATH:-}" ] || [ ! -f "$SSH_PUB_KEY_PATH" ]; then
+        echo "ERROR: SSH public key file not found: ${SSH_PUB_KEY_PATH:-<unset>}" >&2
+        return 1
+    fi
+
+    local ssh_pub_key
+    ssh_pub_key="$(cat "$SSH_PUB_KEY_PATH")"
+    if [ -z "$ssh_pub_key" ]; then
+        echo "ERROR: SSH public key file is empty: $SSH_PUB_KEY_PATH" >&2
+        return 1
+    fi
+
     cat > "$USER_DATA_PATH" <<EOF_USER_DATA
 #cloud-config
 package_update: false
 package_upgrade: false
 ssh_pwauth: false
+users:
+  - default
+  - name: ${VM_USER}
+    lock_passwd: true
+    shell: /bin/bash
+    ssh_authorized_keys:
+      - ${ssh_pub_key}
 EOF_USER_DATA
 
     cat > "$META_DATA_PATH" <<EOF_META_DATA
@@ -426,4 +505,6 @@ main() {
     run_guest_tests "$vm_ip"
 }
 
-main "$@"
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+    main "$@"
+fi

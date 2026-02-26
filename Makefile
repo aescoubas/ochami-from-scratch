@@ -17,6 +17,8 @@ test:
 	bash scripts/tests/test_helm_termination_grace_policy.sh
 	bash scripts/tests/test_prereq_sysctl_policy.sh
 	bash scripts/tests/test_libvirt_deploy_smoke_coverage.sh
+	bash scripts/tests/test_libvirt_network_idempotence.sh
+	bash scripts/tests/test_libvirt_cloud_init_ssh.sh
 	bash scripts/tests/test_vm_runner_prereq_and_paths.sh
 	python3 scripts/tests/test_openchami_mcp.py
 	bash scripts/tests/test_mcp_minikube_integration.sh
@@ -24,10 +26,10 @@ test:
 test-vm: test-vm-ubuntu test-vm-fedora
 
 test-vm-ubuntu:
-	bash libvirt/scripts/vm_tests.sh --distro ubuntu
+	bash libvirt/scripts/vm_tests.sh --distro ubuntu --recreate
 
 test-vm-fedora:
-	bash libvirt/scripts/vm_tests.sh --distro fedora
+	bash libvirt/scripts/vm_tests.sh --distro fedora --recreate
 
 test-vm-destroy:
 	bash libvirt/scripts/vm_tests.sh --destroy-all

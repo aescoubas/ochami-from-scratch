@@ -97,10 +97,10 @@ test_libvirt_vm_runner_handles_domain_lifecycle_and_remote_execution() {
 }
 
 test_make_vm_targets_use_libvirt_runner_script() {
-    assert_contains "$MAKEFILE" 'bash libvirt/scripts/vm_tests\.sh --distro ubuntu' \
-        "Makefile should run ubuntu VM tests through libvirt vm runner"
-    assert_contains "$MAKEFILE" 'bash libvirt/scripts/vm_tests\.sh --distro fedora' \
-        "Makefile should run fedora VM tests through libvirt vm runner"
+    assert_contains "$MAKEFILE" 'bash libvirt/scripts/vm_tests\.sh --distro ubuntu --recreate' \
+        "Makefile should run ubuntu VM tests through libvirt vm runner with recreate for deterministic cloud-init state"
+    assert_contains "$MAKEFILE" 'bash libvirt/scripts/vm_tests\.sh --distro fedora --recreate' \
+        "Makefile should run fedora VM tests through libvirt vm runner with recreate for deterministic cloud-init state"
     assert_contains "$MAKEFILE" 'bash libvirt/scripts/vm_tests\.sh --destroy-all' \
         "Makefile should destroy test VMs through libvirt vm runner"
 }

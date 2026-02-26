@@ -17,3 +17,6 @@
 - [x] Make `fs.protected_regular` mutation opt-in and restore only when managed by OpenCHAMI.
 - [x] Enforce roadmap process contract by keeping `ROADMAP.md` at repo root and adding a regression test guard in `make test`.
 - [x] Remove CI automation requirement from project process docs and keep GitHub Actions out of scope by default.
+- [x] Make libvirt VM runner network activation idempotent/race-safe when `default` is already active.
+  - [x] Add regression tests for already-active, inactive-start, race-on-start, and persistent-failure scenarios using mocked `virsh`.
+  - [x] Refactor `libvirt/scripts/vm_tests.sh` network startup flow and add diagnostics for unrecoverable failures.

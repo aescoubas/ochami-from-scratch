@@ -14,6 +14,8 @@
 
 readonly REPO_BASE_DIR="/tmp"
 CONTAINER_TOOL=${CONTAINER_TOOL:-docker}
+BUILD_RETRY_ATTEMPTS=${BUILD_RETRY_ATTEMPTS:-3}
+BUILD_RETRY_DELAY_SECONDS=${BUILD_RETRY_DELAY_SECONDS:-5}
 
 
 # --- Helper Functions ---
@@ -39,6 +41,39 @@ usage() {
 sanitize_tag() {
     local git_ref="$1"
     echo "${git_ref//\//-}"
+}
+
+run_with_retry() {
+    local attempts="${1:-$BUILD_RETRY_ATTEMPTS}"
+    local delay_seconds="${2:-$BUILD_RETRY_DELAY_SECONDS}"
+    shift 2
+
+    if ! [[ "$attempts" =~ ^[0-9]+$ ]] || [ "$attempts" -lt 1 ]; then
+        attempts=1
+    fi
+    if ! [[ "$delay_seconds" =~ ^[0-9]+$ ]]; then
+        delay_seconds=0
+    fi
+
+    local attempt=1
+    local rc=0
+    local cmd_display="$*"
+
+    while [ "$attempt" -le "$attempts" ]; do
+        "$@"
+        rc=$?
+        if [ "$rc" -eq 0 ]; then
+            return 0
+        fi
+        if [ "$attempt" -lt "$attempts" ]; then
+            echo "Attempt $attempt/$attempts failed for: $cmd_display (exit $rc). Retrying in ${delay_seconds}s..."
+            sleep "$delay_seconds"
+        fi
+        attempt=$((attempt + 1))
+    done
+
+    echo "ERROR: command failed after $attempts attempts: $cmd_display (exit $rc)" >&2
+    return "$rc"
 }
 
 default_repo_uri_for_service() {
@@ -131,11 +166,11 @@ build_smd() {
     local tag="${2:-$(sanitize_tag "$ref")}"
     local repo_uri="${3:-${SMD_REPO_URI:-}}"
     echo "--- Building smd (ref: $ref) ---"
-    prepare_repo "smd" "$ref" "$repo_uri"
+    run_with_retry "$BUILD_RETRY_ATTEMPTS" "$BUILD_RETRY_DELAY_SECONDS" prepare_repo "smd" "$ref" "$repo_uri"
     
     make clean || echo "Warning: make clean failed (non-fatal, continuing...)"
-    make binaries
-    $CONTAINER_TOOL build -t "localhost/smd:$tag" .
+    run_with_retry "$BUILD_RETRY_ATTEMPTS" "$BUILD_RETRY_DELAY_SECONDS" make binaries
+    run_with_retry "$BUILD_RETRY_ATTEMPTS" "$BUILD_RETRY_DELAY_SECONDS" "$CONTAINER_TOOL" build -t "localhost/smd:$tag" .
 
     echo "--- Finished smd ---"
     cd "$original_dir"
@@ -152,11 +187,11 @@ build_bss() {
     local tag="${2:-$(sanitize_tag "$ref")}"
     local repo_uri="${3:-${BSS_REPO_URI:-}}"
     echo "--- Building bss (ref: $ref) ---"
-    prepare_repo "bss" "$ref" "$repo_uri"
+    run_with_retry "$BUILD_RETRY_ATTEMPTS" "$BUILD_RETRY_DELAY_SECONDS" prepare_repo "bss" "$ref" "$repo_uri"
     
     make clean || echo "Warning: make clean failed (non-fatal, continuing...)"
-    make binaries
-    $CONTAINER_TOOL build -t "localhost/bss:$tag" .
+    run_with_retry "$BUILD_RETRY_ATTEMPTS" "$BUILD_RETRY_DELAY_SECONDS" make binaries
+    run_with_retry "$BUILD_RETRY_ATTEMPTS" "$BUILD_RETRY_DELAY_SECONDS" "$CONTAINER_TOOL" build -t "localhost/bss:$tag" .
 
     echo "--- Finished bss ---"
     cd "$original_dir"
@@ -173,9 +208,9 @@ build_coresmd() {
     local tag="${2:-local-build}"
     local repo_uri="${3:-${CORESMD_REPO_URI:-}}"
     echo "--- Building coresmd (ref: $ref) ---"
-    prepare_repo "coresmd" "$ref" "$repo_uri"
+    run_with_retry "$BUILD_RETRY_ATTEMPTS" "$BUILD_RETRY_DELAY_SECONDS" prepare_repo "coresmd" "$ref" "$repo_uri"
     
-    go install github.com/goreleaser/goreleaser/v2@latest
+    run_with_retry "$BUILD_RETRY_ATTEMPTS" "$BUILD_RETRY_DELAY_SECONDS" go install github.com/goreleaser/goreleaser/v2@latest
     # build locally
     # the --skip-publish is automatically handled by --snapshot in new version (error in README.md)
     # Set the missing variables
@@ -184,9 +219,9 @@ build_coresmd() {
     export BUILD_USER=$(whoami)
     export GO_VERSION=$(go version | awk '{print $3}')
     export DOCKER_TAG="$tag"
-    ~/go/bin/goreleaser release --snapshot --clean
+    run_with_retry "$BUILD_RETRY_ATTEMPTS" "$BUILD_RETRY_DELAY_SECONDS" ~/go/bin/goreleaser release --snapshot --clean
 
-    $CONTAINER_TOOL tag "ghcr.io/openchami/coresmd:${DOCKER_TAG}-amd64" "localhost/coresmd:$DOCKER_TAG"
+    run_with_retry "$BUILD_RETRY_ATTEMPTS" "$BUILD_RETRY_DELAY_SECONDS" "$CONTAINER_TOOL" tag "ghcr.io/openchami/coresmd:${DOCKER_TAG}-amd64" "localhost/coresmd:$DOCKER_TAG"
 
     
     echo "--- Finished coresmd ---"
@@ -222,9 +257,9 @@ build_cloud-init() {
     local tag="${2:-$(sanitize_tag "$ref")}"
     local repo_uri="${3:-${CLOUD_INIT_REPO_URI:-}}"
     echo "--- Building cloud-init (ref: $ref) ---"
-    prepare_repo "cloud-init" "$ref" "$repo_uri"
+    run_with_retry "$BUILD_RETRY_ATTEMPTS" "$BUILD_RETRY_DELAY_SECONDS" prepare_repo "cloud-init" "$ref" "$repo_uri"
 
-    $CONTAINER_TOOL build -t "localhost/cloud-init:$tag" .
+    run_with_retry "$BUILD_RETRY_ATTEMPTS" "$BUILD_RETRY_DELAY_SECONDS" "$CONTAINER_TOOL" build -t "localhost/cloud-init:$tag" .
 
     echo "--- Finished cloud-init ---"
     cd "$original_dir"
@@ -240,9 +275,9 @@ build_pcs() {
     local tag="${2:-$(sanitize_tag "$ref")}"
     local repo_uri="${3:-${PCS_REPO_URI:-}}"
     echo "--- Building pcs (ref: $ref) ---"
-    prepare_repo "pcs" "$ref" "$repo_uri"
+    run_with_retry "$BUILD_RETRY_ATTEMPTS" "$BUILD_RETRY_DELAY_SECONDS" prepare_repo "pcs" "$ref" "$repo_uri"
 
-    $CONTAINER_TOOL build -f Dockerfile.build -t "localhost/pcs:$tag" .
+    run_with_retry "$BUILD_RETRY_ATTEMPTS" "$BUILD_RETRY_DELAY_SECONDS" "$CONTAINER_TOOL" build -f Dockerfile.build -t "localhost/pcs:$tag" .
 
     echo "--- Finished pcs ---"
     cd "$original_dir"
