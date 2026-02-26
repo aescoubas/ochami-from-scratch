@@ -32,9 +32,9 @@ assert_not_contains() {
 }
 
 test_vmlinuz_search_is_robust_for_macos_layouts() {
-    assert_contains "$BUILD_SCRIPT" '\$CONTAINER_TOOL cp "\$CONTAINER_ID:/lib/modules" \./modules_tmp' \
+    assert_contains "$BUILD_SCRIPT" 'run_container_tool cp "\$CONTAINER_ID:/lib/modules" \./modules_tmp' \
         "build script should copy /lib/modules when searching vmlinuz"
-    assert_contains "$BUILD_SCRIPT" '\$CONTAINER_TOOL cp "\$CONTAINER_ID:/usr/lib/modules" \./usr_modules_tmp 2>/dev/null' \
+    assert_contains "$BUILD_SCRIPT" 'run_container_tool cp "\$CONTAINER_ID:/usr/lib/modules" \./usr_modules_tmp 2>/dev/null' \
         "build script should copy /usr/lib/modules when searching vmlinuz"
     assert_contains "$BUILD_SCRIPT" 'KERNEL_PATTERNS=\("vmlinuz\*" "Image\*" "bzImage\*" "linux\*" "kernel\*"\)' \
         "build script should search architecture-specific kernel naming variants"

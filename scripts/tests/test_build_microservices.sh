@@ -43,6 +43,7 @@ assert_file_contains() {
 
 PREPARE_CAPTURED=""
 BUILD_CAPTURED=""
+SUDO_CAPTURED=""
 BUILD_MICROSERVICES_FILE="$PROJECT_ROOT/scripts/build_microservices.sh"
 MAKE_BINARIES_CALLS=0
 MAKE_FAIL_BINARIES_ATTEMPTS=0
@@ -64,6 +65,11 @@ make() {
 
 docker() {
     BUILD_CAPTURED="$*"
+    return 0
+}
+
+sudo() {
+    SUDO_CAPTURED="$*"
     return 0
 }
 
@@ -115,6 +121,20 @@ test_build_bss_retries_transient_make_binaries_failures() {
     assert_contains "$output" "Attempt 1/3 failed for: make binaries" "retry helper should log attempt failures" || return 1
 }
 
+test_build_smd_supports_prefixed_container_tool_commands() {
+    PREPARE_CAPTURED=""
+    BUILD_CAPTURED=""
+    SUDO_CAPTURED=""
+    MAKE_BINARIES_CALLS=0
+    MAKE_FAIL_BINARIES_ATTEMPTS=0
+    CONTAINER_TOOL="sudo podman"
+
+    build_smd "main" "local-smd" "https://github.com/dev/smd-fork.git"
+
+    assert_eq "$PREPARE_CAPTURED" "smd|main|https://github.com/dev/smd-fork.git" "build_smd should prepare repository before prefixed build command" || return 1
+    assert_contains "$SUDO_CAPTURED" "podman build -t localhost/smd:local-smd ." "build_smd should execute prefixed container tool command as separate argv tokens" || return 1
+}
+
 run_test() {
     local test_name="$1"
     if "$test_name"; then
@@ -127,3 +147,4 @@ run_test() {
 run_test test_build_smd_separates_git_ref_and_image_tag
 run_test test_prepare_repo_relaxes_permissions_for_container_builds
 run_test test_build_bss_retries_transient_make_binaries_failures
+run_test test_build_smd_supports_prefixed_container_tool_commands

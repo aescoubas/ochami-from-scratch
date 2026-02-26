@@ -8,7 +8,14 @@ source "$SCRIPT_DIR/common.sh"
 
 # Configuration
 CONTAINER_TOOL=${CONTAINER_TOOL:-docker}
+CONTAINER_RUNTIME="${CONTAINER_TOOL##* }"
 ORCHESTRATOR=${ORCHESTRATOR:-minikube}
+
+run_container_tool() {
+    # CONTAINER_TOOL may be a prefixed command such as "sudo podman".
+    # shellcheck disable=SC2086
+    $CONTAINER_TOOL "$@"
+}
 
 build_local_image() {
     local image="$1"
@@ -16,8 +23,8 @@ build_local_image() {
     shift 2
     local build_args=("$@")
 
-    if [ "$CONTAINER_TOOL" != "docker" ]; then
-        "$CONTAINER_TOOL" build "${build_args[@]}" -t "$image" "$context"
+    if [ "$CONTAINER_RUNTIME" != "docker" ]; then
+        run_container_tool build "${build_args[@]}" -t "$image" "$context"
         return 0
     fi
 
@@ -77,29 +84,29 @@ RUN KVER=\$(ls /lib/modules | head -n 1) && \
 EOF_DOCKER
 
 # Build the image
-$CONTAINER_TOOL build -t custom-image-builder-sles "$BUILD_DIR"
+run_container_tool build -t custom-image-builder-sles "$BUILD_DIR"
 
 # Create a container from the image
-CONTAINER_ID=$($CONTAINER_TOOL create custom-image-builder-sles)
+CONTAINER_ID=$(run_container_tool create custom-image-builder-sles)
 
 # Extract kernel and new initramfs
-$CONTAINER_TOOL cp "$CONTAINER_ID:/boot/initrd.img" ./initramfs-lts
+run_container_tool cp "$CONTAINER_ID:/boot/initrd.img" ./initramfs-lts
 
 # Copy likely kernel locations and search vmlinuz across all of them.
 sudo rm -rf ./boot_tmp ./modules_tmp ./usr_modules_tmp
 VMLINUZ_SEARCH_DIRS=()
 
 mkdir -p ./boot_tmp
-$CONTAINER_TOOL cp "$CONTAINER_ID:/boot/." ./boot_tmp/
+run_container_tool cp "$CONTAINER_ID:/boot/." ./boot_tmp/
 relax_permissions ./boot_tmp
 VMLINUZ_SEARCH_DIRS+=("./boot_tmp")
 
-if $CONTAINER_TOOL cp "$CONTAINER_ID:/lib/modules" ./modules_tmp; then
+if run_container_tool cp "$CONTAINER_ID:/lib/modules" ./modules_tmp; then
     relax_permissions ./modules_tmp
     VMLINUZ_SEARCH_DIRS+=("./modules_tmp")
 fi
 
-if $CONTAINER_TOOL cp "$CONTAINER_ID:/usr/lib/modules" ./usr_modules_tmp 2>/dev/null; then
+if run_container_tool cp "$CONTAINER_ID:/usr/lib/modules" ./usr_modules_tmp 2>/dev/null; then
     relax_permissions ./usr_modules_tmp
     VMLINUZ_SEARCH_DIRS+=("./usr_modules_tmp")
 fi
@@ -147,7 +154,7 @@ cp "$VMLINUZ" ./vmlinuz-lts
 rm -rf ./boot_tmp ./modules_tmp ./usr_modules_tmp
 
 # Create a squashfs rootfs
-$CONTAINER_TOOL export "$CONTAINER_ID" > "$BUILD_DIR/rootfs.tar"
+run_container_tool export "$CONTAINER_ID" > "$BUILD_DIR/rootfs.tar"
 mkdir -p "$BUILD_DIR/full_root"
 sudo tar -xf "$BUILD_DIR/rootfs.tar" -C "$BUILD_DIR/full_root"
 
@@ -157,8 +164,8 @@ sudo mksquashfs "$BUILD_DIR/full_root" ./rootfs.squashfs -noappend -wildcards -e
 relax_permissions ./rootfs.squashfs
 
 # Clean up
-$CONTAINER_TOOL rm "$CONTAINER_ID"
-$CONTAINER_TOOL rmi -f custom-image-builder-sles || true
+run_container_tool rm "$CONTAINER_ID"
+run_container_tool rmi -f custom-image-builder-sles || true
 
 echo "--- Staging artifacts ---"
 ARTIFACTS_DIR="$PROJECT_ROOT/ochami-helm/http-server/artifacts"
@@ -170,7 +177,7 @@ echo "--- Building and loading http-server image into Minikube ---"
 DOCKER_CONTEXT="$PROJECT_ROOT/ochami-helm/http-server/"
 build_local_image "localhost/http-server:latest" "$DOCKER_CONTEXT" --build-arg BASE_IMAGE="$BASE_IMAGE_HTTP_SERVER"
 if [ "$ORCHESTRATOR" == "minikube" ]; then
-    if [ "$CONTAINER_TOOL" == "docker" ]; then
+    if [ "$CONTAINER_RUNTIME" == "docker" ]; then
         docker save "localhost/http-server:latest" | minikube image load -
     else
         minikube image load localhost/http-server:latest
@@ -183,7 +190,7 @@ fi
 echo "--- Building redfish-emulator ---"
 build_local_image "localhost/redfish-emulator:latest" "$PROJECT_ROOT/ochami-helm/redfish-emulator/" --build-arg BASE_IMAGE="$BASE_IMAGE_REDFISH_EMULATOR"
 if [ "$ORCHESTRATOR" == "minikube" ]; then
-    if [ "$CONTAINER_TOOL" == "docker" ]; then
+    if [ "$CONTAINER_RUNTIME" == "docker" ]; then
         docker save "localhost/redfish-emulator:latest" | minikube image load -
     else
         minikube image load localhost/redfish-emulator:latest

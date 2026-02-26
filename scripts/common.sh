@@ -454,6 +454,13 @@ build_images_if_needed() {
     local container_tool="$1"
     local orchestrator="$2"
     local force_rebuild="$3"
+    local container_runtime="${container_tool##* }"
+
+    run_container_tool() {
+        # container_tool may be a prefixed command such as "sudo podman".
+        # shellcheck disable=SC2086
+        $container_tool "$@"
+    }
 
     export CONTAINER_TOOL="$container_tool"
     export ORCHESTRATOR="$orchestrator"
@@ -469,8 +476,8 @@ build_images_if_needed() {
         shift 2
         local build_args=("$@")
 
-        if [ "$container_tool" != "docker" ]; then
-            "$container_tool" build "${build_args[@]}" -t "$image" "$context"
+        if [ "$container_runtime" != "docker" ]; then
+            run_container_tool build "${build_args[@]}" -t "$image" "$context"
             return 0
         fi
 
@@ -485,7 +492,7 @@ build_images_if_needed() {
 
     local IMAGE_CHECK_CMD
     if [ "$orchestrator" == "quadlets" ]; then
-        IMAGE_CHECK_CMD="$container_tool image exists"
+        IMAGE_CHECK_CMD="run_container_tool image exists"
     elif [ "$orchestrator" == "docker-compose" ]; then
         IMAGE_CHECK_CMD="docker image inspect"
     else
@@ -501,7 +508,7 @@ build_images_if_needed() {
             need_build=true
         fi
     elif [ "$orchestrator" == "quadlets" ]; then
-        if ! $container_tool image exists "$IMAGE_HTTP" || ! $container_tool image exists "$IMAGE_EMULATOR"; then
+        if ! run_container_tool image exists "$IMAGE_HTTP" || ! run_container_tool image exists "$IMAGE_EMULATOR"; then
             need_build=true
         fi
     else
@@ -526,7 +533,7 @@ build_images_if_needed() {
             need_tftp=true
         fi
     elif [ "$orchestrator" == "quadlets" ]; then
-        if ! $container_tool image exists "$IMAGE_TFTP"; then
+        if ! run_container_tool image exists "$IMAGE_TFTP"; then
             need_tftp=true
         fi
     else
@@ -540,7 +547,7 @@ build_images_if_needed() {
         build_local_image_for_tool "$IMAGE_TFTP" "$PROJECT_ROOT/ochami-helm/tftp/" --build-arg BASE_IMAGE="$BASE_IMAGE_TFTP"
         if [ "$orchestrator" == "minikube" ]; then
             echo "Loading $IMAGE_TFTP into Minikube..."
-            if [ "$container_tool" == "docker" ]; then
+            if [ "$container_runtime" == "docker" ]; then
                 docker save "$IMAGE_TFTP" | minikube image load -
             else
                 minikube image load "$IMAGE_TFTP"
@@ -559,7 +566,7 @@ build_images_if_needed() {
             need_stork_agent=true
         fi
     elif [ "$orchestrator" == "quadlets" ]; then
-        if ! $container_tool image exists "$IMAGE_STORK_AGENT"; then
+        if ! run_container_tool image exists "$IMAGE_STORK_AGENT"; then
             need_stork_agent=true
         fi
     else
@@ -573,7 +580,7 @@ build_images_if_needed() {
         build_local_image_for_tool "$IMAGE_STORK_AGENT" "$PROJECT_ROOT/ochami-helm/stork-agent/" --build-arg BASE_IMAGE="$BASE_IMAGE_STORK_AGENT"
         if [ "$orchestrator" == "minikube" ]; then
             echo "Loading $IMAGE_STORK_AGENT into Minikube..."
-            if [ "$container_tool" == "docker" ]; then
+            if [ "$container_runtime" == "docker" ]; then
                 docker save "$IMAGE_STORK_AGENT" | minikube image load -
             else
                 minikube image load "$IMAGE_STORK_AGENT"
@@ -592,7 +599,7 @@ build_images_if_needed() {
             need_kea_sidecar=true
         fi
     elif [ "$orchestrator" == "quadlets" ]; then
-        if ! $container_tool image exists "$IMAGE_KEA_SIDECAR"; then
+        if ! run_container_tool image exists "$IMAGE_KEA_SIDECAR"; then
             need_kea_sidecar=true
         fi
     else
@@ -606,7 +613,7 @@ build_images_if_needed() {
         build_local_image_for_tool "$IMAGE_KEA_SIDECAR" "$PROJECT_ROOT/ochami-helm/kea-sidecar/" --build-arg BASE_IMAGE="$BASE_IMAGE_KEA_SIDECAR"
         if [ "$orchestrator" == "minikube" ]; then
             echo "Loading $IMAGE_KEA_SIDECAR into Minikube..."
-            if [ "$container_tool" == "docker" ]; then
+            if [ "$container_runtime" == "docker" ]; then
                 docker save "$IMAGE_KEA_SIDECAR" | minikube image load -
             else
                 minikube image load "$IMAGE_KEA_SIDECAR"
@@ -633,7 +640,7 @@ build_images_if_needed() {
                 need_ms=true
             fi
         elif [ "$orchestrator" == "quadlets" ]; then
-            if ! $container_tool image exists "$img"; then
+            if ! run_container_tool image exists "$img"; then
                 need_ms=true
             fi
         else
@@ -660,10 +667,10 @@ build_images_if_needed() {
                 $FUNC "$SERVICE_REF" "$TAG" "$SERVICE_REPO_URI"
 
                 if [[ "$NAME" == "coresmd" ]]; then
-                    if ! $container_tool image inspect "$img" >/dev/null 2>&1; then
-                        if $container_tool image inspect "localhost/coresmd:local-build" >/dev/null 2>&1; then
+                    if ! run_container_tool image inspect "$img" >/dev/null 2>&1; then
+                        if run_container_tool image inspect "localhost/coresmd:local-build" >/dev/null 2>&1; then
                             echo "Retagging coresmd:local-build to $TAG..."
-                            $container_tool tag "localhost/coresmd:local-build" "$img"
+                            run_container_tool tag "localhost/coresmd:local-build" "$img"
                         fi
                     fi
                 fi

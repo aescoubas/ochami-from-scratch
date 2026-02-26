@@ -17,6 +17,12 @@ CONTAINER_TOOL=${CONTAINER_TOOL:-docker}
 BUILD_RETRY_ATTEMPTS=${BUILD_RETRY_ATTEMPTS:-3}
 BUILD_RETRY_DELAY_SECONDS=${BUILD_RETRY_DELAY_SECONDS:-5}
 
+run_container_tool() {
+    # CONTAINER_TOOL may be a prefixed command such as "sudo podman".
+    # shellcheck disable=SC2086
+    $CONTAINER_TOOL "$@"
+}
+
 
 # --- Helper Functions ---
 
@@ -170,7 +176,7 @@ build_smd() {
     
     make clean || echo "Warning: make clean failed (non-fatal, continuing...)"
     run_with_retry "$BUILD_RETRY_ATTEMPTS" "$BUILD_RETRY_DELAY_SECONDS" make binaries
-    run_with_retry "$BUILD_RETRY_ATTEMPTS" "$BUILD_RETRY_DELAY_SECONDS" "$CONTAINER_TOOL" build -t "localhost/smd:$tag" .
+    run_with_retry "$BUILD_RETRY_ATTEMPTS" "$BUILD_RETRY_DELAY_SECONDS" run_container_tool build -t "localhost/smd:$tag" .
 
     echo "--- Finished smd ---"
     cd "$original_dir"
@@ -191,7 +197,7 @@ build_bss() {
     
     make clean || echo "Warning: make clean failed (non-fatal, continuing...)"
     run_with_retry "$BUILD_RETRY_ATTEMPTS" "$BUILD_RETRY_DELAY_SECONDS" make binaries
-    run_with_retry "$BUILD_RETRY_ATTEMPTS" "$BUILD_RETRY_DELAY_SECONDS" "$CONTAINER_TOOL" build -t "localhost/bss:$tag" .
+    run_with_retry "$BUILD_RETRY_ATTEMPTS" "$BUILD_RETRY_DELAY_SECONDS" run_container_tool build -t "localhost/bss:$tag" .
 
     echo "--- Finished bss ---"
     cd "$original_dir"
@@ -221,7 +227,7 @@ build_coresmd() {
     export DOCKER_TAG="$tag"
     run_with_retry "$BUILD_RETRY_ATTEMPTS" "$BUILD_RETRY_DELAY_SECONDS" ~/go/bin/goreleaser release --snapshot --clean
 
-    run_with_retry "$BUILD_RETRY_ATTEMPTS" "$BUILD_RETRY_DELAY_SECONDS" "$CONTAINER_TOOL" tag "ghcr.io/openchami/coresmd:${DOCKER_TAG}-amd64" "localhost/coresmd:$DOCKER_TAG"
+    run_with_retry "$BUILD_RETRY_ATTEMPTS" "$BUILD_RETRY_DELAY_SECONDS" run_container_tool tag "ghcr.io/openchami/coresmd:${DOCKER_TAG}-amd64" "localhost/coresmd:$DOCKER_TAG"
 
     
     echo "--- Finished coresmd ---"
@@ -259,7 +265,7 @@ build_cloud-init() {
     echo "--- Building cloud-init (ref: $ref) ---"
     run_with_retry "$BUILD_RETRY_ATTEMPTS" "$BUILD_RETRY_DELAY_SECONDS" prepare_repo "cloud-init" "$ref" "$repo_uri"
 
-    run_with_retry "$BUILD_RETRY_ATTEMPTS" "$BUILD_RETRY_DELAY_SECONDS" "$CONTAINER_TOOL" build -t "localhost/cloud-init:$tag" .
+    run_with_retry "$BUILD_RETRY_ATTEMPTS" "$BUILD_RETRY_DELAY_SECONDS" run_container_tool build -t "localhost/cloud-init:$tag" .
 
     echo "--- Finished cloud-init ---"
     cd "$original_dir"
@@ -277,7 +283,7 @@ build_pcs() {
     echo "--- Building pcs (ref: $ref) ---"
     run_with_retry "$BUILD_RETRY_ATTEMPTS" "$BUILD_RETRY_DELAY_SECONDS" prepare_repo "pcs" "$ref" "$repo_uri"
 
-    run_with_retry "$BUILD_RETRY_ATTEMPTS" "$BUILD_RETRY_DELAY_SECONDS" "$CONTAINER_TOOL" build -f Dockerfile.build -t "localhost/pcs:$tag" .
+    run_with_retry "$BUILD_RETRY_ATTEMPTS" "$BUILD_RETRY_DELAY_SECONDS" run_container_tool build -f Dockerfile.build -t "localhost/pcs:$tag" .
 
     echo "--- Finished pcs ---"
     cd "$original_dir"

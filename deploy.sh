@@ -6,6 +6,10 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 VALID_METHODS="minikube, quadlets, docker-compose"
+COMMON_SH="$SCRIPT_DIR/scripts/common.sh"
+
+# shellcheck disable=SC1091
+source "$COMMON_SH"
 
 show_help() {
     echo "Usage: $0 --method <METHOD> [OPTIONS...]"
@@ -21,6 +25,8 @@ show_help() {
     echo "  --method METHOD        Deployment method ($VALID_METHODS)"
     echo "  --orchestrator METHOD  Backward-compatible alias for --method"
     echo "  -h, --help             Show this help (or method-specific help with --method)"
+    echo ""
+    add_common_deploy_args_help
     echo ""
     echo "Pass --help after --method for method-specific options:"
     echo "  $0 --method minikube --help"

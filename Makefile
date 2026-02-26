@@ -3,7 +3,9 @@
 test:
 	bash scripts/tests/test_roadmap_process.sh
 	bash scripts/tests/test_common_args.sh
+	bash scripts/tests/test_deploy_dispatcher_help.sh
 	bash scripts/tests/test_build_microservices.sh
+	bash scripts/tests/test_common_container_tool_prefix.sh
 	bash scripts/tests/test_magellan_discovery.sh
 	bash scripts/tests/test_reverse_proxy_routing.sh
 	bash scripts/tests/test_image_base_standardization.sh
