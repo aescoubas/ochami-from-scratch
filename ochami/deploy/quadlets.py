@@ -2,12 +2,13 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+import tempfile
 from typing import Callable
 
 from ochami.build import BuildManager
 from ochami.config import DeployConfig, DeploymentMethod
 from ochami.deploy.base import BaseDeployer
-from ochami.deploy.compose import DEFAULT_DATABASES, DEFAULT_PORTS, ensure_runtime_secrets
+from ochami.deploy.compose import DEFAULT_DATABASES, DEFAULT_PORTS, ensure_runtime_secrets, resolve_host_port
 from ochami.network import NetworkManager
 from ochami.prerequisites import PrerequisitesInstaller
 from ochami.registry import RegistryManager
@@ -28,6 +29,7 @@ class QuadletsDeployer(BaseDeployer):
         builder: BuildManager | None = None,
         prerequisites: PrerequisitesInstaller | None = None,
         secrets_provider: Callable[[], dict[str, str]] | None = None,
+        postgres_port_resolver: Callable[[int], int] | None = None,
         quadlets_install_dir: Path | None = None,
         openchami_config_dir: Path | None = None,
         systemd_dir: Path | None = None,
@@ -53,6 +55,7 @@ class QuadletsDeployer(BaseDeployer):
             macos=not self._linux,
         )
         self.secrets_provider = secrets_provider or (lambda: ensure_runtime_secrets(self.project_root))
+        self.postgres_port_resolver = postgres_port_resolver or resolve_host_port
 
     def validate(self, config: DeployConfig) -> None:
         super().validate(config)
@@ -72,11 +75,11 @@ class QuadletsDeployer(BaseDeployer):
         runtime = self._build_runtime_values(config=config, host_ip=host_ip)
 
         if not dry_run:
-            self._prepare_directories()
-            self._write_env_file(runtime)
-            self._render_configs(runtime)
-            self._install_units(runtime)
-            self._ensure_postgres_init_executable()
+            self._prepare_directories(dry_run=dry_run)
+            self._write_env_file(runtime, dry_run=dry_run)
+            self._render_configs(runtime, dry_run=dry_run)
+            self._install_units(runtime, dry_run=dry_run)
+            self._ensure_postgres_init_executable(dry_run=dry_run)
 
         self._run(["sudo", "systemctl", "daemon-reload"], dry_run=dry_run)
         self._run(["sudo", "systemctl", "enable", "openchami.target"], dry_run=dry_run, check=False)
@@ -116,6 +119,7 @@ class QuadletsDeployer(BaseDeployer):
         runtime.update(DEFAULT_PORTS)
         runtime.update(DEFAULT_DATABASES)
         runtime.update(self.secrets_provider())
+        runtime["POSTGRES_PORT"] = str(self.postgres_port_resolver(int(DEFAULT_PORTS["POSTGRES_PORT"])))
         runtime.update(
             {
                 "HOST_IP": host_ip,
@@ -130,12 +134,14 @@ class QuadletsDeployer(BaseDeployer):
         )
         return runtime
 
-    def _prepare_directories(self) -> None:
-        self.openchami_configs_dir.mkdir(parents=True, exist_ok=True)
-        self.quadlets_install_dir.mkdir(parents=True, exist_ok=True)
-        self.systemd_dir.mkdir(parents=True, exist_ok=True)
+    def _prepare_directories(self, *, dry_run: bool) -> None:
+        for directory in (self.openchami_configs_dir, self.quadlets_install_dir, self.systemd_dir):
+            try:
+                directory.mkdir(parents=True, exist_ok=True)
+            except PermissionError:
+                self._run(["sudo", "mkdir", "-p", str(directory)], dry_run=dry_run)
 
-    def _write_env_file(self, runtime: dict[str, str]) -> None:
+    def _write_env_file(self, runtime: dict[str, str], *, dry_run: bool) -> None:
         postgres_multiple = (
             f"{runtime['SMD_DB_NAME']}:{runtime['SMD_DB_USER']}:{runtime['SMD_DB_PASSWORD']},"
             f"{runtime['BSS_DB_NAME']}:{runtime['BSS_DB_USER']}:{runtime['BSS_DB_PASSWORD']},"
@@ -213,18 +219,18 @@ class QuadletsDeployer(BaseDeployer):
             f"DB_PORT={runtime['POSTGRES_PORT']}",
             "",
         ]
-        (self.openchami_config_dir / "openchami.env").write_text("\n".join(lines), encoding="utf-8")
+        self._write_text_file(self.openchami_config_dir / "openchami.env", "\n".join(lines), dry_run=dry_run)
 
-    def _render_configs(self, runtime: dict[str, str]) -> None:
+    def _render_configs(self, runtime: dict[str, str], *, dry_run: bool) -> None:
         source_dir = self.quadlets_dir / "configs"
         for path in source_dir.iterdir():
             if path.name.endswith(".template"):
                 destination = self.openchami_configs_dir / path.name.removesuffix(".template")
                 rendered = substitute_env_vars(path.read_text(encoding="utf-8"), runtime)
-                destination.write_text(rendered, encoding="utf-8")
+                self._write_text_file(destination, rendered, dry_run=dry_run)
             elif path.suffix in {".sh", ".py", ".conf", ".html"} or path.name in {"user-data", "meta-data"}:
                 destination = self.openchami_configs_dir / path.name
-                destination.write_bytes(path.read_bytes())
+                self._write_bytes_file(destination, path.read_bytes(), dry_run=dry_run)
 
         context = {
             "http_port": runtime["HTTP_PORT"],
@@ -234,15 +240,16 @@ class QuadletsDeployer(BaseDeployer):
             "pcs_port": runtime["PCS_PORT"],
             "stork_port": runtime["STORK_PORT"],
         }
-        self.renderer.render_to_file("nginx-default.conf.j2", self.openchami_configs_dir / "nginx-default.conf", context)
+        rendered_nginx = self.renderer.render("nginx-default.conf.j2", context)
+        self._write_text_file(self.openchami_configs_dir / "nginx-default.conf", rendered_nginx, dry_run=dry_run)
 
-    def _install_units(self, runtime: dict[str, str]) -> None:
+    def _install_units(self, runtime: dict[str, str], *, dry_run: bool) -> None:
         containers_dir = self.quadlets_dir / "containers"
         for path in sorted(containers_dir.glob("*.container")):
             rendered = substitute_env_vars(path.read_text(encoding="utf-8"), runtime)
-            (self.quadlets_install_dir / path.name).write_text(rendered, encoding="utf-8")
+            self._write_text_file(self.quadlets_install_dir / path.name, rendered, dry_run=dry_run)
         for path in sorted(containers_dir.glob("*.target")):
-            (self.systemd_dir / path.name).write_bytes(path.read_bytes())
+            self._write_bytes_file(self.systemd_dir / path.name, path.read_bytes(), dry_run=dry_run)
 
         count = int(runtime["NUM_VMS"])
         if count > 0:
@@ -262,9 +269,44 @@ class QuadletsDeployer(BaseDeployer):
                     "[Install]\n"
                     "WantedBy=openchami.target\n"
                 )
-                (self.quadlets_install_dir / f"redfish-emulator-{idx}.container").write_text(emulator_text, encoding="utf-8")
+                self._write_text_file(
+                    self.quadlets_install_dir / f"redfish-emulator-{idx}.container",
+                    emulator_text,
+                    dry_run=dry_run,
+                )
 
-    def _ensure_postgres_init_executable(self) -> None:
+    def _ensure_postgres_init_executable(self, *, dry_run: bool) -> None:
         path = self.openchami_configs_dir / "postgres-init-db.sh"
         if path.exists():
-            path.chmod(path.stat().st_mode | 0o111)
+            try:
+                path.chmod(path.stat().st_mode | 0o111)
+            except PermissionError:
+                self._run(["sudo", "chmod", "a+x", str(path)], dry_run=dry_run, check=False)
+
+    def _write_text_file(self, path: Path, content: str, *, dry_run: bool) -> None:
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(content, encoding="utf-8")
+            return
+        except PermissionError:
+            self._install_file(path, content.encode("utf-8"), mode="0644", dry_run=dry_run)
+
+    def _write_bytes_file(self, path: Path, content: bytes, *, dry_run: bool) -> None:
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(content)
+            return
+        except PermissionError:
+            self._install_file(path, content, mode="0644", dry_run=dry_run)
+
+    def _install_file(self, destination: Path, content: bytes, *, mode: str, dry_run: bool) -> None:
+        with tempfile.NamedTemporaryFile(delete=False) as tmp:
+            tmp.write(content)
+            tmp_path = Path(tmp.name)
+        try:
+            self._run(
+                ["sudo", "install", "-D", "-m", mode, str(tmp_path), str(destination)],
+                dry_run=dry_run,
+            )
+        finally:
+            tmp_path.unlink(missing_ok=True)

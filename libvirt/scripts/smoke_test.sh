@@ -99,7 +99,10 @@ _smoke_check_boot_artifacts() {
 _smoke_check_bss_smd_integration() {
     local method="$1"
     local failures=0
-    local register_script="$PROJECT_ROOT/scripts/register_hardware_node.sh"
+    local cli_python="$PROJECT_ROOT/.venv/bin/python"
+    if [ ! -x "$cli_python" ]; then
+        cli_python="python3"
+    fi
     local log_file="/tmp/ochami-smoke-register-${method}.log"
     local mac ip component_id nid bmc_ip bmc_user bmc_pass bootscript_url
 
@@ -137,13 +140,16 @@ _smoke_check_bss_smd_integration() {
 
     echo "Checking BSS/SMD integration via hardware registration flow..."
 
-    if [ ! -x "$register_script" ]; then
-        echo "  FAIL: registration script not executable: $register_script"
-        return 1
-    fi
-
-    if ORCHESTRATOR="$method" HOST_IP="$SMOKE_HOST_IP" \
-        bash "$register_script" "$mac" "$ip" "$component_id" "$nid" "$bmc_ip" "$bmc_user" "$bmc_pass" \
+    if "$cli_python" -m ochami.cli register-node \
+        --method "$method" \
+        --host-ip "$SMOKE_HOST_IP" \
+        --mac "$mac" \
+        --ip "$ip" \
+        --component-id "$component_id" \
+        --nid "$nid" \
+        --bmc-ip "$bmc_ip" \
+        --bmc-user "$bmc_user" \
+        --bmc-pass "$bmc_pass" \
         >"$log_file" 2>&1; then
         echo "  PASS: registration request completed ($component_id)"
     else

@@ -6,16 +6,11 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import pathlib
 import sys
 from typing import Any, Callable, Dict, Iterable, Optional
 from urllib.parse import quote, urlencode
 
-CURRENT_DIR = pathlib.Path(__file__).resolve().parent
-if str(CURRENT_DIR) not in sys.path:
-    sys.path.insert(0, str(CURRENT_DIR))
-
-from openchami_api import OpenChamiApiClient, OpenChamiApiError
+from ochami.mcp.openchami_api import OpenChamiApiClient, OpenChamiApiError
 
 
 READ_ONLY_MODE = "read-only"

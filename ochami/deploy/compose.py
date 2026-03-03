@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import secrets
+import socket
 from pathlib import Path
 from typing import Callable
 
@@ -63,6 +64,7 @@ class ComposeDeployer(BaseDeployer):
         builder: BuildManager | None = None,
         prerequisites: PrerequisitesInstaller | None = None,
         secrets_provider: Callable[[], dict[str, str]] | None = None,
+        postgres_port_resolver: Callable[[int], int] | None = None,
         macos: bool | None = None,
     ) -> None:
         self.project_root = project_root or Path(__file__).resolve().parents[2]
@@ -79,6 +81,7 @@ class ComposeDeployer(BaseDeployer):
             macos=self._is_macos,
         )
         self.secrets_provider = secrets_provider or (lambda: ensure_runtime_secrets(self.project_root))
+        self.postgres_port_resolver = postgres_port_resolver or resolve_host_port
 
     def validate(self, config: DeployConfig) -> None:
         super().validate(config)
@@ -149,6 +152,8 @@ class ComposeDeployer(BaseDeployer):
         runtime.update(DEFAULT_PORTS)
         runtime.update(DEFAULT_DATABASES)
         runtime.update(secrets_map)
+        postgres_port = self.postgres_port_resolver(int(DEFAULT_PORTS["POSTGRES_PORT"]))
+        runtime["POSTGRES_PORT"] = str(postgres_port)
 
         runtime.update(
             {
@@ -257,3 +262,24 @@ def ensure_runtime_secrets(project_root: Path) -> dict[str, str]:
     write_env_file(path, ordered)
     path.chmod(0o600)
     return ordered
+
+
+def resolve_host_port(preferred_port: int) -> int:
+    if _is_host_port_available(preferred_port):
+        return preferred_port
+
+    for candidate in range(15432, 16433):
+        if _is_host_port_available(candidate):
+            return candidate
+
+    raise RuntimeError("could not find an available host port for PostgreSQL")
+
+
+def _is_host_port_available(port: int) -> bool:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        try:
+            sock.bind(("0.0.0.0", port))
+        except OSError:
+            return False
+    return True

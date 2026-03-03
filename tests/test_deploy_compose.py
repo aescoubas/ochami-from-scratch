@@ -174,16 +174,19 @@ def test_compose_deployer_generates_env_and_configs(tmp_path: Path) -> None:
     assert builder.calls and builder.calls[0]["orchestrator"] == "docker-compose"
 
 
-def test_compose_teardown_issues_expected_commands(tmp_path: Path) -> None:
+def test_compose_deployer_uses_resolved_postgres_port(tmp_path: Path) -> None:
     project_root = tmp_path
     compose_dir = project_root / "ochami-docker-compose"
     configs_dir = compose_dir / "configs"
     compose_dir.mkdir(parents=True)
     configs_dir.mkdir(parents=True)
     (compose_dir / "docker-compose.yml").write_text("services: {}\n", encoding="utf-8")
-    (compose_dir / ".env").write_text("HOST_IP=127.0.0.1\n", encoding="utf-8")
-    for name in ("kea-dhcp4.conf", "nginx-default.conf", "boot.ipxe", "stork-server.env"):
-        (configs_dir / name).write_text("x\n", encoding="utf-8")
+
+    _write_template(project_root / "templates/compose/kea-dhcp4.conf.j2", "{}\n")
+    _write_template(project_root / "templates/compose/boot.ipxe.j2", "set base-url\n")
+    _write_template(project_root / "templates/compose/stork-server.env.j2", "STORK_SERVER_PORT={{ stork_port }}\n")
+    _write_template(project_root / "templates/nginx-default.conf.j2", "listen {{ http_port }};\n")
+    (configs_dir / "kea-ctrl-agent.conf").write_text("{}", encoding="utf-8")
 
     commands: list[list[str]] = []
 
@@ -191,16 +194,143 @@ def test_compose_teardown_issues_expected_commands(tmp_path: Path) -> None:
         commands.append(cmd)
         return 0
 
+    deployer = ComposeDeployer(
+        project_root=project_root,
+        runner=fake_run,
+        renderer=TemplateRenderer(project_root / "templates"),
+        network=StubNetwork(),
+        registry=StubRegistry(),
+        prerequisites=StubPrerequisites(),
+        builder=StubBuilder(),
+        secrets_provider=lambda: {
+            "POSTGRES_PASSWORD": "pg-pass",
+            "SMD_DB_PASSWORD": "smd-pass",
+            "BSS_DB_PASSWORD": "bss-pass",
+            "KEA_DB_PASSWORD": "kea-pass",
+            "PCS_DB_PASSWORD": "pcs-pass",
+            "STORK_DB_PASSWORD": "stork-pass",
+            "HYDRA_DB_PASSWORD": "hydra-pass",
+        },
+        postgres_port_resolver=lambda preferred: preferred + 1000,
+    )
+
+    cfg = DeployConfig(method=DeploymentMethod.DOCKER_COMPOSE)
+    deployer.run(cfg, dry_run=False)
+
+    env_content = (compose_dir / ".env").read_text(encoding="utf-8")
+    assert "POSTGRES_PORT=6432" in env_content
+    assert any(cmd[:3] == ["docker", "compose", "-p"] for cmd in commands)
+
+
+def test_compose_teardown_issues_expected_commands(tmp_path: Path) -> None:
+    project_root = tmp_path
+    compose_dir = project_root / "ochami-docker-compose"
+    configs_dir = compose_dir / "configs"
+    compose_dir.mkdir(parents=True)
+    configs_dir.mkdir(parents=True)
+    (compose_dir / "docker-compose.yml").write_text("services: {}\n", encoding="utf-8")
+    (compose_dir / "docker-compose.macos.yml").write_text("services: {}\n", encoding="utf-8")
+    (compose_dir / ".env").write_text("HOST_IP=127.0.0.1\n", encoding="utf-8")
+    for name in ("kea-dhcp4.conf", "nginx-default.conf", "boot.ipxe", "stork-server.env"):
+        (configs_dir / name).write_text("x\n", encoding="utf-8")
+    artifacts_dir = project_root / "ochami-helm/http-server/artifacts"
+    (artifacts_dir / "opensuse").mkdir(parents=True)
+    (artifacts_dir / "ubuntu").mkdir(parents=True)
+    for name in ("vmlinuz-lts", "initramfs-lts", "rootfs.squashfs"):
+        (artifacts_dir / name).write_text("x\n", encoding="utf-8")
+    fs_state_path = project_root / "tmp/openchami-fs-protected-regular.state"
+    fs_state_path.parent.mkdir(parents=True, exist_ok=True)
+    fs_state_path.write_text("2\n", encoding="utf-8")
+
+    commands: list[list[str]] = []
+
+    def fake_run(cmd: list[str], **_: Any) -> int:
+        commands.append(cmd)
+        return 0
+
+    def fake_output(cmd: list[str], **_: Any) -> str:
+        if cmd[:4] == ["sudo", "virsh", "list", "--all"]:
+            return "virtual-compute-node\n"
+        if cmd[:4] == ["sysctl", "-n", "fs.protected_regular"]:
+            if fake_output.fs_read_count == 0:
+                fake_output.fs_read_count += 1
+                return "0"
+            return "2"
+        return ""
+    fake_output.fs_read_count = 0  # type: ignore[attr-defined]
+
     network = StubNetwork()
-    teardown = ComposeTeardown(project_root=project_root, runner=fake_run, network=network)
+    teardown = ComposeTeardown(
+        project_root=project_root,
+        runner=fake_run,
+        output_runner=fake_output,
+        network=network,
+        fs_state_path=fs_state_path,
+        macos=False,
+    )
     cfg = TeardownConfig(method=DeploymentMethod.DOCKER_COMPOSE, remove_images=True, skip_confirm=True)
 
     teardown.run(cfg, dry_run=False)
 
+    assert ["sudo", "virsh", "destroy", "virtual-compute-node"] in commands
+    assert ["sudo", "virsh", "undefine", "--nvram", "virtual-compute-node"] in commands
     down_cmd = next(cmd for cmd in commands if cmd[:3] == ["docker", "compose", "-p"])
+    assert "--env-file" in down_cmd
     assert down_cmd[-3:] == ["down", "-v", "--remove-orphans"]
+    assert str(compose_dir / "docker-compose.macos.yml") not in down_cmd
     assert any(cmd[:3] == ["docker", "image", "inspect"] for cmd in commands)
     assert any(cmd[:2] == ["docker", "rmi"] for cmd in commands)
+    assert ["sudo", "sysctl", "-w", "fs.protected_regular=2"] in commands
     assert network.calls and network.calls[0][0] == "cleanup"
     assert not (compose_dir / ".env").exists()
     assert not (configs_dir / "kea-dhcp4.conf").exists()
+    assert not (artifacts_dir / "opensuse").exists()
+    assert not (artifacts_dir / "ubuntu").exists()
+    assert not (artifacts_dir / "vmlinuz-lts").exists()
+    assert not (artifacts_dir / "initramfs-lts").exists()
+    assert not (artifacts_dir / "rootfs.squashfs").exists()
+    assert not fs_state_path.exists()
+
+
+def test_compose_teardown_without_env_file_supplies_required_vars(tmp_path: Path) -> None:
+    project_root = tmp_path
+    compose_dir = project_root / "ochami-docker-compose"
+    compose_dir.mkdir(parents=True)
+    (compose_dir / "docker-compose.yml").write_text("services: {}\n", encoding="utf-8")
+    (project_root / ".openchami-secrets.env").write_text(
+        (
+            "POSTGRES_PASSWORD=pg-pass\n"
+            "SMD_DB_PASSWORD=smd-pass\n"
+            "BSS_DB_PASSWORD=bss-pass\n"
+            "KEA_DB_PASSWORD=kea-pass\n"
+            "PCS_DB_PASSWORD=pcs-pass\n"
+            "STORK_DB_PASSWORD=stork-pass\n"
+        ),
+        encoding="utf-8",
+    )
+
+    calls: list[dict[str, Any]] = []
+
+    def fake_run(cmd: list[str], **kwargs: Any) -> int:
+        calls.append({"cmd": cmd, "kwargs": kwargs})
+        return 0
+
+    teardown = ComposeTeardown(
+        project_root=project_root,
+        runner=fake_run,
+        output_runner=lambda *_args, **_kwargs: "",
+        network=StubNetwork(),
+        macos=False,
+    )
+    cfg = TeardownConfig(method=DeploymentMethod.DOCKER_COMPOSE, skip_confirm=True)
+    teardown.run(cfg, dry_run=False)
+
+    compose_call = next(call for call in calls if call["cmd"][:3] == ["docker", "compose", "-p"])
+    assert "--env-file" not in compose_call["cmd"]
+    env = compose_call["kwargs"]["env"]
+    assert env["POSTGRES_PASSWORD"] == "pg-pass"
+    assert env["SMD_DB_PASSWORD"] == "smd-pass"
+    assert env["BSS_DB_PASSWORD"] == "bss-pass"
+    assert env["KEA_DB_PASSWORD"] == "kea-pass"
+    assert env["PCS_DB_PASSWORD"] == "pcs-pass"
+    assert env["STORK_DB_PASSWORD"] == "stork-pass"

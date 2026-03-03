@@ -14,6 +14,11 @@
   - [x] Add regression tests and README usage docs for minikube-only MCP workflow.
 
 ## Completed
+- [x] Complete Python CLI migration cleanup (Phase 6) by removing legacy shell entrypoints and script directory.
+  - [x] Remove `deploy.sh`, `teardown.sh`, and `scripts/`.
+  - [x] Update `Makefile` so `make test` runs pytest.
+  - [x] Update README usage to Python CLI commands (`ochami ...`).
+  - [x] Keep deployment artifact directories (`ochami-docker-compose/`, `ochami-helm/`, `ochami-quadlets/`).
 - [x] Make `fs.protected_regular` mutation opt-in and restore only when managed by OpenCHAMI.
 - [x] Enforce roadmap process contract by keeping `ROADMAP.md` at repo root and adding a regression test guard in `make test`.
 - [x] Remove CI automation requirement from project process docs and keep GitHub Actions out of scope by default.

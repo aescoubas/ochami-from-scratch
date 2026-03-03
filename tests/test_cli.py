@@ -4,9 +4,14 @@ from typing import Any
 
 from typer.testing import CliRunner
 
+import ochami.cli as cli_module
 from ochami.cli import app
 
 runner = CliRunner()
+
+
+def test_cli_has_no_legacy_script_bridge() -> None:
+    assert not hasattr(cli_module, "run_script")
 
 
 def test_deploy_cli_uses_python_minikube_deployer(monkeypatch: Any) -> None:

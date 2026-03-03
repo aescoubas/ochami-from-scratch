@@ -12,6 +12,10 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 LOG_DIR="/tmp/ochami-test-logs"
+CLI_PYTHON="${PROJECT_ROOT}/.venv/bin/python"
+if [ ! -x "$CLI_PYTHON" ]; then
+    CLI_PYTHON="python3"
+fi
 
 # Source smoke test library
 # shellcheck source=smoke_test.sh
@@ -127,15 +131,6 @@ ensure_test_pxe_interface() {
 # --- Prepare log directory ---
 mkdir -p "$LOG_DIR"
 
-# --- Install prerequisites ---
-echo "=== Installing prerequisites ==="
-prereq_args=()
-if [ "$SET_FS_PROTECTED_REGULAR_FOR_TESTS" = "true" ]; then
-    prereq_args+=(--set-fs-protected-regular)
-fi
-bash "$PROJECT_ROOT/scripts/install_prerequisites.sh" "${prereq_args[@]}" 2>&1 | tee "$LOG_DIR/${DISTRO}-prerequisites.log"
-echo ""
-
 cd "$PROJECT_ROOT"
 
 # --- Run tests for each method ---
@@ -180,7 +175,10 @@ for method in "${ALL_METHODS[@]}"; do
         fi
         echo "--> Deploying with ${deploy_args[*]} ..."
     fi
-    if [ "$method_rc" -eq 0 ] && bash "$PROJECT_ROOT/deploy.sh" "${deploy_args[@]}" 2>&1 | tee -a "$LOG_FILE"; then
+    if [ "$SET_FS_PROTECTED_REGULAR_FOR_TESTS" = "true" ]; then
+        deploy_args+=(--set-fs-protected-regular)
+    fi
+    if [ "$method_rc" -eq 0 ] && "$CLI_PYTHON" -m ochami.cli deploy "${deploy_args[@]}" 2>&1 | tee -a "$LOG_FILE"; then
         echo "--> Deploy succeeded"
 
         # Smoke test
@@ -202,7 +200,7 @@ for method in "${ALL_METHODS[@]}"; do
 
     # Teardown (always runs, even on failure)
     echo "--> Tearing down method $method ..."
-    bash "$PROJECT_ROOT/teardown.sh" --method "$method" --interface "$PXE_TEST_INTERFACE" --ip "$PXE_TEST_IP" --cidr "$PXE_TEST_CIDR" -y 2>&1 | tee -a "$LOG_FILE" || true
+    "$CLI_PYTHON" -m ochami.cli teardown --method "$method" --interface "$PXE_TEST_INTERFACE" --ip "$PXE_TEST_IP" --cidr "$PXE_TEST_CIDR" -y 2>&1 | tee -a "$LOG_FILE" || true
     echo "--> Teardown complete"
     echo ""
 

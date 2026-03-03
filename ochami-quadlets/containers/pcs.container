@@ -10,7 +10,7 @@ Exec=power-control --run-control
 EnvironmentFile=/etc/openchami/openchami.env
 Environment=STORAGE=POSTGRES
 Environment=POSTGRES_HOST=localhost
-Environment=POSTGRES_PORT=5432
+Environment=POSTGRES_PORT=${POSTGRES_PORT}
 Environment=POSTGRES_USER=${PCS_DB_USER}
 Environment=POSTGRES_PASSWORD=${PCS_DB_PASSWORD}
 Environment=POSTGRES_DBNAME=${PCS_DB_NAME}

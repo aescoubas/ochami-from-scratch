@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import os
-import subprocess
 from pathlib import Path
 from typing import Annotated
 
@@ -18,33 +17,13 @@ from ochami.config import (
 from ochami.deploy.compose import ComposeDeployer
 from ochami.deploy.minikube import MinikubeDeployer
 from ochami.deploy.quadlets import QuadletsDeployer
+from ochami.mcp.server import main as mcp_server_main
+from ochami.registry import RegistryManager
 from ochami.teardown.compose import ComposeTeardown
 from ochami.teardown.minikube import MinikubeTeardown
 from ochami.teardown.quadlets import QuadletsTeardown
 
-app = typer.Typer(help="OpenCHAMI Python CLI bridge.")
-
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
-
-
-def run_script(script_name: str, args: list[str], env: dict[str, str], dry_run: bool = False) -> int:
-    script_path = PROJECT_ROOT / script_name
-    if not script_path.is_file():
-        raise typer.BadParameter(f"script not found: {script_path}")
-
-    cmd = ["bash", str(script_path), *args]
-    merged_env = os.environ.copy()
-    merged_env.update(env)
-
-    if dry_run:
-        typer.echo("Dry run enabled; command not executed.")
-        typer.echo(f"Command: {' '.join(cmd)}")
-        for key in sorted(env):
-            typer.echo(f"{key}={env[key]}")
-        return 0
-
-    proc = subprocess.run(cmd, env=merged_env, check=False)
-    return proc.returncode
+app = typer.Typer(help="OpenCHAMI Python CLI.")
 
 
 def _raise_validation(error: ValueError) -> None:
@@ -179,9 +158,7 @@ def deploy(
         MinikubeDeployer().run(cfg, dry_run=dry_run)
         return
 
-    exit_code = run_script("deploy.sh", cfg.to_shell_args(), cfg.to_env(), dry_run=dry_run)
-    if exit_code != 0:
-        raise typer.Exit(code=exit_code)
+    raise typer.BadParameter(f"unsupported deployment method: {cfg.method.value}")
 
 
 @app.command("teardown")
@@ -221,9 +198,59 @@ def teardown(
         MinikubeTeardown().run(cfg, dry_run=dry_run)
         return
 
-    exit_code = run_script("teardown.sh", cfg.to_shell_args(), cfg.to_env(), dry_run=dry_run)
-    if exit_code != 0:
-        raise typer.Exit(code=exit_code)
+    raise typer.BadParameter(f"unsupported teardown method: {cfg.method.value}")
+
+
+@app.command("mcp")
+def mcp(
+    mode: Annotated[str, typer.Option("--mode", help="MCP mode: read-only or read-write")] = "read-only",
+    base_url: Annotated[str, typer.Option("--base-url", help="OpenCHAMI API base URL")] = "",
+    timeout: Annotated[int, typer.Option("--timeout", help="MCP request timeout (seconds)")] = 10,
+    enable_writes: Annotated[
+        bool,
+        typer.Option("--enable-writes", help="Enable write-capable MCP tools in read-write mode"),
+    ] = False,
+) -> None:
+    if mode not in {"read-only", "read-write"}:
+        raise typer.BadParameter("--mode must be read-only or read-write")
+    if enable_writes:
+        os.environ["OPENCHAMI_MCP_ENABLE_WRITES"] = "true"
+
+    argv: list[str] = ["--mode", mode, "--timeout", str(timeout)]
+    if base_url:
+        argv.extend(["--base-url", base_url])
+    raise typer.Exit(code=mcp_server_main(argv))
+
+
+@app.command("register-node")
+def register_node(
+    mac: Annotated[str, typer.Option("--mac", help="Node MAC address")],
+    ip: Annotated[str, typer.Option("--ip", help="Node IP address")],
+    component_id: Annotated[str, typer.Option("--component-id", help="SMD component xname")],
+    nid: Annotated[int, typer.Option("--nid", help="Numeric node ID")],
+    bmc_ip: Annotated[str, typer.Option("--bmc-ip", help="BMC IP address")],
+    bmc_user: Annotated[str, typer.Option("--bmc-user", help="BMC username")],
+    bmc_pass: Annotated[str, typer.Option("--bmc-pass", help="BMC password")],
+    method: Annotated[
+        DeploymentMethod,
+        typer.Option("--method", help="Deployment method for service endpoint resolution"),
+    ] = DeploymentMethod.MINIKUBE,
+    host_ip: Annotated[str, typer.Option("--host-ip", help="Host IP used for local reverse-proxy routes")] = "192.168.100.2",
+    dry_run: Annotated[bool, typer.Option("--dry-run", help="Show validation only")] = False,
+) -> None:
+    manager = RegistryManager(Path(__file__).resolve().parents[1])
+    manager.register_hardware_node(
+        mac=mac,
+        ip=ip,
+        component_id=component_id,
+        nid=nid,
+        bmc_ip=bmc_ip,
+        bmc_user=bmc_user,
+        bmc_pass=bmc_pass,
+        host_ip=host_ip,
+        orchestrator=method.value,
+        dry_run=dry_run,
+    )
 
 
 def main() -> None:

@@ -5,6 +5,12 @@ from pathlib import Path
 
 from ochami.config import DeploymentMethod, TeardownConfig
 from ochami.network import NetworkManager
+from ochami.system import (
+    FS_PROTECTED_REGULAR_STATE_FILE,
+    cleanup_build_artifacts,
+    destroy_vms,
+    restore_fs_protected_regular_if_managed,
+)
 from ochami.teardown.base import BaseTeardown
 from ochami.utils import command_exists, is_macos, run, run_output
 
@@ -33,6 +39,7 @@ class MinikubeTeardown(BaseTeardown):
         macos: bool | None = None,
         has_minikube: bool | None = None,
         has_docker: bool | None = None,
+        fs_state_path: Path = FS_PROTECTED_REGULAR_STATE_FILE,
     ) -> None:
         self.project_root = project_root or Path(__file__).resolve().parents[2]
         self._run = runner
@@ -40,6 +47,7 @@ class MinikubeTeardown(BaseTeardown):
         self._is_macos = is_macos() if macos is None else macos
         self._has_minikube = command_exists("minikube") if has_minikube is None else has_minikube
         self._has_docker = command_exists("docker") if has_docker is None else has_docker
+        self._fs_state_path = fs_state_path
         self.network = network or NetworkManager(self.project_root, runner=runner, output_runner=output_runner, macos=self._is_macos)
 
     def validate(self, config: TeardownConfig) -> None:
@@ -59,15 +67,12 @@ class MinikubeTeardown(BaseTeardown):
         self._restore_fs_protected_regular(dry_run=dry_run)
 
     def _destroy_vms(self, config: TeardownConfig, dry_run: bool) -> None:
-        common_sh = self.project_root / "scripts" / "common.sh"
-        self._run(
-            [
-                "bash",
-                "-lc",
-                f"source '{common_sh}' && destroy_vms '{config.vm_name}'",
-            ],
+        destroy_vms(
+            config.vm_name,
+            runner=self._run,
+            output_runner=self._run_output,
             dry_run=dry_run,
-            check=False,
+            macos=self._is_macos,
         )
 
     def _delete_minikube_cluster(self, dry_run: bool) -> None:
@@ -97,19 +102,15 @@ class MinikubeTeardown(BaseTeardown):
                 self._run(["docker", "rmi", image], dry_run=dry_run, check=False)
 
     def _cleanup_artifacts(self, dry_run: bool) -> None:
-        common_sh = self.project_root / "scripts" / "common.sh"
-        self._run(
-            ["bash", "-lc", f"source '{common_sh}' && cleanup_build_artifacts"],
-            dry_run=dry_run,
-            check=False,
-        )
+        cleanup_build_artifacts(self.project_root, dry_run=dry_run)
 
     def _restore_fs_protected_regular(self, dry_run: bool) -> None:
-        common_sh = self.project_root / "scripts" / "common.sh"
-        self._run(
-            ["bash", "-lc", f"source '{common_sh}' && restore_fs_protected_regular_if_managed"],
+        restore_fs_protected_regular_if_managed(
+            runner=self._run,
+            output_runner=self._run_output,
+            fs_state_path=self._fs_state_path,
             dry_run=dry_run,
-            check=False,
+            macos=self._is_macos,
         )
 
 

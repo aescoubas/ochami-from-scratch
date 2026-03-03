@@ -91,13 +91,14 @@ def _write(path: Path, content: str) -> None:
 def test_minikube_deployer_runs_expected_flow(tmp_path: Path) -> None:
     project_root = tmp_path
     _write(project_root / "ochami-helm/values-pxe.yaml", "externalIp: \"127.0.0.1\"\n")
-    _write(project_root / "scripts/common.sh", "#!/bin/bash\n")
 
     commands: list[list[str]] = []
     sa_checks = {"count": 0}
 
     def fake_run(cmd: list[str], **_: Any) -> int:
         commands.append(cmd)
+        if cmd[:2] == ["minikube", "status"]:
+            return 1
         if cmd[:6] == ["minikube", "kubectl", "--", "get", "sa", "default"]:
             sa_checks["count"] += 1
             return 0
@@ -126,6 +127,7 @@ def test_minikube_deployer_runs_expected_flow(tmp_path: Path) -> None:
         builder=builder,
         sleeper=lambda _seconds: None,
         macos=False,
+        home_dir=project_root,
     )
 
     cfg = DeployConfig(
@@ -165,6 +167,8 @@ def test_minikube_deployer_runs_expected_flow(tmp_path: Path) -> None:
     assert "OPENCHAMI_BASE_URL=http://192.168.100.2:30080" in mcp_path.read_text(encoding="utf-8")
 
     assert any(cmd[:2] == ["minikube", "status"] for cmd in commands)
+    assert ["sudo", "chmod", "-R", "a+rwX", str(project_root / ".minikube")] in commands
+    assert ["sudo", "chmod", "-R", "a+rwX", str(project_root / ".kube")] in commands
     assert any(
         cmd[:5] == ["minikube", "kubectl", "--", "get", "svc"] and "ochami-bss" in cmd
         for cmd in output_calls
@@ -173,7 +177,14 @@ def test_minikube_deployer_runs_expected_flow(tmp_path: Path) -> None:
 
 def test_minikube_teardown_runs_expected_flow(tmp_path: Path) -> None:
     project_root = tmp_path
-    _write(project_root / "scripts/common.sh", "#!/bin/bash\n")
+    artifacts_dir = project_root / "ochami-helm/http-server/artifacts"
+    (artifacts_dir / "opensuse").mkdir(parents=True)
+    (artifacts_dir / "ubuntu").mkdir(parents=True)
+    _write(artifacts_dir / "vmlinuz-lts", "kernel\n")
+    _write(artifacts_dir / "initramfs-lts", "initramfs\n")
+    _write(artifacts_dir / "rootfs.squashfs", "rootfs\n")
+    fs_state_path = project_root / "tmp/openchami-fs-protected-regular.state"
+    _write(fs_state_path, "2\n")
 
     commands: list[list[str]] = []
 
@@ -184,9 +195,17 @@ def test_minikube_teardown_runs_expected_flow(tmp_path: Path) -> None:
         return 0
 
     def fake_output(cmd: list[str], **_: Any) -> str:
+        if cmd[:4] == ["sudo", "virsh", "list", "--all"]:
+            return "virtual-compute-node\nvirtual-compute-node-1\n"
         if cmd[:5] == ["minikube", "profile", "list", "-o", "json"]:
             return '{"valid":[{"Driver":"none"}]}'
+        if cmd[:4] == ["sysctl", "-n", "fs.protected_regular"]:
+            if fake_output.fs_read_count == 0:
+                fake_output.fs_read_count += 1
+                return "0"
+            return "2"
         return ""
+    fake_output.fs_read_count = 0  # type: ignore[attr-defined]
 
     network = StubNetwork()
 
@@ -196,17 +215,26 @@ def test_minikube_teardown_runs_expected_flow(tmp_path: Path) -> None:
         output_runner=fake_output,
         network=network,
         macos=False,
+        fs_state_path=fs_state_path,
     )
 
     cfg = TeardownConfig(method=DeploymentMethod.MINIKUBE, remove_images=True, skip_confirm=True)
     teardown.run(cfg, dry_run=False)
 
-    assert any("destroy_vms" in " ".join(cmd) for cmd in commands)
+    assert ["sudo", "virsh", "destroy", "virtual-compute-node"] in commands
+    assert ["sudo", "virsh", "undefine", "--nvram", "virtual-compute-node"] in commands
+    assert ["sudo", "virsh", "destroy", "virtual-compute-node-1"] in commands
+    assert ["sudo", "virsh", "undefine", "--nvram", "virtual-compute-node-1"] in commands
     assert any(cmd[:3] == ["sudo", "-E", "minikube"] and cmd[-1] == "delete" for cmd in commands)
     assert any(cmd[:3] == ["docker", "image", "inspect"] for cmd in commands)
     assert any(cmd[:2] == ["docker", "rmi"] for cmd in commands)
     assert ["sudo", "rm", "-rf", "/opt/cni"] in commands
     assert network.calls and network.calls[0][0] == "cleanup"
+    assert ["sudo", "sysctl", "-w", "fs.protected_regular=2"] in commands
 
-    assert any("cleanup_build_artifacts" in " ".join(cmd) for cmd in commands)
-    assert any("restore_fs_protected_regular_if_managed" in " ".join(cmd) for cmd in commands)
+    assert not (artifacts_dir / "opensuse").exists()
+    assert not (artifacts_dir / "ubuntu").exists()
+    assert not (artifacts_dir / "vmlinuz-lts").exists()
+    assert not (artifacts_dir / "initramfs-lts").exists()
+    assert not (artifacts_dir / "rootfs.squashfs").exists()
+    assert not fs_state_path.exists()

@@ -13,6 +13,7 @@ from ochami.deploy.compose import DEFAULT_DATABASES, ensure_runtime_secrets
 from ochami.network import NetworkManager
 from ochami.prerequisites import PrerequisitesInstaller
 from ochami.registry import RegistryManager
+from ochami.system import relax_permissions
 from ochami.utils import is_macos, run, run_output
 
 
@@ -34,6 +35,7 @@ class MinikubeDeployer(BaseDeployer):
         secrets_provider: Callable[[], dict[str, str]] | None = None,
         sleeper: Callable[[float], None] = time.sleep,
         macos: bool | None = None,
+        home_dir: Path | None = None,
     ) -> None:
         self.project_root = project_root or Path(__file__).resolve().parents[2]
         self._run = runner
@@ -44,6 +46,7 @@ class MinikubeDeployer(BaseDeployer):
         self.helm_dir = self.project_root / "ochami-helm"
         self.values_base_file = self.helm_dir / "values-pxe.yaml"
         self._active_interface = "virbr-pxe"
+        self.home_dir = home_dir or Path.home()
 
         self.network = network or NetworkManager(self.project_root, runner=runner, output_runner=output_runner, macos=self._is_macos)
         self.registry = registry or RegistryManager(self.project_root, runner=runner, macos=self._is_macos)
@@ -146,15 +149,10 @@ class MinikubeDeployer(BaseDeployer):
             return
 
         self._run(["sudo", "-E", *start_cmd], dry_run=dry_run)
-        common_sh = self.project_root / "scripts" / "common.sh"
-        self._run(
-            [
-                "bash",
-                "-lc",
-                f"source '{common_sh}' && relax_permissions '$HOME/.minikube' '$HOME/.kube'",
-            ],
+        relax_permissions(
+            [self.home_dir / ".minikube", self.home_dir / ".kube"],
+            runner=self._run,
             dry_run=dry_run,
-            check=False,
         )
 
     def _build_images(self, config: DeployConfig, dry_run: bool) -> None:

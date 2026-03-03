@@ -13,7 +13,7 @@
 # Usage:
 #   cp nodes.csv.example nodes.csv
 #   # Edit nodes.csv with your hardware inventory
-#   ./deploy.sh --method minikube --mode hardware --interface ens160 \
+#   ochami deploy --method minikube --mode hardware --interface ens160 \
 #     --ip 148.187.1.68 --cidr 28 --dhcp-start 148.187.1.69 --dhcp-end 148.187.1.78 \
 #     --nodes-file nodes.csv
 #
