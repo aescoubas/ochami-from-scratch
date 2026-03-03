@@ -60,6 +60,34 @@ def run(
     return completed.returncode
 
 
+def run_output(
+    cmd: Sequence[str],
+    *,
+    cwd: Path | None = None,
+    env: Mapping[str, str] | None = None,
+    check: bool = True,
+    dry_run: bool = False,
+) -> str:
+    if dry_run:
+        return ""
+
+    full_env = os.environ.copy()
+    if env:
+        full_env.update(env)
+
+    completed = subprocess.run(
+        list(cmd),
+        cwd=str(cwd) if cwd else None,
+        env=full_env,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if check and completed.returncode != 0:
+        raise RuntimeError(f"command failed ({completed.returncode}): {' '.join(cmd)}")
+    return completed.stdout.strip()
+
+
 def parse_env_file(path: Path) -> dict[str, str]:
     if not path.is_file():
         return {}

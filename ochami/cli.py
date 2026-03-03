@@ -16,8 +16,10 @@ from ochami.config import (
     TeardownConfig,
 )
 from ochami.deploy.compose import ComposeDeployer
+from ochami.deploy.minikube import MinikubeDeployer
 from ochami.deploy.quadlets import QuadletsDeployer
 from ochami.teardown.compose import ComposeTeardown
+from ochami.teardown.minikube import MinikubeTeardown
 from ochami.teardown.quadlets import QuadletsTeardown
 
 app = typer.Typer(help="OpenCHAMI Python CLI bridge.")
@@ -173,6 +175,9 @@ def deploy(
     if cfg.method == DeploymentMethod.QUADLETS:
         QuadletsDeployer().run(cfg, dry_run=dry_run)
         return
+    if cfg.method == DeploymentMethod.MINIKUBE:
+        MinikubeDeployer().run(cfg, dry_run=dry_run)
+        return
 
     exit_code = run_script("deploy.sh", cfg.to_shell_args(), cfg.to_env(), dry_run=dry_run)
     if exit_code != 0:
@@ -211,6 +216,9 @@ def teardown(
         return
     if cfg.method == DeploymentMethod.QUADLETS:
         QuadletsTeardown().run(cfg, dry_run=dry_run)
+        return
+    if cfg.method == DeploymentMethod.MINIKUBE:
+        MinikubeTeardown().run(cfg, dry_run=dry_run)
         return
 
     exit_code = run_script("teardown.sh", cfg.to_shell_args(), cfg.to_env(), dry_run=dry_run)
