@@ -1,0 +1,76 @@
+server {
+    listen       {{ http_port }};
+    listen  [::]:{{ http_port }};
+    server_name  localhost;
+
+    # Proxy to BSS for dynamic boot scripts
+    # This allows BSS to generate custom boot scripts per node
+
+    # Handle requests prefixed with /apis/bss/ (rewrite/strip prefix)
+    location /apis/bss/ {
+        proxy_pass http://localhost:{{ bss_port }}/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
+
+    # Handle direct requests to /boot/v1/
+    location /boot/v1/ {
+        proxy_pass http://localhost:{{ bss_port }}/boot/v1/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
+
+    # Proxy to SMD
+    location /hsm/ {
+        proxy_pass http://localhost:{{ smd_port }}/hsm/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    }
+
+    location /cloud-init/ {
+        proxy_pass http://localhost:{{ cloud_init_port }}/cloud-init/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    }
+
+    location /power-control/ {
+        proxy_pass http://localhost:{{ pcs_port }}/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    }
+
+    # Proxy to Stork (Kea DHCP Monitor)
+    location /stork/ {
+        proxy_pass http://localhost:{{ stork_port }}/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    }
+
+    # Stork API endpoint used by stork-agent when configured with proxy root URL
+    location /api/ {
+        proxy_pass http://localhost:{{ stork_port }}/api/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    }
+
+    location /hmi/v1/subscribe {
+        return 200 '{"Components":[]}';
+        add_header Content-Type application/json;
+    }
+
+    location / {
+        root   /usr/share/nginx/html;
+        index  index.html index.htm;
+        autoindex on;
+    }
+
+    error_page   500 502 503 504  /50x.html;
+    location = /50x.html {
+        root   /usr/share/nginx/html;
+    }
+}
