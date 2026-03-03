@@ -22,3 +22,6 @@ ochami-docker-compose/configs/boot.ipxe
 # Libvirt VM test state
 libvirt/.state/
 scripts/mcp/__pycache__/
+__pycache__/
+.pytest_cache/
+*.pyc
