@@ -53,6 +53,43 @@ class StubRegistry:
         )
 
 
+class StubPrerequisites:
+    def __init__(self) -> None:
+        self.calls: list[dict[str, Any]] = []
+
+    def install(self, *, set_fs_protected_regular: bool, dry_run: bool) -> None:
+        self.calls.append(
+            {
+                "set_fs_protected_regular": set_fs_protected_regular,
+                "dry_run": dry_run,
+            }
+        )
+
+
+class StubBuilder:
+    def __init__(self) -> None:
+        self.calls: list[dict[str, Any]] = []
+
+    def build_images_if_needed(
+        self,
+        config: DeployConfig,
+        *,
+        orchestrator: str,
+        container_tool: str,
+        force_rebuild: bool,
+        dry_run: bool,
+    ) -> None:
+        self.calls.append(
+            {
+                "config": config,
+                "orchestrator": orchestrator,
+                "container_tool": container_tool,
+                "force_rebuild": force_rebuild,
+                "dry_run": dry_run,
+            }
+        )
+
+
 def _write_template(path: Path, content: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(content, encoding="utf-8")
@@ -82,6 +119,8 @@ def test_compose_deployer_generates_env_and_configs(tmp_path: Path) -> None:
 
     network = StubNetwork()
     registry = StubRegistry()
+    prerequisites = StubPrerequisites()
+    builder = StubBuilder()
 
     deployer = ComposeDeployer(
         project_root=project_root,
@@ -89,6 +128,8 @@ def test_compose_deployer_generates_env_and_configs(tmp_path: Path) -> None:
         renderer=TemplateRenderer(project_root / "templates"),
         network=network,
         registry=registry,
+        prerequisites=prerequisites,
+        builder=builder,
         secrets_provider=lambda: {
             "POSTGRES_PASSWORD": "pg-pass",
             "SMD_DB_PASSWORD": "smd-pass",
@@ -129,6 +170,8 @@ def test_compose_deployer_generates_env_and_configs(tmp_path: Path) -> None:
     assert network.calls
     assert registry.bss_calls
     assert registry.post_calls
+    assert prerequisites.calls == [{"set_fs_protected_regular": False, "dry_run": False}]
+    assert builder.calls and builder.calls[0]["orchestrator"] == "docker-compose"
 
 
 def test_compose_teardown_issues_expected_commands(tmp_path: Path) -> None:

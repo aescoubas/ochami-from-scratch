@@ -6,10 +6,12 @@ import tempfile
 import time
 from typing import Callable
 
+from ochami.build import BuildManager
 from ochami.config import DeployConfig, DeploymentMethod
 from ochami.deploy.base import BaseDeployer
 from ochami.deploy.compose import DEFAULT_DATABASES, ensure_runtime_secrets
 from ochami.network import NetworkManager
+from ochami.prerequisites import PrerequisitesInstaller
 from ochami.registry import RegistryManager
 from ochami.utils import is_macos, run, run_output
 
@@ -27,6 +29,8 @@ class MinikubeDeployer(BaseDeployer):
         output_runner=run_output,
         network: NetworkManager | None = None,
         registry: RegistryManager | None = None,
+        builder: BuildManager | None = None,
+        prerequisites: PrerequisitesInstaller | None = None,
         secrets_provider: Callable[[], dict[str, str]] | None = None,
         sleeper: Callable[[float], None] = time.sleep,
         macos: bool | None = None,
@@ -43,6 +47,12 @@ class MinikubeDeployer(BaseDeployer):
 
         self.network = network or NetworkManager(self.project_root, runner=runner, output_runner=output_runner, macos=self._is_macos)
         self.registry = registry or RegistryManager(self.project_root, runner=runner, macos=self._is_macos)
+        self.builder = builder or BuildManager(self.project_root, runner=runner, output_runner=output_runner)
+        self.prerequisites = prerequisites or PrerequisitesInstaller(
+            runner=runner,
+            output_runner=output_runner,
+            macos=self._is_macos,
+        )
         self.secrets_provider = secrets_provider or (lambda: ensure_runtime_secrets(self.project_root))
 
     def validate(self, config: DeployConfig) -> None:
@@ -117,10 +127,7 @@ class MinikubeDeployer(BaseDeployer):
         self._write_mcp_defaults(host_ip=host_ip, dry_run=dry_run)
 
     def _install_prerequisites(self, config: DeployConfig, dry_run: bool) -> None:
-        cmd = [str(self.project_root / "scripts" / "install_prerequisites.sh")]
-        if config.set_fs_protected_regular:
-            cmd.append("--set-fs-protected-regular")
-        self._run(cmd, dry_run=dry_run)
+        self.prerequisites.install(set_fs_protected_regular=config.set_fs_protected_regular, dry_run=dry_run)
 
     def _ensure_minikube_running(self, dry_run: bool) -> None:
         status_rc = self._run(["minikube", "status"], dry_run=dry_run, check=False)
@@ -151,12 +158,13 @@ class MinikubeDeployer(BaseDeployer):
         )
 
     def _build_images(self, config: DeployConfig, dry_run: bool) -> None:
-        common_sh = self.project_root / "scripts" / "common.sh"
-        command = (
-            f"source '{common_sh}' && "
-            f"build_images_if_needed 'docker' 'minikube' '{'true' if config.rebuild else 'false'}'"
+        self.builder.build_images_if_needed(
+            config,
+            orchestrator="minikube",
+            container_tool="docker",
+            force_rebuild=config.rebuild,
+            dry_run=dry_run,
         )
-        self._run(["bash", "-lc", command], dry_run=dry_run)
 
     def _build_runtime_values(self, config: DeployConfig, host_ip: str) -> dict[str, str]:
         runtime: dict[str, str] = {}

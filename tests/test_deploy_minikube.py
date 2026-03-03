@@ -46,6 +46,43 @@ class StubRegistry:
         )
 
 
+class StubPrerequisites:
+    def __init__(self) -> None:
+        self.calls: list[dict[str, Any]] = []
+
+    def install(self, *, set_fs_protected_regular: bool, dry_run: bool) -> None:
+        self.calls.append(
+            {
+                "set_fs_protected_regular": set_fs_protected_regular,
+                "dry_run": dry_run,
+            }
+        )
+
+
+class StubBuilder:
+    def __init__(self) -> None:
+        self.calls: list[dict[str, Any]] = []
+
+    def build_images_if_needed(
+        self,
+        config: DeployConfig,
+        *,
+        orchestrator: str,
+        container_tool: str,
+        force_rebuild: bool,
+        dry_run: bool,
+    ) -> None:
+        self.calls.append(
+            {
+                "config": config,
+                "orchestrator": orchestrator,
+                "container_tool": container_tool,
+                "force_rebuild": force_rebuild,
+                "dry_run": dry_run,
+            }
+        )
+
+
 def _write(path: Path, content: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(content, encoding="utf-8")
@@ -76,6 +113,8 @@ def test_minikube_deployer_runs_expected_flow(tmp_path: Path) -> None:
 
     network = StubNetwork()
     registry = StubRegistry()
+    prerequisites = StubPrerequisites()
+    builder = StubBuilder()
 
     deployer = MinikubeDeployer(
         project_root=project_root,
@@ -83,6 +122,8 @@ def test_minikube_deployer_runs_expected_flow(tmp_path: Path) -> None:
         output_runner=fake_output,
         network=network,
         registry=registry,
+        prerequisites=prerequisites,
+        builder=builder,
         sleeper=lambda _seconds: None,
         macos=False,
     )
@@ -116,6 +157,8 @@ def test_minikube_deployer_runs_expected_flow(tmp_path: Path) -> None:
         }
     ]
     assert registry.post_calls and registry.post_calls[0]["orchestrator"] == "minikube"
+    assert prerequisites.calls == [{"set_fs_protected_regular": False, "dry_run": False}]
+    assert builder.calls and builder.calls[0]["orchestrator"] == "minikube"
 
     mcp_path = project_root / ".openchami-mcp.env"
     assert mcp_path.is_file()

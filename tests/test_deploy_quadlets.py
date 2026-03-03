@@ -53,6 +53,43 @@ class StubRegistry:
         )
 
 
+class StubPrerequisites:
+    def __init__(self) -> None:
+        self.calls: list[dict[str, Any]] = []
+
+    def install(self, *, set_fs_protected_regular: bool, dry_run: bool) -> None:
+        self.calls.append(
+            {
+                "set_fs_protected_regular": set_fs_protected_regular,
+                "dry_run": dry_run,
+            }
+        )
+
+
+class StubBuilder:
+    def __init__(self) -> None:
+        self.calls: list[dict[str, Any]] = []
+
+    def build_images_if_needed(
+        self,
+        config: DeployConfig,
+        *,
+        orchestrator: str,
+        container_tool: str,
+        force_rebuild: bool,
+        dry_run: bool,
+    ) -> None:
+        self.calls.append(
+            {
+                "config": config,
+                "orchestrator": orchestrator,
+                "container_tool": container_tool,
+                "force_rebuild": force_rebuild,
+                "dry_run": dry_run,
+            }
+        )
+
+
 def _write(path: Path, content: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(content, encoding="utf-8")
@@ -88,6 +125,8 @@ def test_quadlets_deployer_generates_runtime_files_and_units(tmp_path: Path) -> 
 
     network = StubNetwork()
     registry = StubRegistry()
+    prerequisites = StubPrerequisites()
+    builder = StubBuilder()
     install_dir = project_root / "etc/containers/systemd"
     config_dir = project_root / "etc/openchami"
     systemd_dir = project_root / "etc/systemd/system"
@@ -98,6 +137,8 @@ def test_quadlets_deployer_generates_runtime_files_and_units(tmp_path: Path) -> 
         renderer=TemplateRenderer(project_root / "templates"),
         network=network,
         registry=registry,
+        prerequisites=prerequisites,
+        builder=builder,
         secrets_provider=lambda: {
             "POSTGRES_PASSWORD": "pg-pass",
             "SMD_DB_PASSWORD": "smd-pass",
@@ -143,6 +184,8 @@ def test_quadlets_deployer_generates_runtime_files_and_units(tmp_path: Path) -> 
     assert ["sudo", "systemctl", "start", "openchami.target"] in commands
     assert network.calls
     assert registry.bss_calls and registry.post_calls
+    assert prerequisites.calls == [{"set_fs_protected_regular": False, "dry_run": False}]
+    assert builder.calls and builder.calls[0]["orchestrator"] == "quadlets"
 
 
 def test_quadlets_teardown_removes_artifacts_and_calls_systemd(tmp_path: Path) -> None:
