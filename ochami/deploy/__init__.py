@@ -1,5 +1,6 @@
 """Deployment implementations."""
 
 from ochami.deploy.compose import ComposeDeployer
+from ochami.deploy.quadlets import QuadletsDeployer
 
-__all__ = ["ComposeDeployer"]
+__all__ = ["ComposeDeployer", "QuadletsDeployer"]

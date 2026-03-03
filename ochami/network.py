@@ -66,3 +66,9 @@ class NetworkManager:
             dry_run=dry_run,
             check=False,
         )
+
+    def configure_for_quadlets(self, config: DeployConfig, dry_run: bool) -> str:
+        return self.configure_for_compose(config, dry_run=dry_run)
+
+    def cleanup_for_quadlets(self, config: TeardownConfig, dry_run: bool) -> None:
+        self.cleanup_for_compose(config, dry_run=dry_run)

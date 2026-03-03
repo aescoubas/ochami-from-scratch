@@ -11,6 +11,7 @@ import subprocess
 
 
 MAC_PATTERN = re.compile(r"^[0-9A-Fa-f]{2}(?::[0-9A-Fa-f]{2}){5}$")
+ENV_VAR_PATTERN = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}")
 
 
 def is_macos() -> bool:
@@ -76,3 +77,11 @@ def parse_env_file(path: Path) -> dict[str, str]:
 def write_env_file(path: Path, values: Mapping[str, str]) -> None:
     lines = [f"{key}={value}" for key, value in values.items()]
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def substitute_env_vars(content: str, values: Mapping[str, str]) -> str:
+    def replacer(match: re.Match[str]) -> str:
+        key = match.group(1)
+        return values.get(key, match.group(0))
+
+    return ENV_VAR_PATTERN.sub(replacer, content)

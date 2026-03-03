@@ -89,6 +89,33 @@ def test_deploy_cli_uses_python_compose_deployer(monkeypatch: Any) -> None:
     assert payload == {"method": "docker-compose", "dry_run": True, "interface": "pxe0"}
 
 
+def test_deploy_cli_uses_python_quadlets_deployer(monkeypatch: Any) -> None:
+    payload: dict[str, Any] = {}
+
+    class FakeDeployer:
+        def run(self, config: Any, dry_run: bool) -> None:
+            payload["method"] = config.method.value
+            payload["dry_run"] = dry_run
+            payload["interface"] = config.pxe_interface
+
+    monkeypatch.setattr("ochami.cli.QuadletsDeployer", lambda: FakeDeployer())
+
+    result = runner.invoke(
+        app,
+        [
+            "deploy",
+            "--method",
+            "quadlets",
+            "--interface",
+            "pxe1",
+            "--dry-run",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert payload == {"method": "quadlets", "dry_run": True, "interface": "pxe1"}
+
+
 def test_teardown_cli_builds_bridge_call(monkeypatch: Any) -> None:
     calls: list[dict[str, Any]] = []
 
@@ -161,6 +188,32 @@ def test_teardown_cli_uses_python_compose_teardown(monkeypatch: Any) -> None:
 
     assert result.exit_code == 0
     assert payload == {"method": "docker-compose", "dry_run": True, "remove_images": True}
+
+
+def test_teardown_cli_uses_python_quadlets_teardown(monkeypatch: Any) -> None:
+    payload: dict[str, Any] = {}
+
+    class FakeTeardown:
+        def run(self, config: Any, dry_run: bool) -> None:
+            payload["method"] = config.method.value
+            payload["dry_run"] = dry_run
+            payload["remove_images"] = config.remove_images
+
+    monkeypatch.setattr("ochami.cli.QuadletsTeardown", lambda: FakeTeardown())
+
+    result = runner.invoke(
+        app,
+        [
+            "teardown",
+            "--method",
+            "quadlets",
+            "--remove-images",
+            "--dry-run",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert payload == {"method": "quadlets", "dry_run": True, "remove_images": True}
 
 
 def test_deploy_cli_surfaces_validation_errors() -> None:
