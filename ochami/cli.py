@@ -35,7 +35,7 @@ def deploy(
     method: Annotated[
         DeploymentMethod,
         typer.Option("--method", help="Deployment method"),
-    ] = DeploymentMethod.DOCKER_COMPOSE,
+    ],
     rebuild: Annotated[bool, typer.Option("--rebuild", help="Force rebuild container images")] = False,
     dhcp_start: Annotated[str, typer.Option("--dhcp-start", help="DHCP pool start")] = "192.168.100.100",
     dhcp_end: Annotated[str, typer.Option("--dhcp-end", help="DHCP pool end")] = "192.168.100.200",
@@ -166,7 +166,7 @@ def teardown(
     method: Annotated[
         DeploymentMethod,
         typer.Option("--method", help="Teardown method"),
-    ] = DeploymentMethod.DOCKER_COMPOSE,
+    ],
     remove_images: Annotated[bool, typer.Option("--remove-images", help="Also remove container images")] = False,
     vm_name: Annotated[str, typer.Option("--vm-name", help="VM name pattern to delete")] = "virtual-compute-node",
     yes: Annotated[bool, typer.Option("--yes", "-y", help="Skip interactive confirmation")] = False,

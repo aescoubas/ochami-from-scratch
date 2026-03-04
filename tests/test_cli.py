@@ -102,6 +102,13 @@ def test_deploy_cli_uses_python_quadlets_deployer(monkeypatch: Any) -> None:
     assert payload == {"method": "quadlets", "dry_run": True, "interface": "pxe1"}
 
 
+def test_deploy_cli_requires_method() -> None:
+    result = runner.invoke(app, ["deploy", "--dry-run"])
+
+    assert result.exit_code == 2
+    assert "Missing option '--method'" in result.output
+
+
 def test_teardown_cli_uses_python_minikube_teardown(monkeypatch: Any) -> None:
     payload: dict[str, Any] = {}
 
@@ -186,6 +193,13 @@ def test_teardown_cli_uses_python_quadlets_teardown(monkeypatch: Any) -> None:
 
     assert result.exit_code == 0
     assert payload == {"method": "quadlets", "dry_run": True, "remove_images": True}
+
+
+def test_teardown_cli_requires_method() -> None:
+    result = runner.invoke(app, ["teardown", "--dry-run"])
+
+    assert result.exit_code == 2
+    assert "Missing option '--method'" in result.output
 
 
 def test_deploy_cli_surfaces_validation_errors() -> None:

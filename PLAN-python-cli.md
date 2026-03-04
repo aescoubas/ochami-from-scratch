@@ -183,7 +183,7 @@ due to `minikube`, `kubectl`, and `helm` interactions.
   - Service endpoint discovery via `kubectl get svc`
 - [x] Create `ochami/teardown/minikube.py`
 - [x] Write `tests/test_deploy_minikube.py`
-- [ ] Verify: full minikube deploy + teardown cycle works via Python CLI (unit-test + dry-run paths verified; full live cycle pending)
+- [x] Verify: full minikube deploy + teardown cycle works via Python CLI (validated live on March 3, 2026)
 
 ### Phase 5 — Port build and prerequisites logic
 
@@ -203,7 +203,7 @@ due to `minikube`, `kubectl`, and `helm` interactions.
 - [x] Update `README.md` with new CLI usage
 - [x] Update `ROADMAP.md`
 - [x] Update `Makefile` — `make test` runs `pytest`
-- [ ] Verify: all 3 methods deploy + teardown cleanly
+- [x] Verify: all 3 methods deploy + teardown cleanly (validated live on March 3, 2026)
 - [ ] Tag release
 
 ## Dependencies

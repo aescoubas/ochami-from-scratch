@@ -14,6 +14,9 @@
   - [x] Add regression tests and README usage docs for minikube-only MCP workflow.
 
 ## Completed
+- [x] Require explicit `--method` for `ochami deploy` and `ochami teardown` to avoid implicit default orchestrator selection.
+  - [x] Remove default deployment method in both CLI commands so Typer enforces `--method`.
+  - [x] Add CLI regression tests for missing `--method` on deploy and teardown.
 - [x] Complete Python CLI migration cleanup (Phase 6) by removing legacy shell entrypoints and script directory.
   - [x] Remove `deploy.sh`, `teardown.sh`, and `scripts/`.
   - [x] Update `Makefile` so `make test` runs pytest.
