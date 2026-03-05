@@ -21,7 +21,7 @@ dev = [
 ]
 
 [project.scripts]
-ochami = "ochami.cli:main"
+ochamifs = "ochami.cli:main"
 ochami-mcp = "ochami.mcp.server:main"
 
 [tool.pytest.ini_options]

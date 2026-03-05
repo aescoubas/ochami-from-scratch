@@ -1,6 +1,6 @@
 # OpenCHAMI From Scratch (Python CLI)
 
-This repository deploys a local OpenCHAMI stack using a Python CLI (`ochami`) with three orchestrators:
+This repository deploys a local OpenCHAMI stack using a Python CLI (`ochamifs`) with three orchestrators:
 
 - `minikube`
 - `quadlets`
@@ -18,7 +18,7 @@ pip install -e .[dev]
 
 You can then use either:
 
-- `ochami ...`
+- `ochamifs ...`
 - `.venv/bin/python -m ochami.cli ...`
 
 ## Quick Start
@@ -26,27 +26,27 @@ You can then use either:
 Deploy with Docker Compose:
 
 ```bash
-ochami deploy --method docker-compose
+ochamifs deploy --method docker-compose
 ```
 
 Deploy with Quadlets:
 
 ```bash
-ochami deploy --method quadlets
+ochamifs deploy --method quadlets
 ```
 
 Deploy with Minikube:
 
 ```bash
-ochami deploy --method minikube
+ochamifs deploy --method minikube
 ```
 
 Teardown:
 
 ```bash
-ochami teardown --method docker-compose -y
-ochami teardown --method quadlets -y
-ochami teardown --method minikube -y
+ochamifs teardown --method docker-compose -y
+ochamifs teardown --method quadlets -y
+ochamifs teardown --method minikube -y
 ```
 
 `--method` is required for both `deploy` and `teardown`.
@@ -54,7 +54,7 @@ ochami teardown --method minikube -y
 ## Common Deploy Options
 
 ```bash
-ochami deploy --method minikube \
+ochamifs deploy --method minikube \
   --mode hardware \
   --interface ens160 \
   --ip 192.168.50.1 \
@@ -84,7 +84,7 @@ Minikube notes:
 Register a hardware node after deployment:
 
 ```bash
-ochami register-node \
+ochamifs register-node \
   --method minikube \
   --host-ip 192.168.100.2 \
   --mac 00:11:22:33:44:55 \
@@ -101,16 +101,43 @@ ochami register-node \
 Run the local MCP server from the Python CLI:
 
 ```bash
-ochami mcp --mode read-only
+ochamifs mcp --mode read-only
 ```
 
 For read-write tools:
 
 ```bash
-ochami mcp --mode read-write --enable-writes
+ochamifs mcp --mode read-write --enable-writes
 ```
 
-Minikube deployments write MCP defaults to `.openchami-mcp.env`.
+Deployments write MCP defaults to `.openchami-mcp.env`:
+
+- `minikube`: `OPENCHAMI_BASE_URL=http://<host_ip>:30080`
+- `docker-compose`: `OPENCHAMI_BASE_URL=http://<host_ip>:80`
+- `quadlets`: `OPENCHAMI_BASE_URL=http://<host_ip>:80`
+
+For Codex MCP client integration (`~/.codex/config.toml`), configure the server
+module entrypoint (the legacy `scripts/mcp/openchami_mcp_server.py` path was
+removed during the Python CLI migration):
+
+```toml
+[mcp_servers.openchami]
+command = "/home/escoubas/git_repos/github/aescoubas/ochami-from-scratch/.venv/bin/python"
+args = [
+  "-m", "ochami.mcp.server",
+  "--mode", "read-write",
+  "--base-url", "http://192.168.100.2:30080",
+  "--timeout", "10",
+  "--no-write-ack"
+]
+startup_timeout_sec = 60
+```
+
+Notes:
+
+- Use the `OPENCHAMI_BASE_URL` value from `.openchami-mcp.env` when available.
+- For safer defaults, prefer `--mode read-only`.
+- In read-write mode, prefer `--enable-writes` (or set `OPENCHAMI_MCP_ENABLE_WRITES=true`) instead of `--no-write-ack`.
 
 ## Testing
 

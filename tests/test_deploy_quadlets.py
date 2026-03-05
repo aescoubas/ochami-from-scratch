@@ -194,6 +194,13 @@ def test_quadlets_deployer_generates_runtime_files_and_units(tmp_path: Path) -> 
     assert prerequisites.calls == [{"set_fs_protected_regular": True, "dry_run": False}]
     assert builder.calls and builder.calls[0]["orchestrator"] == "quadlets"
 
+    mcp_path = project_root / ".openchami-mcp.env"
+    assert mcp_path.is_file()
+    mcp_content = mcp_path.read_text(encoding="utf-8")
+    assert "OPENCHAMI_BASE_URL=http://192.168.100.2:80" in mcp_content
+    assert "OPENCHAMI_MCP_MODE=read-only" in mcp_content
+    assert "OPENCHAMI_MCP_ENABLE_WRITES=false" in mcp_content
+
 
 def test_quadlets_teardown_removes_artifacts_and_calls_systemd(tmp_path: Path) -> None:
     project_root = tmp_path

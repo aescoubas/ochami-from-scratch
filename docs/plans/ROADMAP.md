@@ -10,8 +10,8 @@
   - [x] Both methods use shared env exports and template rendering helpers.
 - [x] Add a minimal Python MCP server for local OpenCHAMI control with explicit read-only/read-write modes.
   - [x] Implement MCP tools for health/status, SMD component/group reads, BSS reads/writes, PCS power status, and gated write operations (power transitions + group CRUD/member updates).
-  - [x] Integrate usage guidance only in `scripts/deploy/minikube.sh` (no Quadlets/Docker Compose wiring yet).
-  - [x] Add regression tests and README usage docs for minikube-only MCP workflow.
+  - [x] Integrate MCP usage guidance and generated defaults for Minikube, Docker Compose, and Quadlets deploy flows.
+  - [x] Add regression tests and README usage docs for MCP workflow.
 
 ## Completed
 - [x] Default deploy behavior now temporarily adjusts `fs.protected_regular` without requiring explicit user opt-in.
@@ -22,13 +22,13 @@
   - [x] Retry Minikube start once after lowering `fs.protected_regular` only for the known lock-related exit code path.
   - [x] Persist previous kernel value so teardown can restore it.
   - [x] Add regression tests for retry and non-applicable failure paths.
-- [x] Require explicit `--method` for `ochami deploy` and `ochami teardown` to avoid implicit default orchestrator selection.
+- [x] Require explicit `--method` for `ochamifs deploy` and `ochamifs teardown` to avoid implicit default orchestrator selection.
   - [x] Remove default deployment method in both CLI commands so Typer enforces `--method`.
   - [x] Add CLI regression tests for missing `--method` on deploy and teardown.
 - [x] Complete Python CLI migration cleanup (Phase 6) by removing legacy shell entrypoints and script directory.
   - [x] Remove `deploy.sh`, `teardown.sh`, and `scripts/`.
   - [x] Update `Makefile` so `make test` runs pytest.
-  - [x] Update README usage to Python CLI commands (`ochami ...`).
+  - [x] Update README usage to Python CLI commands (`ochamifs ...`).
   - [x] Keep deployment artifact directories (`ochami-docker-compose/`, `ochami-helm/`, `ochami-quadlets/`).
 - [x] Make `fs.protected_regular` mutation opt-in and restore only when managed by OpenCHAMI.
 - [x] Enforce roadmap process contract by keeping `ROADMAP.md` at repo root and adding a regression test guard in `make test`.
