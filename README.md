@@ -49,6 +49,8 @@ ochami teardown --method quadlets -y
 ochami teardown --method minikube -y
 ```
 
+`--method` is required for both `deploy` and `teardown`.
+
 ## Common Deploy Options
 
 ```bash
@@ -69,7 +71,13 @@ Useful flags:
 - `--discovery-method magellan`
 - `--magellan-subnets ...`
 - `--auto-kill` / `--fail-on-conflict`
-- `--set-fs-protected-regular`
+- `--set-fs-protected-regular` (enabled by default) / `--no-set-fs-protected-regular`
+
+Minikube notes:
+
+- On Linux (`--driver=none`), deploy can auto-adjust `fs.protected_regular` and retry Minikube start for known lock-permission failures.
+- Previous `fs.protected_regular` is restored by teardown when it was changed by OpenCHAMI.
+- If UDP/67 is already in use, run teardown first or use `--auto-kill`.
 
 ## Hardware Node Registration
 

@@ -191,7 +191,7 @@ def test_quadlets_deployer_generates_runtime_files_and_units(tmp_path: Path) -> 
     assert ["sudo", "systemctl", "start", "openchami.target"] in commands
     assert network.calls
     assert registry.bss_calls and registry.post_calls
-    assert prerequisites.calls == [{"set_fs_protected_regular": False, "dry_run": False}]
+    assert prerequisites.calls == [{"set_fs_protected_regular": True, "dry_run": False}]
     assert builder.calls and builder.calls[0]["orchestrator"] == "quadlets"
 
 

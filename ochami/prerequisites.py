@@ -4,6 +4,7 @@ import json
 import re
 from pathlib import Path
 
+from ochami.system import lower_fs_protected_regular_if_needed
 from ochami.utils import command_exists, is_macos, run, run_output
 
 
@@ -253,14 +254,12 @@ class PrerequisitesInstaller:
         raise RuntimeError(f"could not determine cri-dockerd download URL for {suffix}")
 
     def _handle_fs_protected_regular(self, *, set_fs_protected_regular: bool, dry_run: bool) -> None:
-        current = self._run_output(["sysctl", "-n", "fs.protected_regular"], check=False, dry_run=dry_run).strip()
         if not set_fs_protected_regular:
             return
-        if not current:
-            return
-        if current == "0":
-            return
-        self._run(["sudo", "sysctl", "-w", "fs.protected_regular=0"], dry_run=dry_run)
-        verified = self._run_output(["sysctl", "-n", "fs.protected_regular"], check=False, dry_run=dry_run).strip()
-        if verified == "0" and not dry_run:
-            self._fs_state_path.write_text(current + "\n", encoding="utf-8")
+        lower_fs_protected_regular_if_needed(
+            runner=self._run,
+            output_runner=self._run_output,
+            fs_state_path=self._fs_state_path,
+            dry_run=dry_run,
+            macos=self._is_macos,
+        )

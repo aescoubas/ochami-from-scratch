@@ -170,7 +170,7 @@ def test_compose_deployer_generates_env_and_configs(tmp_path: Path) -> None:
     assert network.calls
     assert registry.bss_calls
     assert registry.post_calls
-    assert prerequisites.calls == [{"set_fs_protected_regular": False, "dry_run": False}]
+    assert prerequisites.calls == [{"set_fs_protected_regular": True, "dry_run": False}]
     assert builder.calls and builder.calls[0]["orchestrator"] == "docker-compose"
 
 

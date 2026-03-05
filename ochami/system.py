@@ -56,6 +56,35 @@ def cleanup_build_artifacts(project_root: Path, *, dry_run: bool) -> None:
             path.unlink()
 
 
+def lower_fs_protected_regular_if_needed(
+    *,
+    runner=run,
+    output_runner=run_output,
+    fs_state_path: Path = FS_PROTECTED_REGULAR_STATE_FILE,
+    dry_run: bool,
+    macos: bool,
+) -> bool:
+    if macos:
+        return False
+
+    current = output_runner(["sysctl", "-n", "fs.protected_regular"], dry_run=dry_run, check=False).strip()
+    if not current or current == "0":
+        return False
+
+    rc = runner(["sudo", "sysctl", "-w", "fs.protected_regular=0"], dry_run=dry_run, check=False)
+    if rc != 0:
+        return False
+
+    verified = output_runner(["sysctl", "-n", "fs.protected_regular"], dry_run=dry_run, check=False).strip()
+    if verified != "0":
+        return False
+
+    if not dry_run:
+        fs_state_path.parent.mkdir(parents=True, exist_ok=True)
+        fs_state_path.write_text(current + "\n", encoding="utf-8")
+    return True
+
+
 def restore_fs_protected_regular_if_managed(
     *,
     runner=run,

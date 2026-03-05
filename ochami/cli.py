@@ -50,8 +50,11 @@ def deploy(
     ] = False,
     set_fs_protected_regular: Annotated[
         bool,
-        typer.Option("--set-fs-protected-regular", help="Set fs.protected_regular=0 during prereq install"),
-    ] = False,
+        typer.Option(
+            "--set-fs-protected-regular/--no-set-fs-protected-regular",
+            help="Temporarily set fs.protected_regular=0 during prereq install",
+        ),
+    ] = True,
     pxe_interface: Annotated[str, typer.Option("--interface", help="PXE interface")] = "virbr-pxe",
     pxe_ip: Annotated[str, typer.Option("--ip", help="Host IP on PXE interface")] = "192.168.100.2",
     pxe_cidr: Annotated[int, typer.Option("--cidr", help="Host CIDR on PXE interface")] = 24,

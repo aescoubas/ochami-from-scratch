@@ -14,6 +14,14 @@
   - [x] Add regression tests and README usage docs for minikube-only MCP workflow.
 
 ## Completed
+- [x] Default deploy behavior now temporarily adjusts `fs.protected_regular` without requiring explicit user opt-in.
+  - [x] Set `DeployConfig.set_fs_protected_regular` default to `true`.
+  - [x] Update deploy CLI to default-enable the behavior and expose `--no-set-fs-protected-regular` opt-out.
+  - [x] Add/adjust regression tests for CLI and deployer defaults.
+- [x] Auto-recover from Minikube none-driver lock permission failures without requiring explicit `--set-fs-protected-regular`.
+  - [x] Retry Minikube start once after lowering `fs.protected_regular` only for the known lock-related exit code path.
+  - [x] Persist previous kernel value so teardown can restore it.
+  - [x] Add regression tests for retry and non-applicable failure paths.
 - [x] Require explicit `--method` for `ochami deploy` and `ochami teardown` to avoid implicit default orchestrator selection.
   - [x] Remove default deployment method in both CLI commands so Typer enforces `--method`.
   - [x] Add CLI regression tests for missing `--method` on deploy and teardown.

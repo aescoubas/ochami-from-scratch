@@ -3,6 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+import pytest
+
 from ochami.config import DeployConfig, DeploymentMethod, TeardownConfig
 from ochami.deploy.minikube import MinikubeDeployer
 from ochami.teardown.minikube import MinikubeTeardown
@@ -159,7 +161,7 @@ def test_minikube_deployer_runs_expected_flow(tmp_path: Path) -> None:
         }
     ]
     assert registry.post_calls and registry.post_calls[0]["orchestrator"] == "minikube"
-    assert prerequisites.calls == [{"set_fs_protected_regular": False, "dry_run": False}]
+    assert prerequisites.calls == [{"set_fs_protected_regular": True, "dry_run": False}]
     assert builder.calls and builder.calls[0]["orchestrator"] == "minikube"
 
     mcp_path = project_root / ".openchami-mcp.env"
@@ -238,3 +240,71 @@ def test_minikube_teardown_runs_expected_flow(tmp_path: Path) -> None:
     assert not (artifacts_dir / "initramfs-lts").exists()
     assert not (artifacts_dir / "rootfs.squashfs").exists()
     assert not fs_state_path.exists()
+
+
+def test_minikube_start_retries_after_fs_protected_regular_adjustment(tmp_path: Path) -> None:
+    commands: list[list[str]] = []
+    state = {"fs": "2", "start_attempts": 0}
+    fs_state_path = tmp_path / "tmp/openchami-fs-protected-regular.state"
+
+    def fake_run(cmd: list[str], **_: Any) -> int:
+        commands.append(cmd)
+        if cmd[:2] == ["minikube", "status"]:
+            return 1
+        if cmd[:4] == ["sudo", "-E", "minikube", "start"]:
+            state["start_attempts"] += 1
+            if state["start_attempts"] == 1:
+                raise RuntimeError("command failed (37): sudo -E minikube start --driver=none --memory=4096 --cpus=2")
+            return 0
+        if cmd == ["sudo", "sysctl", "-w", "fs.protected_regular=0"]:
+            state["fs"] = "0"
+            return 0
+        return 0
+
+    def fake_output(cmd: list[str], **_: Any) -> str:
+        if cmd[:4] == ["sysctl", "-n", "fs.protected_regular"]:
+            return state["fs"]
+        return ""
+
+    deployer = MinikubeDeployer(
+        project_root=tmp_path,
+        runner=fake_run,
+        output_runner=fake_output,
+        sleeper=lambda _seconds: None,
+        macos=False,
+        home_dir=tmp_path / "home",
+        fs_state_path=fs_state_path,
+    )
+
+    deployer._ensure_minikube_running(dry_run=False)
+
+    assert state["start_attempts"] == 2
+    assert ["sudo", "sysctl", "-w", "fs.protected_regular=0"] in commands
+    assert ["sudo", "chmod", "-R", "a+rwX", str(tmp_path / "home/.minikube")] in commands
+    assert ["sudo", "chmod", "-R", "a+rwX", str(tmp_path / "home/.kube")] in commands
+    assert fs_state_path.read_text(encoding="utf-8").strip() == "2"
+
+
+def test_minikube_start_raises_when_fs_workaround_not_applicable(tmp_path: Path) -> None:
+    def fake_run(cmd: list[str], **_: Any) -> int:
+        if cmd[:2] == ["minikube", "status"]:
+            return 1
+        if cmd[:4] == ["sudo", "-E", "minikube", "start"]:
+            raise RuntimeError("command failed (51): sudo -E minikube start --driver=none --memory=4096 --cpus=2")
+        return 0
+
+    def fake_output(cmd: list[str], **_: Any) -> str:
+        if cmd[:4] == ["sysctl", "-n", "fs.protected_regular"]:
+            return "0"
+        return ""
+
+    deployer = MinikubeDeployer(
+        project_root=tmp_path,
+        runner=fake_run,
+        output_runner=fake_output,
+        sleeper=lambda _seconds: None,
+        macos=False,
+    )
+
+    with pytest.raises(RuntimeError, match="command failed \\(51\\)"):
+        deployer._ensure_minikube_running(dry_run=False)

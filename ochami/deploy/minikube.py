@@ -13,7 +13,11 @@ from ochami.deploy.compose import DEFAULT_DATABASES, ensure_runtime_secrets
 from ochami.network import NetworkManager
 from ochami.prerequisites import PrerequisitesInstaller
 from ochami.registry import RegistryManager
-from ochami.system import relax_permissions
+from ochami.system import (
+    FS_PROTECTED_REGULAR_STATE_FILE,
+    lower_fs_protected_regular_if_needed,
+    relax_permissions,
+)
 from ochami.utils import is_macos, run, run_output
 
 
@@ -36,6 +40,7 @@ class MinikubeDeployer(BaseDeployer):
         sleeper: Callable[[float], None] = time.sleep,
         macos: bool | None = None,
         home_dir: Path | None = None,
+        fs_state_path: Path = FS_PROTECTED_REGULAR_STATE_FILE,
     ) -> None:
         self.project_root = project_root or Path(__file__).resolve().parents[2]
         self._run = runner
@@ -47,6 +52,7 @@ class MinikubeDeployer(BaseDeployer):
         self.values_base_file = self.helm_dir / "values-pxe.yaml"
         self._active_interface = "virbr-pxe"
         self.home_dir = home_dir or Path.home()
+        self._fs_state_path = fs_state_path
 
         self.network = network or NetworkManager(self.project_root, runner=runner, output_runner=output_runner, macos=self._is_macos)
         self.registry = registry or RegistryManager(self.project_root, runner=runner, macos=self._is_macos)
@@ -148,12 +154,39 @@ class MinikubeDeployer(BaseDeployer):
             self._run(start_cmd, dry_run=dry_run)
             return
 
-        self._run(["sudo", "-E", *start_cmd], dry_run=dry_run)
+        try:
+            self._run(["sudo", "-E", *start_cmd], dry_run=dry_run)
+        except RuntimeError as exc:
+            if not self._retry_minikube_start_with_fs_workaround(exc=exc, start_cmd=start_cmd, dry_run=dry_run):
+                raise
         relax_permissions(
             [self.home_dir / ".minikube", self.home_dir / ".kube"],
             runner=self._run,
             dry_run=dry_run,
         )
+
+    def _retry_minikube_start_with_fs_workaround(
+        self,
+        *,
+        exc: RuntimeError,
+        start_cmd: list[str],
+        dry_run: bool,
+    ) -> bool:
+        if "command failed (37):" not in str(exc):
+            return False
+
+        lowered = lower_fs_protected_regular_if_needed(
+            runner=self._run,
+            output_runner=self._run_output,
+            fs_state_path=self._fs_state_path,
+            dry_run=dry_run,
+            macos=self._is_macos,
+        )
+        if not lowered:
+            return False
+
+        self._run(["sudo", "-E", *start_cmd], dry_run=dry_run)
+        return True
 
     def _build_images(self, config: DeployConfig, dry_run: bool) -> None:
         self.builder.build_images_if_needed(

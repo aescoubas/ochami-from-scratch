@@ -26,6 +26,7 @@ def test_deploy_config_defaults() -> None:
     assert cfg.dhcp_end == "192.168.100.200"
     assert cfg.dhcp_netmask == "255.255.255.0"
     assert cfg.dhcp_conflict_policy == "fail"
+    assert cfg.set_fs_protected_regular is True
 
 
 def test_deploy_config_rejects_invalid_ip() -> None:

@@ -56,6 +56,7 @@ def test_deploy_cli_uses_python_compose_deployer(monkeypatch: Any) -> None:
             payload["method"] = config.method.value
             payload["dry_run"] = dry_run
             payload["interface"] = config.pxe_interface
+            payload["set_fs_protected_regular"] = config.set_fs_protected_regular
 
     monkeypatch.setattr("ochami.cli.ComposeDeployer", lambda: FakeDeployer())
 
@@ -72,7 +73,42 @@ def test_deploy_cli_uses_python_compose_deployer(monkeypatch: Any) -> None:
     )
 
     assert result.exit_code == 0
-    assert payload == {"method": "docker-compose", "dry_run": True, "interface": "pxe0"}
+    assert payload == {
+        "method": "docker-compose",
+        "dry_run": True,
+        "interface": "pxe0",
+        "set_fs_protected_regular": True,
+    }
+
+
+def test_deploy_cli_can_disable_default_fs_protected_regular_workaround(monkeypatch: Any) -> None:
+    payload: dict[str, Any] = {}
+
+    class FakeDeployer:
+        def run(self, config: Any, dry_run: bool) -> None:
+            payload["method"] = config.method.value
+            payload["set_fs_protected_regular"] = config.set_fs_protected_regular
+            payload["dry_run"] = dry_run
+
+    monkeypatch.setattr("ochami.cli.ComposeDeployer", lambda: FakeDeployer())
+
+    result = runner.invoke(
+        app,
+        [
+            "deploy",
+            "--method",
+            "docker-compose",
+            "--no-set-fs-protected-regular",
+            "--dry-run",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert payload == {
+        "method": "docker-compose",
+        "set_fs_protected_regular": False,
+        "dry_run": True,
+    }
 
 
 def test_deploy_cli_uses_python_quadlets_deployer(monkeypatch: Any) -> None:

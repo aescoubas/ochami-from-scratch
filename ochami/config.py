@@ -52,7 +52,7 @@ class DeployConfig:
     dhcp_end: str = "192.168.100.200"
     dhcp_netmask: str = "255.255.255.0"
     dhcp_conflict_policy: DnsConflictPolicy = DnsConflictPolicy.FAIL
-    set_fs_protected_regular: bool = False
+    set_fs_protected_regular: bool = True
     pxe_interface: str = "virbr-pxe"
     pxe_ip: str = "192.168.100.2"
     pxe_cidr: int = 24
