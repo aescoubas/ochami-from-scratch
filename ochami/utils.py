@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+import hashlib
 import ipaddress
 import os
 from pathlib import Path
@@ -105,6 +106,21 @@ def parse_env_file(path: Path) -> dict[str, str]:
 def write_env_file(path: Path, values: Mapping[str, str]) -> None:
     lines = [f"{key}={value}" for key, value in values.items()]
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def write_file_if_changed(path: Path, content: str) -> bool:
+    """Write content to path only if the file doesn't exist or content differs.
+
+    Returns True if the file was written, False if skipped.
+    """
+    encoded = content.encode("utf-8")
+    new_hash = hashlib.sha256(encoded).hexdigest()
+    if path.is_file():
+        existing_hash = hashlib.sha256(path.read_bytes()).hexdigest()
+        if existing_hash == new_hash:
+            return False
+    path.write_text(content, encoding="utf-8")
+    return True
 
 
 def substitute_env_vars(content: str, values: Mapping[str, str]) -> str:

@@ -19,6 +19,9 @@ ochami-docker-compose/configs/boot.ipxe
 # Locally generated secrets used by deploy scripts
 .openchami-secrets.env
 
+# Apply command state tracking
+.openchami-state.yaml
+
 # Libvirt VM test state
 libvirt/.state/
 scripts/mcp/__pycache__/

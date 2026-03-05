@@ -135,6 +135,13 @@ class MinikubeDeployer(BaseDeployer):
         self.registry.run_post_deploy_flow(config, host_ip=host_ip, orchestrator="minikube", dry_run=dry_run)
         self._write_mcp_defaults(host_ip=host_ip, dry_run=dry_run)
 
+    def ensure_healthy(self, config: DeployConfig, dry_run: bool = False) -> None:
+        self._run(["minikube", "status"], dry_run=dry_run)
+        self._run(
+            ["minikube", "kubectl", "--", "get", "pods", "-n", "ochami"],
+            dry_run=dry_run,
+        )
+
     def _install_prerequisites(self, config: DeployConfig, dry_run: bool) -> None:
         self.prerequisites.install(set_fs_protected_regular=config.set_fs_protected_regular, dry_run=dry_run)
 

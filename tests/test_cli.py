@@ -142,7 +142,7 @@ def test_deploy_cli_requires_method() -> None:
     result = runner.invoke(app, ["deploy", "--dry-run"])
 
     assert result.exit_code == 2
-    assert "Missing option '--method'" in result.output
+    assert "method" in result.output.lower()
 
 
 def test_teardown_cli_uses_python_minikube_teardown(monkeypatch: Any) -> None:
@@ -235,7 +235,282 @@ def test_teardown_cli_requires_method() -> None:
     result = runner.invoke(app, ["teardown", "--dry-run"])
 
     assert result.exit_code == 2
-    assert "Missing option '--method'" in result.output
+    assert "method" in result.output.lower()
+
+
+def test_deploy_cli_with_config_file(monkeypatch: Any, tmp_path: Any) -> None:
+    cfg_file = tmp_path / "openchami.yaml"
+    cfg_file.write_text("method: docker-compose\npxe_ip: 10.0.0.5\npxe_interface: eth1\n")
+
+    payload: dict[str, Any] = {}
+
+    class FakeDeployer:
+        def run(self, config: Any, dry_run: bool) -> None:
+            payload["method"] = config.method.value
+            payload["pxe_ip"] = config.pxe_ip
+            payload["interface"] = config.pxe_interface
+            payload["dry_run"] = dry_run
+
+    monkeypatch.setattr("ochami.cli.ComposeDeployer", lambda: FakeDeployer())
+
+    result = runner.invoke(app, ["deploy", "--config", str(cfg_file), "--dry-run"])
+
+    assert result.exit_code == 0
+    assert payload == {
+        "method": "docker-compose",
+        "pxe_ip": "10.0.0.5",
+        "interface": "eth1",
+        "dry_run": True,
+    }
+
+
+def test_deploy_cli_cli_overrides_config_file(monkeypatch: Any, tmp_path: Any) -> None:
+    cfg_file = tmp_path / "openchami.yaml"
+    cfg_file.write_text("method: docker-compose\npxe_ip: 10.0.0.5\n")
+
+    payload: dict[str, Any] = {}
+
+    class FakeDeployer:
+        def run(self, config: Any, dry_run: bool) -> None:
+            payload["method"] = config.method.value
+            payload["pxe_ip"] = config.pxe_ip
+
+    monkeypatch.setattr("ochami.cli.ComposeDeployer", lambda: FakeDeployer())
+
+    result = runner.invoke(
+        app,
+        ["deploy", "--config", str(cfg_file), "--ip", "172.16.0.1", "--dry-run"],
+    )
+
+    assert result.exit_code == 0
+    assert payload["pxe_ip"] == "172.16.0.1"  # CLI wins
+
+
+def test_deploy_cli_method_from_config_file(monkeypatch: Any, tmp_path: Any) -> None:
+    cfg_file = tmp_path / "openchami.yaml"
+    cfg_file.write_text("method: quadlets\n")
+
+    payload: dict[str, Any] = {}
+
+    class FakeDeployer:
+        def run(self, config: Any, dry_run: bool) -> None:
+            payload["method"] = config.method.value
+
+    monkeypatch.setattr("ochami.cli.QuadletsDeployer", lambda: FakeDeployer())
+
+    result = runner.invoke(app, ["deploy", "--config", str(cfg_file), "--dry-run"])
+
+    assert result.exit_code == 0
+    assert payload["method"] == "quadlets"
+
+
+def test_teardown_cli_with_config_file(monkeypatch: Any, tmp_path: Any) -> None:
+    cfg_file = tmp_path / "openchami.yaml"
+    cfg_file.write_text("method: minikube\npxe_ip: 10.0.0.5\npxe_interface: eth1\n")
+
+    payload: dict[str, Any] = {}
+
+    class FakeTeardown:
+        def run(self, config: Any, dry_run: bool) -> None:
+            payload["method"] = config.method.value
+            payload["pxe_ip"] = config.pxe_ip
+
+    monkeypatch.setattr("ochami.cli.MinikubeTeardown", lambda: FakeTeardown())
+
+    result = runner.invoke(
+        app,
+        ["teardown", "--config", str(cfg_file), "--dry-run"],
+    )
+
+    assert result.exit_code == 0
+    assert payload == {"method": "minikube", "pxe_ip": "10.0.0.5"}
+
+
+# ── apply command tests ────────────────────────────────────────────
+
+
+def test_apply_cli_with_explicit_config(monkeypatch: Any, tmp_path: Any) -> None:
+    cfg_file = tmp_path / "openchami.yaml"
+    cfg_file.write_text("method: docker-compose\npxe_ip: 10.0.0.5\n")
+
+    payload: dict[str, Any] = {}
+
+    class FakeDeployer:
+        def apply(self, config: Any, *, state_path: Any, force: bool, dry_run: bool) -> None:
+            payload["method"] = config.method.value
+            payload["pxe_ip"] = config.pxe_ip
+            payload["force"] = force
+            payload["dry_run"] = dry_run
+
+    monkeypatch.setattr("ochami.cli.ComposeDeployer", lambda: FakeDeployer())
+
+    result = runner.invoke(app, ["apply", "--config", str(cfg_file), "--dry-run"])
+
+    assert result.exit_code == 0
+    assert payload == {
+        "method": "docker-compose",
+        "pxe_ip": "10.0.0.5",
+        "force": False,
+        "dry_run": True,
+    }
+
+
+def test_apply_cli_with_method_flag(monkeypatch: Any) -> None:
+    payload: dict[str, Any] = {}
+
+    class FakeDeployer:
+        def apply(self, config: Any, *, state_path: Any, force: bool, dry_run: bool) -> None:
+            payload["method"] = config.method.value
+            payload["dry_run"] = dry_run
+
+    monkeypatch.setattr("ochami.cli.MinikubeDeployer", lambda: FakeDeployer())
+
+    result = runner.invoke(app, ["apply", "--method", "minikube", "--dry-run"])
+
+    assert result.exit_code == 0
+    assert payload == {"method": "minikube", "dry_run": True}
+
+
+def test_apply_cli_force_flag(monkeypatch: Any) -> None:
+    payload: dict[str, Any] = {}
+
+    class FakeDeployer:
+        def apply(self, config: Any, *, state_path: Any, force: bool, dry_run: bool) -> None:
+            payload["force"] = force
+
+    monkeypatch.setattr("ochami.cli.ComposeDeployer", lambda: FakeDeployer())
+
+    result = runner.invoke(
+        app, ["apply", "--method", "docker-compose", "--force", "--dry-run"]
+    )
+
+    assert result.exit_code == 0
+    assert payload["force"] is True
+
+
+def test_apply_cli_requires_method(monkeypatch: Any, tmp_path: Any) -> None:
+    monkeypatch.chdir(tmp_path)  # no openchami.yaml here
+    result = runner.invoke(app, ["apply", "--dry-run"])
+
+    assert result.exit_code == 2
+    assert "method" in result.output.lower()
+
+
+def test_apply_cli_default_config_silent_when_missing(monkeypatch: Any) -> None:
+    """apply without --config and no openchami.yaml should still work with --method."""
+    payload: dict[str, Any] = {}
+
+    class FakeDeployer:
+        def apply(self, config: Any, *, state_path: Any, force: bool, dry_run: bool) -> None:
+            payload["method"] = config.method.value
+
+    monkeypatch.setattr("ochami.cli.QuadletsDeployer", lambda: FakeDeployer())
+
+    result = runner.invoke(app, ["apply", "--method", "quadlets", "--dry-run"])
+
+    assert result.exit_code == 0
+    assert payload["method"] == "quadlets"
+
+
+def test_apply_cli_explicit_missing_config_is_error() -> None:
+    result = runner.invoke(
+        app, ["apply", "--config", "/tmp/does-not-exist-openchami.yaml", "--dry-run"]
+    )
+
+    assert result.exit_code == 2
+
+
+# ── check command tests ────────────────────────────────────────────
+
+
+def test_check_valid_config(tmp_path: Any) -> None:
+    cfg_file = tmp_path / "openchami.yaml"
+    cfg_file.write_text("method: docker-compose\npxe_ip: 10.0.0.5\n")
+
+    result = runner.invoke(app, ["check", "--config", str(cfg_file)])
+
+    assert result.exit_code == 0
+    assert "config ok" in result.output
+
+
+def test_check_missing_config_file(tmp_path: Any) -> None:
+    result = runner.invoke(app, ["check", "--config", str(tmp_path / "nope.yaml")])
+
+    assert result.exit_code == 2
+    assert "not found" in result.output
+
+
+def test_check_invalid_ip(tmp_path: Any) -> None:
+    cfg_file = tmp_path / "openchami.yaml"
+    cfg_file.write_text("method: minikube\npxe_ip: 999.1.2.3\n")
+
+    result = runner.invoke(app, ["check", "--config", str(cfg_file)])
+
+    assert result.exit_code == 2
+    assert "pxe_ip" in result.output
+
+
+def test_check_invalid_cidr(tmp_path: Any) -> None:
+    cfg_file = tmp_path / "openchami.yaml"
+    cfg_file.write_text("method: minikube\npxe_cidr: 99\n")
+
+    result = runner.invoke(app, ["check", "--config", str(cfg_file)])
+
+    assert result.exit_code == 2
+    assert "pxe_cidr" in result.output
+
+
+def test_check_missing_method(tmp_path: Any) -> None:
+    cfg_file = tmp_path / "openchami.yaml"
+    cfg_file.write_text("pxe_ip: 10.0.0.5\n")
+
+    result = runner.invoke(app, ["check", "--config", str(cfg_file)])
+
+    assert result.exit_code == 2
+    assert "method" in result.output.lower()
+
+
+def test_check_empty_config(tmp_path: Any) -> None:
+    cfg_file = tmp_path / "openchami.yaml"
+    cfg_file.write_text("")
+
+    result = runner.invoke(app, ["check", "--config", str(cfg_file)])
+
+    assert result.exit_code == 2
+    assert "empty" in result.output.lower()
+
+
+def test_check_unknown_keys(tmp_path: Any) -> None:
+    cfg_file = tmp_path / "openchami.yaml"
+    cfg_file.write_text("method: minikube\nbogus_key: value\n")
+
+    result = runner.invoke(app, ["check", "--config", str(cfg_file)])
+
+    assert result.exit_code == 2
+    assert "bogus_key" in result.output
+
+
+def test_check_magellan_without_targets(tmp_path: Any) -> None:
+    cfg_file = tmp_path / "openchami.yaml"
+    cfg_file.write_text("method: minikube\ndiscovery_method: magellan\n")
+
+    result = runner.invoke(app, ["check", "--config", str(cfg_file)])
+
+    assert result.exit_code == 2
+    assert "magellan" in result.output.lower()
+
+
+def test_check_dhcp_range_mismatch(tmp_path: Any) -> None:
+    cfg_file = tmp_path / "openchami.yaml"
+    cfg_file.write_text("method: minikube\ndhcp_start: 192.168.1.10\ndhcp_end: ''\n")
+
+    result = runner.invoke(app, ["check", "--config", str(cfg_file)])
+
+    assert result.exit_code == 2
+    assert "dhcp" in result.output.lower()
+
+
+# ── existing deploy validation test ───────────────────────────────
 
 
 def test_deploy_cli_surfaces_validation_errors() -> None:

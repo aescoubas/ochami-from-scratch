@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Any
 
 import typer
 
@@ -13,6 +13,8 @@ from ochami.config import (
     DnsConflictPolicy,
     DiscoveryMethod,
     TeardownConfig,
+    load_config_file,
+    merge_deploy_config,
 )
 from ochami.deploy.compose import ComposeDeployer
 from ochami.deploy.minikube import MinikubeDeployer
@@ -30,16 +32,87 @@ def _raise_validation(error: ValueError) -> None:
     raise typer.BadParameter(str(error))
 
 
+def _collect_deploy_overrides(
+    *,
+    method: DeploymentMethod | None,
+    rebuild: bool | None,
+    dhcp_start: str | None,
+    dhcp_end: str | None,
+    dhcp_netmask: str | None,
+    dhcp_conflict_policy: DnsConflictPolicy | None,
+    set_fs_protected_regular: bool | None,
+    pxe_interface: str | None,
+    pxe_ip: str | None,
+    pxe_cidr: int | None,
+    phy_iface: str | None,
+    mode: DeployMode | None,
+    num_vms: int | None,
+    nodes_file: Path | None,
+    smd_ref: str | None,
+    bss_ref: str | None,
+    pcs_ref: str | None,
+    smd_repo_uri: str | None,
+    bss_repo_uri: str | None,
+    pcs_repo_uri: str | None,
+    discovery_method: DiscoveryMethod | None,
+    magellan_subnets: str | None,
+    magellan_hosts: str | None,
+    magellan_subnet_mask: str | None,
+    magellan_bmc_user: str | None,
+    magellan_bmc_pass: str | None,
+    magellan_bmc_id_map: str | None,
+    magellan_cache: str | None,
+    magellan_insecure: bool | None,
+) -> dict[str, Any]:
+    """Return a dict of only the CLI arguments that were explicitly provided."""
+    candidates: dict[str, Any] = {
+        "method": method,
+        "rebuild": rebuild,
+        "dhcp_start": dhcp_start,
+        "dhcp_end": dhcp_end,
+        "dhcp_netmask": dhcp_netmask,
+        "dhcp_conflict_policy": dhcp_conflict_policy,
+        "set_fs_protected_regular": set_fs_protected_regular,
+        "pxe_interface": pxe_interface,
+        "pxe_ip": pxe_ip,
+        "pxe_cidr": pxe_cidr,
+        "phy_iface": phy_iface,
+        "mode": mode,
+        "num_vms": num_vms,
+        "nodes_file": nodes_file,
+        "smd_ref": smd_ref,
+        "bss_ref": bss_ref,
+        "pcs_ref": pcs_ref,
+        "smd_repo_uri": smd_repo_uri,
+        "bss_repo_uri": bss_repo_uri,
+        "pcs_repo_uri": pcs_repo_uri,
+        "discovery_method": discovery_method,
+        "magellan_subnets": magellan_subnets,
+        "magellan_hosts": magellan_hosts,
+        "magellan_subnet_mask": magellan_subnet_mask,
+        "magellan_bmc_user": magellan_bmc_user,
+        "magellan_bmc_pass": magellan_bmc_pass,
+        "magellan_bmc_id_map": magellan_bmc_id_map,
+        "magellan_cache": magellan_cache,
+        "magellan_insecure": magellan_insecure,
+    }
+    return {k: v for k, v in candidates.items() if v is not None}
+
+
 @app.command("deploy")
 def deploy(
+    config_file: Annotated[
+        Path | None,
+        typer.Option("--config", "-c", help="YAML config file (defaults < file < CLI)"),
+    ] = None,
     method: Annotated[
-        DeploymentMethod,
+        DeploymentMethod | None,
         typer.Option("--method", help="Deployment method"),
-    ],
-    rebuild: Annotated[bool, typer.Option("--rebuild", help="Force rebuild container images")] = False,
-    dhcp_start: Annotated[str, typer.Option("--dhcp-start", help="DHCP pool start")] = "192.168.100.100",
-    dhcp_end: Annotated[str, typer.Option("--dhcp-end", help="DHCP pool end")] = "192.168.100.200",
-    dhcp_netmask: Annotated[str, typer.Option("--dhcp-netmask", help="DHCP netmask")] = "255.255.255.0",
+    ] = None,
+    rebuild: Annotated[bool | None, typer.Option("--rebuild", help="Force rebuild container images")] = None,
+    dhcp_start: Annotated[str | None, typer.Option("--dhcp-start", help="DHCP pool start")] = None,
+    dhcp_end: Annotated[str | None, typer.Option("--dhcp-end", help="DHCP pool end")] = None,
+    dhcp_netmask: Annotated[str | None, typer.Option("--dhcp-netmask", help="DHCP netmask")] = None,
     fail_on_conflict: Annotated[
         bool,
         typer.Option("--fail-on-conflict", help="Fail if UDP/67 is in use"),
@@ -49,105 +122,124 @@ def deploy(
         typer.Option("--auto-kill", help="Terminate conflicting UDP/67 process"),
     ] = False,
     set_fs_protected_regular: Annotated[
-        bool,
+        bool | None,
         typer.Option(
             "--set-fs-protected-regular/--no-set-fs-protected-regular",
             help="Temporarily set fs.protected_regular=0 during prereq install",
         ),
-    ] = True,
-    pxe_interface: Annotated[str, typer.Option("--interface", help="PXE interface")] = "virbr-pxe",
-    pxe_ip: Annotated[str, typer.Option("--ip", help="Host IP on PXE interface")] = "192.168.100.2",
-    pxe_cidr: Annotated[int, typer.Option("--cidr", help="Host CIDR on PXE interface")] = 24,
-    phy_iface: Annotated[str, typer.Option("--phy-iface", help="Physical interface to bridge")] = "",
+    ] = None,
+    pxe_interface: Annotated[str | None, typer.Option("--interface", help="PXE interface")] = None,
+    pxe_ip: Annotated[str | None, typer.Option("--ip", help="Host IP on PXE interface")] = None,
+    pxe_cidr: Annotated[int | None, typer.Option("--cidr", help="Host CIDR on PXE interface")] = None,
+    phy_iface: Annotated[str | None, typer.Option("--phy-iface", help="Physical interface to bridge")] = None,
     mode: Annotated[
-        DeployMode,
+        DeployMode | None,
         typer.Option("--mode", help="Deployment mode: libvirt or hardware"),
-    ] = DeployMode.LIBVIRT,
-    num_vms: Annotated[int, typer.Option("--vms", help="Number of virtual compute nodes")] = 0,
+    ] = None,
+    num_vms: Annotated[int | None, typer.Option("--vms", help="Number of virtual compute nodes")] = None,
     nodes_file: Annotated[
         Path | None,
         typer.Option("--nodes-file", help="CSV file containing hardware nodes"),
     ] = None,
-    smd_ref: Annotated[str, typer.Option("--smd-ref", help="SMD git ref")] = "main",
-    bss_ref: Annotated[str, typer.Option("--bss-ref", help="BSS git ref")] = "main",
-    pcs_ref: Annotated[str, typer.Option("--pcs-ref", help="PCS git ref")] = "main",
-    smd_repo_uri: Annotated[str, typer.Option("--smd-repo-uri", help="SMD repo URI")] = "https://github.com/aescoubas/ochami-smd.git",
-    bss_repo_uri: Annotated[str, typer.Option("--bss-repo-uri", help="BSS repo URI")] = "https://github.com/aescoubas/ochami-bss.git",
-    pcs_repo_uri: Annotated[str, typer.Option("--pcs-repo-uri", help="PCS repo URI")] = "https://github.com/OpenCHAMI/power-control.git",
+    smd_ref: Annotated[str | None, typer.Option("--smd-ref", help="SMD git ref")] = None,
+    bss_ref: Annotated[str | None, typer.Option("--bss-ref", help="BSS git ref")] = None,
+    pcs_ref: Annotated[str | None, typer.Option("--pcs-ref", help="PCS git ref")] = None,
+    smd_repo_uri: Annotated[str | None, typer.Option("--smd-repo-uri", help="SMD repo URI")] = None,
+    bss_repo_uri: Annotated[str | None, typer.Option("--bss-repo-uri", help="BSS repo URI")] = None,
+    pcs_repo_uri: Annotated[str | None, typer.Option("--pcs-repo-uri", help="PCS repo URI")] = None,
     discovery_method: Annotated[
-        DiscoveryMethod,
+        DiscoveryMethod | None,
         typer.Option("--discovery-method", help="Discovery method: static or magellan"),
-    ] = DiscoveryMethod.STATIC,
+    ] = None,
     magellan_subnets: Annotated[
-        str,
+        str | None,
         typer.Option("--magellan-subnets", help="Comma-separated Magellan scan subnets"),
-    ] = "",
+    ] = None,
     magellan_hosts: Annotated[
-        str,
+        str | None,
         typer.Option("--magellan-hosts", help="Comma-separated Magellan hosts/URIs"),
-    ] = "",
+    ] = None,
     magellan_subnet_mask: Annotated[
-        str,
+        str | None,
         typer.Option("--magellan-subnet-mask", help="Subnet mask used by Magellan scan"),
-    ] = "",
+    ] = None,
     magellan_bmc_user: Annotated[
-        str,
+        str | None,
         typer.Option("--magellan-bmc-user", help="BMC username for Magellan collect"),
-    ] = "",
+    ] = None,
     magellan_bmc_pass: Annotated[
-        str,
+        str | None,
         typer.Option("--magellan-bmc-pass", help="BMC password for Magellan collect"),
-    ] = "",
+    ] = None,
     magellan_bmc_id_map: Annotated[
-        str,
+        str | None,
         typer.Option("--magellan-bmc-id-map", help="BMC ID map for Magellan collect"),
-    ] = "",
-    magellan_cache: Annotated[str, typer.Option("--magellan-cache", help="Magellan cache path")] = "",
+    ] = None,
+    magellan_cache: Annotated[str | None, typer.Option("--magellan-cache", help="Magellan cache path")] = None,
     magellan_insecure: Annotated[
-        bool,
+        bool | None,
         typer.Option("--magellan-insecure", help="Skip TLS verification for Magellan"),
-    ] = False,
+    ] = None,
     dry_run: Annotated[bool, typer.Option("--dry-run", help="Show command/env without execution")] = False,
 ) -> None:
     if fail_on_conflict and auto_kill:
         raise typer.BadParameter("choose only one of --fail-on-conflict or --auto-kill")
 
-    conflict_policy = DnsConflictPolicy.FAIL
+    # Resolve conflict policy from CLI flags (only if explicitly set)
+    conflict_policy: DnsConflictPolicy | None = None
     if auto_kill:
         conflict_policy = DnsConflictPolicy.AUTO_KILL
+    elif fail_on_conflict:
+        conflict_policy = DnsConflictPolicy.FAIL
+
+    # Load config file if provided
+    file_values: dict[str, Any] = {}
+    if config_file is not None:
+        try:
+            file_values = load_config_file(config_file)
+        except (ValueError, FileNotFoundError) as exc:
+            _raise_validation(ValueError(str(exc)))
+
+    # Collect only explicitly-set CLI overrides (non-None values)
+    cli_overrides = _collect_deploy_overrides(
+        method=method,
+        rebuild=rebuild,
+        dhcp_start=dhcp_start,
+        dhcp_end=dhcp_end,
+        dhcp_netmask=dhcp_netmask,
+        dhcp_conflict_policy=conflict_policy,
+        set_fs_protected_regular=set_fs_protected_regular,
+        pxe_interface=pxe_interface,
+        pxe_ip=pxe_ip,
+        pxe_cidr=pxe_cidr,
+        phy_iface=phy_iface,
+        mode=mode,
+        num_vms=num_vms,
+        nodes_file=nodes_file,
+        smd_ref=smd_ref,
+        bss_ref=bss_ref,
+        pcs_ref=pcs_ref,
+        smd_repo_uri=smd_repo_uri,
+        bss_repo_uri=bss_repo_uri,
+        pcs_repo_uri=pcs_repo_uri,
+        discovery_method=discovery_method,
+        magellan_subnets=magellan_subnets,
+        magellan_hosts=magellan_hosts,
+        magellan_subnet_mask=magellan_subnet_mask,
+        magellan_bmc_user=magellan_bmc_user,
+        magellan_bmc_pass=magellan_bmc_pass,
+        magellan_bmc_id_map=magellan_bmc_id_map,
+        magellan_cache=magellan_cache,
+        magellan_insecure=magellan_insecure,
+    )
+
+    # Merge: dataclass defaults < file < CLI
+    merged = {**file_values, **cli_overrides}
+    if "method" not in merged:
+        raise typer.BadParameter("--method is required (via CLI or config file)")
 
     try:
-        cfg = DeployConfig(
-            method=method,
-            rebuild=rebuild,
-            dhcp_start=dhcp_start,
-            dhcp_end=dhcp_end,
-            dhcp_netmask=dhcp_netmask,
-            dhcp_conflict_policy=conflict_policy,
-            set_fs_protected_regular=set_fs_protected_regular,
-            pxe_interface=pxe_interface,
-            pxe_ip=pxe_ip,
-            pxe_cidr=pxe_cidr,
-            phy_iface=phy_iface,
-            mode=mode,
-            num_vms=num_vms,
-            nodes_file=nodes_file,
-            smd_ref=smd_ref,
-            bss_ref=bss_ref,
-            pcs_ref=pcs_ref,
-            smd_repo_uri=smd_repo_uri,
-            bss_repo_uri=bss_repo_uri,
-            pcs_repo_uri=pcs_repo_uri,
-            discovery_method=discovery_method,
-            magellan_subnets=magellan_subnets,
-            magellan_hosts=magellan_hosts,
-            magellan_subnet_mask=magellan_subnet_mask,
-            magellan_bmc_user=magellan_bmc_user,
-            magellan_bmc_pass=magellan_bmc_pass,
-            magellan_bmc_id_map=magellan_bmc_id_map,
-            magellan_cache=magellan_cache,
-            magellan_insecure=magellan_insecure,
-        )
+        cfg = merge_deploy_config(file_values=file_values, cli_overrides=cli_overrides)
     except ValueError as exc:
         _raise_validation(exc)
 
@@ -164,30 +256,254 @@ def deploy(
     raise typer.BadParameter(f"unsupported deployment method: {cfg.method.value}")
 
 
-@app.command("teardown")
-def teardown(
+@app.command("check")
+def check(
+    config_file: Annotated[
+        Path,
+        typer.Option("--config", "-c", help="YAML config file to validate"),
+    ] = Path("openchami.yaml"),
+) -> None:
+    """Validate a configuration file without deploying."""
+    try:
+        file_values = load_config_file(config_file)
+    except FileNotFoundError:
+        raise typer.BadParameter(f"config file not found: {config_file}")
+    except ValueError as exc:
+        _raise_validation(exc)
+
+    if not file_values:
+        raise typer.BadParameter("config file is empty")
+
+    if "method" not in file_values:
+        raise typer.BadParameter("config file must specify 'method'")
+
+    try:
+        merge_deploy_config(file_values=file_values, cli_overrides={})
+    except ValueError as exc:
+        _raise_validation(exc)
+
+    typer.echo(f"config ok: {config_file}")
+
+
+_DEFAULT_STATE_PATH = Path(".openchami-state.yaml")
+
+
+@app.command("apply")
+def apply(
+    config_file: Annotated[
+        Path | None,
+        typer.Option("--config", "-c", help="YAML config file (defaults to openchami.yaml)"),
+    ] = None,
     method: Annotated[
-        DeploymentMethod,
-        typer.Option("--method", help="Teardown method"),
-    ],
-    remove_images: Annotated[bool, typer.Option("--remove-images", help="Also remove container images")] = False,
-    vm_name: Annotated[str, typer.Option("--vm-name", help="VM name pattern to delete")] = "virtual-compute-node",
-    yes: Annotated[bool, typer.Option("--yes", "-y", help="Skip interactive confirmation")] = False,
-    pxe_interface: Annotated[str, typer.Option("--interface", help="PXE interface to clean")] = "virbr-pxe",
-    pxe_ip: Annotated[str, typer.Option("--ip", help="PXE IP to remove")] = "192.168.100.2",
-    pxe_cidr: Annotated[int, typer.Option("--cidr", help="PXE CIDR to remove")] = 24,
+        DeploymentMethod | None,
+        typer.Option("--method", help="Deployment method"),
+    ] = None,
+    force: Annotated[bool, typer.Option("--force", help="Force deploy even if config unchanged")] = False,
+    rebuild: Annotated[bool | None, typer.Option("--rebuild", help="Force rebuild container images")] = None,
+    dhcp_start: Annotated[str | None, typer.Option("--dhcp-start", help="DHCP pool start")] = None,
+    dhcp_end: Annotated[str | None, typer.Option("--dhcp-end", help="DHCP pool end")] = None,
+    dhcp_netmask: Annotated[str | None, typer.Option("--dhcp-netmask", help="DHCP netmask")] = None,
+    fail_on_conflict: Annotated[
+        bool,
+        typer.Option("--fail-on-conflict", help="Fail if UDP/67 is in use"),
+    ] = False,
+    auto_kill: Annotated[
+        bool,
+        typer.Option("--auto-kill", help="Terminate conflicting UDP/67 process"),
+    ] = False,
+    set_fs_protected_regular: Annotated[
+        bool | None,
+        typer.Option(
+            "--set-fs-protected-regular/--no-set-fs-protected-regular",
+            help="Temporarily set fs.protected_regular=0 during prereq install",
+        ),
+    ] = None,
+    pxe_interface: Annotated[str | None, typer.Option("--interface", help="PXE interface")] = None,
+    pxe_ip: Annotated[str | None, typer.Option("--ip", help="Host IP on PXE interface")] = None,
+    pxe_cidr: Annotated[int | None, typer.Option("--cidr", help="Host CIDR on PXE interface")] = None,
+    phy_iface: Annotated[str | None, typer.Option("--phy-iface", help="Physical interface to bridge")] = None,
+    mode: Annotated[
+        DeployMode | None,
+        typer.Option("--mode", help="Deployment mode: libvirt or hardware"),
+    ] = None,
+    num_vms: Annotated[int | None, typer.Option("--vms", help="Number of virtual compute nodes")] = None,
+    nodes_file: Annotated[
+        Path | None,
+        typer.Option("--nodes-file", help="CSV file containing hardware nodes"),
+    ] = None,
+    smd_ref: Annotated[str | None, typer.Option("--smd-ref", help="SMD git ref")] = None,
+    bss_ref: Annotated[str | None, typer.Option("--bss-ref", help="BSS git ref")] = None,
+    pcs_ref: Annotated[str | None, typer.Option("--pcs-ref", help="PCS git ref")] = None,
+    smd_repo_uri: Annotated[str | None, typer.Option("--smd-repo-uri", help="SMD repo URI")] = None,
+    bss_repo_uri: Annotated[str | None, typer.Option("--bss-repo-uri", help="BSS repo URI")] = None,
+    pcs_repo_uri: Annotated[str | None, typer.Option("--pcs-repo-uri", help="PCS repo URI")] = None,
+    discovery_method: Annotated[
+        DiscoveryMethod | None,
+        typer.Option("--discovery-method", help="Discovery method: static or magellan"),
+    ] = None,
+    magellan_subnets: Annotated[
+        str | None,
+        typer.Option("--magellan-subnets", help="Comma-separated Magellan scan subnets"),
+    ] = None,
+    magellan_hosts: Annotated[
+        str | None,
+        typer.Option("--magellan-hosts", help="Comma-separated Magellan hosts/URIs"),
+    ] = None,
+    magellan_subnet_mask: Annotated[
+        str | None,
+        typer.Option("--magellan-subnet-mask", help="Subnet mask used by Magellan scan"),
+    ] = None,
+    magellan_bmc_user: Annotated[
+        str | None,
+        typer.Option("--magellan-bmc-user", help="BMC username for Magellan collect"),
+    ] = None,
+    magellan_bmc_pass: Annotated[
+        str | None,
+        typer.Option("--magellan-bmc-pass", help="BMC password for Magellan collect"),
+    ] = None,
+    magellan_bmc_id_map: Annotated[
+        str | None,
+        typer.Option("--magellan-bmc-id-map", help="BMC ID map for Magellan collect"),
+    ] = None,
+    magellan_cache: Annotated[str | None, typer.Option("--magellan-cache", help="Magellan cache path")] = None,
+    magellan_insecure: Annotated[
+        bool | None,
+        typer.Option("--magellan-insecure", help="Skip TLS verification for Magellan"),
+    ] = None,
     dry_run: Annotated[bool, typer.Option("--dry-run", help="Show command/env without execution")] = False,
 ) -> None:
+    """Idempotent deploy: skip if config unchanged, run full deploy otherwise."""
+    if fail_on_conflict and auto_kill:
+        raise typer.BadParameter("choose only one of --fail-on-conflict or --auto-kill")
+
+    conflict_policy: DnsConflictPolicy | None = None
+    if auto_kill:
+        conflict_policy = DnsConflictPolicy.AUTO_KILL
+    elif fail_on_conflict:
+        conflict_policy = DnsConflictPolicy.FAIL
+
+    # Default config path for apply: openchami.yaml (silent if missing)
+    effective_config = config_file
+    if effective_config is None:
+        default_path = Path("openchami.yaml")
+        if default_path.is_file():
+            effective_config = default_path
+
+    file_values: dict[str, Any] = {}
+    if effective_config is not None:
+        try:
+            file_values = load_config_file(effective_config)
+        except (ValueError, FileNotFoundError) as exc:
+            # Explicit --config that doesn't exist is an error
+            if config_file is not None:
+                _raise_validation(ValueError(str(exc)))
+
+    cli_overrides = _collect_deploy_overrides(
+        method=method,
+        rebuild=rebuild,
+        dhcp_start=dhcp_start,
+        dhcp_end=dhcp_end,
+        dhcp_netmask=dhcp_netmask,
+        dhcp_conflict_policy=conflict_policy,
+        set_fs_protected_regular=set_fs_protected_regular,
+        pxe_interface=pxe_interface,
+        pxe_ip=pxe_ip,
+        pxe_cidr=pxe_cidr,
+        phy_iface=phy_iface,
+        mode=mode,
+        num_vms=num_vms,
+        nodes_file=nodes_file,
+        smd_ref=smd_ref,
+        bss_ref=bss_ref,
+        pcs_ref=pcs_ref,
+        smd_repo_uri=smd_repo_uri,
+        bss_repo_uri=bss_repo_uri,
+        pcs_repo_uri=pcs_repo_uri,
+        discovery_method=discovery_method,
+        magellan_subnets=magellan_subnets,
+        magellan_hosts=magellan_hosts,
+        magellan_subnet_mask=magellan_subnet_mask,
+        magellan_bmc_user=magellan_bmc_user,
+        magellan_bmc_pass=magellan_bmc_pass,
+        magellan_bmc_id_map=magellan_bmc_id_map,
+        magellan_cache=magellan_cache,
+        magellan_insecure=magellan_insecure,
+    )
+
+    merged = {**file_values, **cli_overrides}
+    if "method" not in merged:
+        raise typer.BadParameter("--method is required (via CLI or config file)")
+
     try:
-        cfg = TeardownConfig(
-            method=method,
-            remove_images=remove_images,
-            vm_name=vm_name,
-            skip_confirm=yes,
-            pxe_interface=pxe_interface,
-            pxe_ip=pxe_ip,
-            pxe_cidr=pxe_cidr,
-        )
+        cfg = merge_deploy_config(file_values=file_values, cli_overrides=cli_overrides)
+    except ValueError as exc:
+        _raise_validation(exc)
+
+    deployer: ComposeDeployer | QuadletsDeployer | MinikubeDeployer
+    if cfg.method == DeploymentMethod.DOCKER_COMPOSE:
+        deployer = ComposeDeployer()
+    elif cfg.method == DeploymentMethod.QUADLETS:
+        deployer = QuadletsDeployer()
+    elif cfg.method == DeploymentMethod.MINIKUBE:
+        deployer = MinikubeDeployer()
+    else:
+        raise typer.BadParameter(f"unsupported deployment method: {cfg.method.value}")
+
+    deployer.apply(cfg, state_path=_DEFAULT_STATE_PATH, force=force, dry_run=dry_run)
+
+
+@app.command("teardown")
+def teardown(
+    config_file: Annotated[
+        Path | None,
+        typer.Option("--config", "-c", help="YAML config file (shared with deploy)"),
+    ] = None,
+    method: Annotated[
+        DeploymentMethod | None,
+        typer.Option("--method", help="Teardown method"),
+    ] = None,
+    remove_images: Annotated[bool, typer.Option("--remove-images", help="Also remove container images")] = False,
+    vm_name: Annotated[str | None, typer.Option("--vm-name", help="VM name pattern to delete")] = None,
+    yes: Annotated[bool, typer.Option("--yes", "-y", help="Skip interactive confirmation")] = False,
+    pxe_interface: Annotated[str | None, typer.Option("--interface", help="PXE interface to clean")] = None,
+    pxe_ip: Annotated[str | None, typer.Option("--ip", help="PXE IP to remove")] = None,
+    pxe_cidr: Annotated[int | None, typer.Option("--cidr", help="PXE CIDR to remove")] = None,
+    dry_run: Annotated[bool, typer.Option("--dry-run", help="Show command/env without execution")] = False,
+) -> None:
+    # Load shared config file for fields common with deploy (method, pxe_*)
+    file_values: dict[str, Any] = {}
+    if config_file is not None:
+        try:
+            all_values = load_config_file(config_file)
+        except (ValueError, FileNotFoundError) as exc:
+            _raise_validation(ValueError(str(exc)))
+        # Pick only teardown-relevant keys
+        _TEARDOWN_KEYS = {"method", "pxe_interface", "pxe_ip", "pxe_cidr"}
+        file_values = {k: v for k, v in all_values.items() if k in _TEARDOWN_KEYS}
+
+    # Build CLI overrides (only non-None)
+    cli_overrides: dict[str, Any] = {}
+    if method is not None:
+        cli_overrides["method"] = method
+    if vm_name is not None:
+        cli_overrides["vm_name"] = vm_name
+    if pxe_interface is not None:
+        cli_overrides["pxe_interface"] = pxe_interface
+    if pxe_ip is not None:
+        cli_overrides["pxe_ip"] = pxe_ip
+    if pxe_cidr is not None:
+        cli_overrides["pxe_cidr"] = pxe_cidr
+    if remove_images:
+        cli_overrides["remove_images"] = True
+    if yes:
+        cli_overrides["skip_confirm"] = True
+
+    merged = {**file_values, **cli_overrides}
+    if "method" not in merged:
+        raise typer.BadParameter("--method is required (via CLI or config file)")
+
+    try:
+        cfg = TeardownConfig(**merged)
     except ValueError as exc:
         _raise_validation(exc)
 

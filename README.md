@@ -51,6 +51,71 @@ ochamifs teardown --method minikube -y
 
 `--method` is required for both `deploy` and `teardown`.
 
+## Configuration File
+
+Instead of passing every flag on the command line, you can use a YAML config file.
+Copy the example and edit it:
+
+```bash
+cp openchami.example.yaml openchami.yaml
+```
+
+Then use it with any command:
+
+```bash
+ochamifs deploy --config openchami.yaml
+ochamifs apply --config openchami.yaml
+```
+
+CLI flags override config file values (precedence: defaults < config file < CLI flags).
+Only `method` is required; all other fields are optional and fall back to defaults.
+
+See `openchami.example.yaml` for all available fields with comments.
+
+## Validate Configuration
+
+Use `check` to validate a config file without deploying:
+
+```bash
+ochamifs check --config openchami.yaml
+```
+
+If `--config` is omitted, it defaults to `openchami.yaml` in the current directory.
+
+The command validates:
+
+- YAML structure and known keys (catches typos)
+- IP address format (`pxe_ip`, `dhcp_start`, `dhcp_end`, `dhcp_netmask`)
+- CIDR range (0-32)
+- DHCP pool consistency (start and end must be provided together)
+- Magellan discovery constraints (requires subnets/hosts, BMC user/pass pairing)
+- Non-empty git refs and repo URIs
+- `nodes_file` existence (when specified)
+
+## Idempotent Apply
+
+`apply` is a smarter alternative to `deploy`. It hashes the resolved configuration,
+compares it against the last successful deploy (stored in `.openchami-state.yaml`),
+and skips the full deploy when nothing changed — running only a lightweight health
+check instead.
+
+```bash
+# First run: full deploy
+ochamifs apply --config openchami.yaml
+
+# Second run with same config: skips deploy, runs health check
+ochamifs apply --config openchami.yaml
+
+# Force a full deploy regardless of state
+ochamifs apply --config openchami.yaml --force
+```
+
+When `--config` is omitted, `apply` automatically looks for `openchami.yaml` in the
+current directory (silently ignored if missing — you can still use `--method` and
+other CLI flags).
+
+`apply` accepts all the same flags as `deploy`.
+
 ## Common Deploy Options
 
 ```bash
@@ -160,14 +225,33 @@ make test-vm
 make test-vm-destroy
 ```
 
+## CLI Commands
+
+| Command | Description |
+|---------|-------------|
+| `deploy` | Full deployment (prereqs, build, network, deploy, post-deploy) |
+| `apply` | Idempotent deploy (skips if config unchanged, health-checks instead) |
+| `check` | Validate a config file without deploying |
+| `teardown` | Tear down a deployment |
+| `register-node` | Register a hardware node after deployment |
+| `mcp` | Run the OpenCHAMI MCP server |
+
 ## Repository Layout
 
-Deployment artifacts remain in:
+Deployment artifacts:
 
-- `ochami-docker-compose/`
-- `ochami-helm/`
-- `ochami-quadlets/`
+- `ochami-docker-compose/` — Docker Compose configs and templates
+- `ochami-helm/` — Helm chart for Minikube
+- `ochami-quadlets/` — Systemd quadlet units for Podman
 
 Core Python package:
 
-- `ochami/`
+- `ochami/cli.py` — CLI entry point (Typer commands)
+- `ochami/config.py` — Configuration dataclasses and YAML loading
+- `ochami/state.py` — Apply state tracking (config hashing, save/load)
+- `ochami/deploy/` — Deployers (base, compose, minikube, quadlets)
+- `ochami/teardown/` — Teardown implementations
+- `ochami/mcp/` — MCP server
+- `ochami/utils.py` — Shared utilities
+- `templates/` — Jinja2 templates for config rendering
+- `tests/` — pytest test suite

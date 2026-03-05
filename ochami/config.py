@@ -1,9 +1,13 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+import dataclasses
+import ipaddress
+from dataclasses import dataclass, fields
 from enum import Enum
 from pathlib import Path
-import ipaddress
+from typing import Any
+
+import yaml
 
 
 class DeploymentMethod(str, Enum):
@@ -278,3 +282,59 @@ class TeardownConfig:
             "OPENCHAMI_PXE_CIDR": str(self.pxe_cidr),
             "OPENCHAMI_SKIP_CONFIRM": str(self.skip_confirm).lower(),
         }
+
+
+# ── Config file loading (defaults < file < CLI) ───────────────────
+
+_DEPLOY_FIELDS = {f.name for f in fields(DeployConfig)}
+
+_ENUM_COERCIONS: dict[str, type] = {
+    "method": DeploymentMethod,
+    "discovery_method": DiscoveryMethod,
+    "dhcp_conflict_policy": DnsConflictPolicy,
+    "mode": DeployMode,
+}
+
+
+def load_config_file(path: Path) -> dict[str, Any]:
+    """Load a YAML config file and return a dict of coerced config values."""
+    with open(path) as fh:
+        raw = yaml.safe_load(fh)
+
+    if raw is None:
+        return {}
+    if not isinstance(raw, dict):
+        raise ValueError(
+            f"config file must contain a YAML mapping, got {type(raw).__name__}"
+        )
+
+    unknown = set(raw) - _DEPLOY_FIELDS
+    if unknown:
+        raise ValueError(f"unknown config keys: {', '.join(sorted(unknown))}")
+
+    return _coerce_config_values(raw)
+
+
+def _coerce_config_values(raw: dict[str, Any]) -> dict[str, Any]:
+    """Coerce raw YAML values to the types expected by DeployConfig."""
+    result: dict[str, Any] = {}
+    for key, value in raw.items():
+        if key in _ENUM_COERCIONS:
+            result[key] = _ENUM_COERCIONS[key](value)
+        elif key == "nodes_file":
+            result[key] = Path(value) if value is not None else None
+        else:
+            result[key] = value
+    return result
+
+
+def merge_deploy_config(
+    file_values: dict[str, Any],
+    cli_overrides: dict[str, Any],
+) -> DeployConfig:
+    """Create a DeployConfig by merging file values and CLI overrides.
+
+    Precedence: dataclass defaults < file_values < cli_overrides.
+    """
+    merged = {**file_values, **cli_overrides}
+    return DeployConfig(**merged)
