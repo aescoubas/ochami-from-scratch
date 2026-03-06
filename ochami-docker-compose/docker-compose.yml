@@ -102,7 +102,7 @@ services:
       retries: 30
 
   cloud-init:
-    image: ghcr.io/openchami/cloud-init:v1.2.3
+    image: ghcr.io/openchami/cloud-init:v1.4.0
     network_mode: host
     depends_on:
       smd:

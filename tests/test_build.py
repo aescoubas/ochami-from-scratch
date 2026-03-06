@@ -40,7 +40,7 @@ def test_build_bss_retries_make_binaries(tmp_path: Path) -> None:
     cfg = DeployConfig(
         method=DeploymentMethod.DOCKER_COMPOSE,
         bss_ref="main",
-        bss_repo_uri="https://github.com/aescoubas/ochami-bss.git",
+        bss_repo_uri="https://github.com/openchami/bss.git",
     )
     manager.build_bss(config=cfg, container_tool="docker", dry_run=False)
 

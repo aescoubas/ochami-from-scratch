@@ -34,8 +34,8 @@ DEFAULT_BASE_IMAGES = {
 }
 
 DEFAULT_REPO_URIS = {
-    "smd": "https://github.com/aescoubas/ochami-smd.git",
-    "bss": "https://github.com/aescoubas/ochami-bss.git",
+    "smd": "https://github.com/openchami/smd.git",
+    "bss": "https://github.com/openchami/bss.git",
     "pcs": "https://github.com/OpenCHAMI/power-control.git",
 }
 

@@ -234,7 +234,7 @@ cloudInit:
   enabled: true
   image:
     repository: ghcr.io/openchami/cloud-init
-    tag: "v1.2.3"
+    tag: "v1.4.0"
     pullPolicy: IfNotPresent
   port: 27777
   clusterName: "ochami"

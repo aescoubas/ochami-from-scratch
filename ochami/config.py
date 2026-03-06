@@ -64,11 +64,11 @@ class DeployConfig:
     mode: DeployMode = DeployMode.LIBVIRT
     num_vms: int = 0
     nodes_file: Path | None = None
-    smd_ref: str = "main"
-    bss_ref: str = "main"
+    smd_ref: str = "v2.19.2"
+    bss_ref: str = "v1.32.2"
     pcs_ref: str = "main"
-    smd_repo_uri: str = "https://github.com/aescoubas/ochami-smd.git"
-    bss_repo_uri: str = "https://github.com/aescoubas/ochami-bss.git"
+    smd_repo_uri: str = "https://github.com/openchami/smd.git"
+    bss_repo_uri: str = "https://github.com/openchami/bss.git"
     pcs_repo_uri: str = "https://github.com/OpenCHAMI/power-control.git"
     discovery_method: DiscoveryMethod = DiscoveryMethod.STATIC
     magellan_subnets: str = ""

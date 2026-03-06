@@ -22,7 +22,7 @@ QUADLETS_REMOVE_IMAGES = [
     "localhost/smd:local-smd",
     "localhost/bss:local-bss",
     "localhost/pcs:local-pcs",
-    "ghcr.io/openchami/cloud-init:v1.2.3",
+    "ghcr.io/openchami/cloud-init:v1.4.0",
     "localhost/stork-agent:latest",
     "localhost/kea-sidecar:latest",
     "localhost/redfish-emulator:latest",

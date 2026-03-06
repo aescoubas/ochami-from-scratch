@@ -34,11 +34,11 @@ num_vms: 2    # number of virtual compute nodes (libvirt mode)
 # set_fs_protected_regular: true
 
 # Git refs for component builds
-# smd_ref: main
-# bss_ref: main
+# smd_ref: v2.19.2
+# bss_ref: v1.32.2
 # pcs_ref: main
-# smd_repo_uri: https://github.com/aescoubas/ochami-smd.git
-# bss_repo_uri: https://github.com/aescoubas/ochami-bss.git
+# smd_repo_uri: https://github.com/openchami/smd.git
+# bss_repo_uri: https://github.com/openchami/bss.git
 # pcs_repo_uri: https://github.com/OpenCHAMI/power-control.git
 
 # Discovery
