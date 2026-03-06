@@ -13,10 +13,12 @@ spec:
       image: "{{ .Values.cloudInit.image.repository }}:{{ .Values.cloudInit.image.tag }}"
       imagePullPolicy: {{ .Values.cloudInit.image.pullPolicy }}
       command:
-        - 'sh'
+        - 'bash'
         - '-c'
         - |
-          until /usr/bin/curl -m 1 -s -o /dev/null {{ include "ochami-helm.reverseProxyUrl" . }}/hsm/v2/service/ready; do
+          HOST="{{ include "ochami-helm.fullname" . }}-http-server.{{ .Release.Namespace }}.svc.cluster.local"
+          PORT="{{ .Values.httpServer.service.port }}"
+          until exec 3<>/dev/tcp/"$HOST"/"$PORT" && printf 'GET /hsm/v2/service/ready HTTP/1.0\r\nHost: %s\r\n\r\n' "$HOST" >&3 && grep -q '200' <&3; do
             echo "waiting for SMD to be ready..."
             sleep 0.2
           done
