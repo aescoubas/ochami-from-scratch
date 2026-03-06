@@ -34,12 +34,18 @@ mode: libvirt    # libvirt or hardware
 # set_fs_protected_regular: true
 
 # Git refs for component builds
-# smd_ref: v2.19.2
-# bss_ref: v1.32.2
-# pcs_ref: main
+# The default refs try to follow the official released version: https://github.com/OpenCHAMI/release
+#
 # smd_repo_uri: https://github.com/openchami/smd.git
+# smd_ref: v2.19.2
 # bss_repo_uri: https://github.com/openchami/bss.git
-# pcs_repo_uri: https://github.com/OpenCHAMI/power-control.git
+# bss_ref: v1.32.2
+# pcs_repo_uri: https://github.com/openchami/power-control.git
+# pcs_ref: main
+# cloud_init_repo_uri: https://github.com/openchami/cloud-init.git
+# cloud_init_ref: v1.4.0
+# magellan_repo_uri: https://github.com/openchami/magellan.git
+# magellan_ref: v0.5.1
 
 # Discovery
 # discovery_method: static  # or magellan

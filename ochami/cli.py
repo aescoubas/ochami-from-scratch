@@ -56,6 +56,8 @@ def _collect_deploy_overrides(
     smd_repo_uri: str | None,
     bss_repo_uri: str | None,
     pcs_repo_uri: str | None,
+    cloud_init_ref: str | None,
+    cloud_init_repo_uri: str | None,
     discovery_method: DiscoveryMethod | None,
     magellan_subnets: str | None,
     magellan_hosts: str | None,
@@ -65,6 +67,8 @@ def _collect_deploy_overrides(
     magellan_bmc_id_map: str | None,
     magellan_cache: str | None,
     magellan_insecure: bool | None,
+    magellan_ref: str | None,
+    magellan_repo_uri: str | None,
 ) -> dict[str, Any]:
     """Return a dict of only the CLI arguments that were explicitly provided."""
     candidates: dict[str, Any] = {
@@ -88,6 +92,8 @@ def _collect_deploy_overrides(
         "smd_repo_uri": smd_repo_uri,
         "bss_repo_uri": bss_repo_uri,
         "pcs_repo_uri": pcs_repo_uri,
+        "cloud_init_ref": cloud_init_ref,
+        "cloud_init_repo_uri": cloud_init_repo_uri,
         "discovery_method": discovery_method,
         "magellan_subnets": magellan_subnets,
         "magellan_hosts": magellan_hosts,
@@ -97,6 +103,8 @@ def _collect_deploy_overrides(
         "magellan_bmc_id_map": magellan_bmc_id_map,
         "magellan_cache": magellan_cache,
         "magellan_insecure": magellan_insecure,
+        "magellan_ref": magellan_ref,
+        "magellan_repo_uri": magellan_repo_uri,
     }
     return {k: v for k, v in candidates.items() if v is not None}
 
@@ -149,6 +157,8 @@ def deploy(
     smd_repo_uri: Annotated[str | None, typer.Option("--smd-repo-uri", help="SMD repo URI")] = None,
     bss_repo_uri: Annotated[str | None, typer.Option("--bss-repo-uri", help="BSS repo URI")] = None,
     pcs_repo_uri: Annotated[str | None, typer.Option("--pcs-repo-uri", help="PCS repo URI")] = None,
+    cloud_init_ref: Annotated[str | None, typer.Option("--cloud-init-ref", help="Cloud-init git ref")] = None,
+    cloud_init_repo_uri: Annotated[str | None, typer.Option("--cloud-init-repo-uri", help="Cloud-init repo URI")] = None,
     discovery_method: Annotated[
         DiscoveryMethod | None,
         typer.Option("--discovery-method", help="Discovery method: static or magellan"),
@@ -182,6 +192,8 @@ def deploy(
         bool | None,
         typer.Option("--magellan-insecure", help="Skip TLS verification for Magellan"),
     ] = None,
+    magellan_ref: Annotated[str | None, typer.Option("--magellan-ref", help="Magellan git ref")] = None,
+    magellan_repo_uri: Annotated[str | None, typer.Option("--magellan-repo-uri", help="Magellan repo URI")] = None,
     dry_run: Annotated[bool, typer.Option("--dry-run", help="Show command/env without execution")] = False,
     verbose: Annotated[bool, typer.Option("--verbose", "-v", help="Show subprocess output")] = False,
 ) -> None:
@@ -225,6 +237,8 @@ def deploy(
         smd_repo_uri=smd_repo_uri,
         bss_repo_uri=bss_repo_uri,
         pcs_repo_uri=pcs_repo_uri,
+        cloud_init_ref=cloud_init_ref,
+        cloud_init_repo_uri=cloud_init_repo_uri,
         discovery_method=discovery_method,
         magellan_subnets=magellan_subnets,
         magellan_hosts=magellan_hosts,
@@ -234,6 +248,8 @@ def deploy(
         magellan_bmc_id_map=magellan_bmc_id_map,
         magellan_cache=magellan_cache,
         magellan_insecure=magellan_insecure,
+        magellan_ref=magellan_ref,
+        magellan_repo_uri=magellan_repo_uri,
     )
 
     # Merge: dataclass defaults < file < CLI
@@ -346,6 +362,8 @@ def apply(
     smd_repo_uri: Annotated[str | None, typer.Option("--smd-repo-uri", help="SMD repo URI")] = None,
     bss_repo_uri: Annotated[str | None, typer.Option("--bss-repo-uri", help="BSS repo URI")] = None,
     pcs_repo_uri: Annotated[str | None, typer.Option("--pcs-repo-uri", help="PCS repo URI")] = None,
+    cloud_init_ref: Annotated[str | None, typer.Option("--cloud-init-ref", help="Cloud-init git ref")] = None,
+    cloud_init_repo_uri: Annotated[str | None, typer.Option("--cloud-init-repo-uri", help="Cloud-init repo URI")] = None,
     discovery_method: Annotated[
         DiscoveryMethod | None,
         typer.Option("--discovery-method", help="Discovery method: static or magellan"),
@@ -379,6 +397,8 @@ def apply(
         bool | None,
         typer.Option("--magellan-insecure", help="Skip TLS verification for Magellan"),
     ] = None,
+    magellan_ref: Annotated[str | None, typer.Option("--magellan-ref", help="Magellan git ref")] = None,
+    magellan_repo_uri: Annotated[str | None, typer.Option("--magellan-repo-uri", help="Magellan repo URI")] = None,
     dry_run: Annotated[bool, typer.Option("--dry-run", help="Show command/env without execution")] = False,
     verbose: Annotated[bool, typer.Option("--verbose", "-v", help="Show subprocess output")] = False,
 ) -> None:
@@ -429,6 +449,8 @@ def apply(
         smd_repo_uri=smd_repo_uri,
         bss_repo_uri=bss_repo_uri,
         pcs_repo_uri=pcs_repo_uri,
+        cloud_init_ref=cloud_init_ref,
+        cloud_init_repo_uri=cloud_init_repo_uri,
         discovery_method=discovery_method,
         magellan_subnets=magellan_subnets,
         magellan_hosts=magellan_hosts,
@@ -438,6 +460,8 @@ def apply(
         magellan_bmc_id_map=magellan_bmc_id_map,
         magellan_cache=magellan_cache,
         magellan_insecure=magellan_insecure,
+        magellan_ref=magellan_ref,
+        magellan_repo_uri=magellan_repo_uri,
     )
 
     merged = {**file_values, **cli_overrides}

@@ -70,6 +70,8 @@ class DeployConfig:
     smd_repo_uri: str = "https://github.com/openchami/smd.git"
     bss_repo_uri: str = "https://github.com/openchami/bss.git"
     pcs_repo_uri: str = "https://github.com/OpenCHAMI/power-control.git"
+    cloud_init_ref: str = "v1.4.0"
+    cloud_init_repo_uri: str = "https://github.com/openchami/cloud-init.git"
     discovery_method: DiscoveryMethod = DiscoveryMethod.STATIC
     magellan_subnets: str = ""
     magellan_hosts: str = ""
@@ -79,6 +81,8 @@ class DeployConfig:
     magellan_bmc_id_map: str = ""
     magellan_cache: str = ""
     magellan_insecure: bool = False
+    magellan_ref: str = "v0.5.1"
+    magellan_repo_uri: str = "https://github.com/openchami/magellan.git"
 
     def __post_init__(self) -> None:
         self.validate()
@@ -109,6 +113,10 @@ class DeployConfig:
             "smd_repo_uri": self.smd_repo_uri,
             "bss_repo_uri": self.bss_repo_uri,
             "pcs_repo_uri": self.pcs_repo_uri,
+            "cloud_init_ref": self.cloud_init_ref,
+            "cloud_init_repo_uri": self.cloud_init_repo_uri,
+            "magellan_ref": self.magellan_ref,
+            "magellan_repo_uri": self.magellan_repo_uri,
         }.items():
             if not value.strip():
                 raise ValueError(f"{key} must be non-empty")
@@ -165,6 +173,14 @@ class DeployConfig:
                 self.bss_repo_uri,
                 "--pcs-repo-uri",
                 self.pcs_repo_uri,
+                "--cloud-init-ref",
+                self.cloud_init_ref,
+                "--cloud-init-repo-uri",
+                self.cloud_init_repo_uri,
+                "--magellan-ref",
+                self.magellan_ref,
+                "--magellan-repo-uri",
+                self.magellan_repo_uri,
                 "--discovery-method",
                 self.discovery_method.value,
             ]
@@ -219,6 +235,8 @@ class DeployConfig:
             "OPENCHAMI_SMD_REPO_URI": self.smd_repo_uri,
             "OPENCHAMI_BSS_REPO_URI": self.bss_repo_uri,
             "OPENCHAMI_PCS_REPO_URI": self.pcs_repo_uri,
+            "OPENCHAMI_CLOUD_INIT_REF": self.cloud_init_ref,
+            "OPENCHAMI_CLOUD_INIT_REPO_URI": self.cloud_init_repo_uri,
             "OPENCHAMI_MAGELLAN_SUBNETS": self.magellan_subnets,
             "OPENCHAMI_MAGELLAN_HOSTS": self.magellan_hosts,
             "OPENCHAMI_MAGELLAN_SUBNET_MASK": self.magellan_subnet_mask,
@@ -228,6 +246,8 @@ class DeployConfig:
             "OPENCHAMI_REBUILD": str(self.rebuild).lower(),
             "OPENCHAMI_SET_FS_PROTECTED_REGULAR": str(self.set_fs_protected_regular).lower(),
             "OPENCHAMI_MAGELLAN_INSECURE": str(self.magellan_insecure).lower(),
+            "OPENCHAMI_MAGELLAN_REF": self.magellan_ref,
+            "OPENCHAMI_MAGELLAN_REPO_URI": self.magellan_repo_uri,
         }
         if self.nodes_file is not None:
             env["OPENCHAMI_NODES_FILE"] = str(self.nodes_file)

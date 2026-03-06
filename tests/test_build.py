@@ -65,6 +65,7 @@ def test_build_images_if_needed_invokes_expected_build_steps(tmp_path: Path) -> 
     manager.build_smd = lambda **_kwargs: events.append("smd")  # type: ignore[method-assign]
     manager.build_bss = lambda **_kwargs: events.append("bss")  # type: ignore[method-assign]
     manager.build_pcs = lambda **_kwargs: events.append("pcs")  # type: ignore[method-assign]
+    manager.build_cloud_init = lambda **_kwargs: events.append("cloud_init")  # type: ignore[method-assign]
 
     manager.build_images_if_needed(
         cfg,
@@ -76,4 +77,4 @@ def test_build_images_if_needed_invokes_expected_build_steps(tmp_path: Path) -> 
 
     assert events.count("artifacts") == 1
     assert events.count("local-image") == 3
-    assert "smd" in events and "bss" in events and "pcs" in events
+    assert "smd" in events and "bss" in events and "pcs" in events and "cloud_init" in events

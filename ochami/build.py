@@ -23,6 +23,7 @@ IMAGE_KEA_SIDECAR = "localhost/kea-sidecar:latest"
 IMAGE_SMD = "localhost/smd:local-smd"
 IMAGE_BSS = "localhost/bss:local-bss"
 IMAGE_PCS = "localhost/pcs:local-pcs"
+IMAGE_CLOUD_INIT = "localhost/cloud-init:local-cloud-init"
 
 DEFAULT_BASE_IMAGES = {
     "BASE_IMAGE_HTTP_SERVER": "nginx:1.27.5-alpine@sha256:65645c7bb6a0661892a8b03b89d0743208a18dd2f3f17a54ef4b76fb8e2f2a10",
@@ -37,6 +38,7 @@ DEFAULT_REPO_URIS = {
     "smd": "https://github.com/openchami/smd.git",
     "bss": "https://github.com/openchami/bss.git",
     "pcs": "https://github.com/OpenCHAMI/power-control.git",
+    "cloud-init": "https://github.com/openchami/cloud-init.git",
 }
 
 
@@ -139,6 +141,10 @@ class BuildManager:
             self.build_pcs(config=config, container_tool=container_tool, dry_run=dry_run)
             self._load_into_minikube_if_needed(IMAGE_PCS, orchestrator=orchestrator, container_tool=container_tool, dry_run=dry_run)
 
+        if force_rebuild or not self._image_exists(IMAGE_CLOUD_INIT, orchestrator=orchestrator, container_tool=container_tool, dry_run=dry_run):
+            self.build_cloud_init(config=config, container_tool=container_tool, dry_run=dry_run)
+            self._load_into_minikube_if_needed(IMAGE_CLOUD_INIT, orchestrator=orchestrator, container_tool=container_tool, dry_run=dry_run)
+
     def build_smd(self, *, config: DeployConfig, container_tool: str, dry_run: bool) -> None:
         repo_dir = self._prepare_repo_with_retry("smd", config.smd_ref, config.smd_repo_uri, dry_run=dry_run)
         self._run(["make", "clean"], cwd=repo_dir, check=False, dry_run=dry_run)
@@ -173,6 +179,13 @@ class BuildManager:
                 dry_run=dry_run,
             ),
             f"build {IMAGE_PCS}",
+        )
+
+    def build_cloud_init(self, *, config: DeployConfig, container_tool: str, dry_run: bool) -> None:
+        repo_dir = self._prepare_repo_with_retry("cloud-init", config.cloud_init_ref, config.cloud_init_repo_uri, dry_run=dry_run)
+        self._run_with_retry(
+            lambda: self._run_container(container_tool, ["build", "-t", IMAGE_CLOUD_INIT, "."], cwd=repo_dir, dry_run=dry_run),
+            f"build {IMAGE_CLOUD_INIT}",
         )
 
     def _prepare_repo_with_retry(self, service: str, git_ref: str, repo_uri: str, *, dry_run: bool) -> Path:

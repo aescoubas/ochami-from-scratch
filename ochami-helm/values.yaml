@@ -233,8 +233,8 @@ emulator:
 cloudInit:
   enabled: true
   image:
-    repository: ghcr.io/openchami/cloud-init
-    tag: "v1.4.0"
+    repository: localhost/cloud-init
+    tag: "local-cloud-init"
     pullPolicy: IfNotPresent
   port: 27777
   clusterName: "ochami"

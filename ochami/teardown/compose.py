@@ -10,6 +10,7 @@ from ochami.system import (
     destroy_vms,
     restore_fs_protected_regular_if_managed,
 )
+from ochami.build import IMAGE_CLOUD_INIT
 from ochami.teardown.base import BaseTeardown
 from ochami.utils import is_macos, parse_env_file, run, run_output
 
@@ -21,6 +22,7 @@ COMPOSE_REMOVE_IMAGES = [
     "localhost/bss:local-bss",
     "localhost/redfish-emulator:latest",
     "localhost/pcs:local-pcs",
+    IMAGE_CLOUD_INIT,
     "localhost/stork-agent:latest",
     "localhost/kea-sidecar:latest",
     "signalorange/stork:ubuntu24.04-1.19.0",

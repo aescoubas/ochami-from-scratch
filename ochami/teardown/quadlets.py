@@ -12,6 +12,7 @@ from ochami.system import (
     destroy_vms,
     restore_fs_protected_regular_if_managed,
 )
+from ochami.build import IMAGE_CLOUD_INIT
 from ochami.teardown.base import BaseTeardown
 from ochami.utils import is_macos, run, run_output
 
@@ -22,7 +23,7 @@ QUADLETS_REMOVE_IMAGES = [
     "localhost/smd:local-smd",
     "localhost/bss:local-bss",
     "localhost/pcs:local-pcs",
-    "ghcr.io/openchami/cloud-init:v1.4.0",
+    IMAGE_CLOUD_INIT,
     "localhost/stork-agent:latest",
     "localhost/kea-sidecar:latest",
     "localhost/redfish-emulator:latest",
