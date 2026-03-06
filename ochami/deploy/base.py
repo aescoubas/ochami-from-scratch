@@ -9,13 +9,28 @@ from ochami.console import Console, NullConsole
 from ochami.defaults import DEFAULT_PORTS
 from ochami.state import AppliedState, config_hash, load_state, needs_apply, save_state
 
-LOCALHOST_HEALTH_CHECKS: list[tuple[str, str]] = [
+_CORE_HEALTH_CHECKS: list[tuple[str, str]] = [
     ("SMD", f"http://localhost:{DEFAULT_PORTS['SMD_PORT']}/hsm/v2/service/ready"),
     ("BSS", f"http://localhost:{DEFAULT_PORTS['BSS_PORT']}/boot/v1/bootparameters"),
     ("cloud-init", f"http://localhost:{DEFAULT_PORTS['CLOUD_INIT_PORT']}/version"),
     ("PCS", f"http://localhost:{DEFAULT_PORTS['PCS_PORT']}/liveness"),
-    ("Stork", f"http://localhost:{DEFAULT_PORTS['STORK_PORT']}/api/version"),
 ]
+
+_STORK_HEALTH_CHECK: tuple[str, str] = (
+    "Stork",
+    f"http://localhost:{DEFAULT_PORTS['STORK_PORT']}/api/version",
+)
+
+
+def get_health_checks(*, enable_stork: bool = False) -> list[tuple[str, str]]:
+    checks = list(_CORE_HEALTH_CHECKS)
+    if enable_stork:
+        checks.append(_STORK_HEALTH_CHECK)
+    return checks
+
+
+# Backwards-compatible alias for existing imports
+LOCALHOST_HEALTH_CHECKS = _CORE_HEALTH_CHECKS
 
 
 class BaseDeployer(ABC):

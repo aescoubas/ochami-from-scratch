@@ -69,6 +69,7 @@ def _collect_deploy_overrides(
     magellan_insecure: bool | None,
     magellan_ref: str | None,
     magellan_repo_uri: str | None,
+    enable_stork: bool | None,
 ) -> dict[str, Any]:
     """Return a dict of only the CLI arguments that were explicitly provided."""
     candidates: dict[str, Any] = {
@@ -105,6 +106,7 @@ def _collect_deploy_overrides(
         "magellan_insecure": magellan_insecure,
         "magellan_ref": magellan_ref,
         "magellan_repo_uri": magellan_repo_uri,
+        "enable_stork": enable_stork,
     }
     return {k: v for k, v in candidates.items() if v is not None}
 
@@ -194,6 +196,10 @@ def deploy(
     ] = None,
     magellan_ref: Annotated[str | None, typer.Option("--magellan-ref", help="Magellan git ref")] = None,
     magellan_repo_uri: Annotated[str | None, typer.Option("--magellan-repo-uri", help="Magellan repo URI")] = None,
+    enable_stork: Annotated[
+        bool | None,
+        typer.Option("--enable-stork", help="Enable Stork DHCP monitoring UI"),
+    ] = None,
     dry_run: Annotated[bool, typer.Option("--dry-run", help="Show command/env without execution")] = False,
     verbose: Annotated[bool, typer.Option("--verbose", "-v", help="Show subprocess output")] = False,
 ) -> None:
@@ -250,6 +256,7 @@ def deploy(
         magellan_insecure=magellan_insecure,
         magellan_ref=magellan_ref,
         magellan_repo_uri=magellan_repo_uri,
+        enable_stork=enable_stork,
     )
 
     # Merge: dataclass defaults < file < CLI
@@ -399,6 +406,10 @@ def apply(
     ] = None,
     magellan_ref: Annotated[str | None, typer.Option("--magellan-ref", help="Magellan git ref")] = None,
     magellan_repo_uri: Annotated[str | None, typer.Option("--magellan-repo-uri", help="Magellan repo URI")] = None,
+    enable_stork: Annotated[
+        bool | None,
+        typer.Option("--enable-stork", help="Enable Stork DHCP monitoring UI"),
+    ] = None,
     dry_run: Annotated[bool, typer.Option("--dry-run", help="Show command/env without execution")] = False,
     verbose: Annotated[bool, typer.Option("--verbose", "-v", help="Show subprocess output")] = False,
 ) -> None:
@@ -462,6 +473,7 @@ def apply(
         magellan_insecure=magellan_insecure,
         magellan_ref=magellan_ref,
         magellan_repo_uri=magellan_repo_uri,
+        enable_stork=enable_stork,
     )
 
     merged = {**file_values, **cli_overrides}

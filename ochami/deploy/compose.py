@@ -6,7 +6,7 @@ from typing import Callable
 from ochami.build import BuildManager
 from ochami.config import DeployConfig, DeploymentMethod
 from ochami.defaults import DEFAULT_DATABASES, DEFAULT_PORTS, ensure_runtime_secrets, resolve_host_port
-from ochami.deploy.base import LOCALHOST_HEALTH_CHECKS, BaseDeployer
+from ochami.deploy.base import BaseDeployer, get_health_checks
 from ochami.network import NetworkManager
 from ochami.prerequisites import PrerequisitesInstaller
 from ochami.registry import RegistryManager
@@ -70,7 +70,7 @@ class ComposeDeployer(BaseDeployer):
 
         if not dry_run:
             self._generate_env_file(config=config, runtime=runtime)
-            self._render_compose_configs(runtime=runtime)
+            self._render_compose_configs(config=config, runtime=runtime)
 
         with self.console.phase("Starting services..."):
             compose_cmd = self._compose_command()
@@ -84,13 +84,16 @@ class ComposeDeployer(BaseDeployer):
             command.extend(["--env-file", str(self.compose_dir / ".env")])
             if config.num_vms > 0:
                 command.extend(["--profile", "emulator"])
+            if config.enable_stork:
+                command.extend(["--profile", "stork"])
             command.extend(["up", "-d", "--wait"])
             self._run(command, dry_run=dry_run)
 
     def post_deploy(self, config: DeployConfig, host_ip: str, dry_run: bool) -> None:
-        service_names = ", ".join(name for name, _ in LOCALHOST_HEALTH_CHECKS)
+        health_checks = get_health_checks(enable_stork=config.enable_stork)
+        service_names = ", ".join(name for name, _ in health_checks)
         with self.console.phase("Waiting for services...") as ctx:
-            self.registry.wait_for_services(LOCALHOST_HEALTH_CHECKS, dry_run=dry_run)
+            self.registry.wait_for_services(health_checks, dry_run=dry_run)
             ctx.set_detail(service_names)
 
         with self.console.phase("Registering boot defaults..."):
@@ -186,7 +189,7 @@ class ComposeDeployer(BaseDeployer):
         }
         write_env_file(self.compose_dir / ".env", env_values)
 
-    def _render_compose_configs(self, runtime: dict[str, str]) -> None:
+    def _render_compose_configs(self, config: DeployConfig, runtime: dict[str, str]) -> None:
         configs_dir = self.compose_dir / "configs"
         configs_dir.mkdir(parents=True, exist_ok=True)
 
@@ -214,11 +217,13 @@ class ComposeDeployer(BaseDeployer):
             "pcs_db_name": runtime["PCS_DB_NAME"],
             "pcs_db_user": runtime["PCS_DB_USER"],
             "pcs_db_password": runtime["PCS_DB_PASSWORD"],
+            "enable_stork": config.enable_stork,
         }
 
         self.renderer.render_to_file("shared/kea-dhcp4.conf.j2", configs_dir / "kea-dhcp4.conf", context)
         self.renderer.render_to_file("shared/boot.ipxe.j2", configs_dir / "boot.ipxe", context)
-        self.renderer.render_to_file("shared/stork-server.env.j2", configs_dir / "stork-server.env", context)
+        if config.enable_stork:
+            self.renderer.render_to_file("shared/stork-server.env.j2", configs_dir / "stork-server.env", context)
         self.renderer.render_to_file("shared/nginx-default.conf.j2", configs_dir / "nginx-default.conf", context)
 
     def _compose_command(self) -> list[str]:

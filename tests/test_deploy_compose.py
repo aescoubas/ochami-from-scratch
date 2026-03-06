@@ -159,7 +159,7 @@ def test_compose_deployer_generates_env_and_configs(tmp_path: Path) -> None:
 
     assert (configs_dir / "kea-dhcp4.conf").is_file()
     assert (configs_dir / "boot.ipxe").is_file()
-    assert (configs_dir / "stork-server.env").is_file()
+    assert not (configs_dir / "stork-server.env").is_file()  # stork disabled by default
     assert (configs_dir / "nginx-default.conf").is_file()
 
     compose_cmd = next(cmd for cmd in commands if cmd[:3] == ["docker", "compose", "-p"])

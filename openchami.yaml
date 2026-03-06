@@ -47,6 +47,9 @@ num_vms: 2    # number of virtual compute nodes (libvirt mode)
 # magellan_repo_uri: https://github.com/openchami/magellan.git
 # magellan_ref: v0.5.1
 
+# Optional services
+# enable_stork: false  # Enable Stork DHCP monitoring UI
+
 # Discovery
 # discovery_method: static  # or magellan
 # magellan_subnets: "10.0.0.0/24"

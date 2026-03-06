@@ -47,6 +47,7 @@ def _sample_context() -> dict[str, object]:
         "pcs_db_name": "pcsdb",
         "pcs_db_user": "pcs-user",
         "pcs_db_password": "secret",
+        "enable_stork": True,
     }
 
 

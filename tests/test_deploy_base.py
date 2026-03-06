@@ -3,15 +3,29 @@ from __future__ import annotations
 from pathlib import Path
 
 from ochami.defaults import DEFAULT_PORTS
-from ochami.deploy.base import LOCALHOST_HEALTH_CHECKS, BaseDeployer
+from ochami.deploy.base import LOCALHOST_HEALTH_CHECKS, BaseDeployer, get_health_checks
 
 
-def test_health_check_list_count() -> None:
-    assert len(LOCALHOST_HEALTH_CHECKS) == 5
+def test_core_health_check_list_count() -> None:
+    assert len(LOCALHOST_HEALTH_CHECKS) == 4
+
+
+def test_health_checks_without_stork() -> None:
+    checks = get_health_checks(enable_stork=False)
+    assert len(checks) == 4
+    names = [name for name, _ in checks]
+    assert "Stork" not in names
+
+
+def test_health_checks_with_stork() -> None:
+    checks = get_health_checks(enable_stork=True)
+    assert len(checks) == 5
+    names = [name for name, _ in checks]
+    assert "Stork" in names
 
 
 def test_health_check_ports_match_defaults() -> None:
-    for name, url in LOCALHOST_HEALTH_CHECKS:
+    for name, url in get_health_checks(enable_stork=True):
         if name == "SMD":
             assert f":{DEFAULT_PORTS['SMD_PORT']}/" in url
         elif name == "BSS":

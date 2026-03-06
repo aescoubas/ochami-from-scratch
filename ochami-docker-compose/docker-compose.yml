@@ -243,6 +243,8 @@ services:
     image: jonasal/kea-ctrl-agent:3.1.4
     network_mode: host
     pid: "service:kea"
+    profiles:
+      - stork
     depends_on:
       kea:
         condition: service_started
@@ -254,6 +256,8 @@ services:
   stork-server:
     image: signalorange/stork:ubuntu24.04-1.19.0
     network_mode: host
+    profiles:
+      - stork
     depends_on:
       postgres:
         condition: service_healthy
@@ -270,6 +274,8 @@ services:
     image: localhost/stork-agent:latest
     network_mode: host
     pid: "service:kea"
+    profiles:
+      - stork
     cap_add:
       - SYS_PTRACE
     depends_on:

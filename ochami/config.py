@@ -83,6 +83,7 @@ class DeployConfig:
     magellan_insecure: bool = False
     magellan_ref: str = "v0.5.1"
     magellan_repo_uri: str = "https://github.com/openchami/magellan.git"
+    enable_stork: bool = False
 
     def __post_init__(self) -> None:
         self.validate()
@@ -213,6 +214,8 @@ class DeployConfig:
             args.extend(["--magellan-cache", self.magellan_cache])
         if self.magellan_insecure:
             args.append("--magellan-insecure")
+        if self.enable_stork:
+            args.append("--enable-stork")
 
         return args
 
@@ -248,6 +251,7 @@ class DeployConfig:
             "OPENCHAMI_MAGELLAN_INSECURE": str(self.magellan_insecure).lower(),
             "OPENCHAMI_MAGELLAN_REF": self.magellan_ref,
             "OPENCHAMI_MAGELLAN_REPO_URI": self.magellan_repo_uri,
+            "OPENCHAMI_ENABLE_STORK": str(self.enable_stork).lower(),
         }
         if self.nodes_file is not None:
             env["OPENCHAMI_NODES_FILE"] = str(self.nodes_file)

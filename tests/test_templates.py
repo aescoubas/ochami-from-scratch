@@ -79,6 +79,7 @@ def test_render_nginx_template() -> None:
             "cloud_init_port": 27777,
             "pcs_port": 28007,
             "stork_port": 28010,
+            "enable_stork": True,
         },
     )
 

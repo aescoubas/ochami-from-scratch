@@ -8,7 +8,7 @@ from typing import Callable
 from ochami.build import BuildManager
 from ochami.config import DeployConfig, DeploymentMethod
 from ochami.defaults import DEFAULT_DATABASES, DEFAULT_PORTS, ensure_runtime_secrets, resolve_host_port
-from ochami.deploy.base import LOCALHOST_HEALTH_CHECKS, BaseDeployer
+from ochami.deploy.base import BaseDeployer, get_health_checks
 from ochami.network import NetworkManager
 from ochami.prerequisites import PrerequisitesInstaller
 from ochami.registry import RegistryManager
@@ -84,8 +84,8 @@ class QuadletsDeployer(BaseDeployer):
         if not dry_run:
             self._prepare_directories(dry_run=dry_run)
             self._write_env_file(runtime, dry_run=dry_run)
-            self._render_configs(runtime, dry_run=dry_run)
-            self._install_units(runtime, dry_run=dry_run)
+            self._render_configs(config, runtime, dry_run=dry_run)
+            self._install_units(config, runtime, dry_run=dry_run)
             self._ensure_postgres_init_executable(dry_run=dry_run)
 
         with self.console.phase("Starting services..."):
@@ -94,9 +94,10 @@ class QuadletsDeployer(BaseDeployer):
             self._run(["sudo", "systemctl", "start", "openchami.target"], dry_run=dry_run)
 
     def post_deploy(self, config: DeployConfig, host_ip: str, dry_run: bool) -> None:
-        service_names = ", ".join(name for name, _ in LOCALHOST_HEALTH_CHECKS)
+        health_checks = get_health_checks(enable_stork=config.enable_stork)
+        service_names = ", ".join(name for name, _ in health_checks)
         with self.console.phase("Waiting for services...") as ctx:
-            self.registry.wait_for_services(LOCALHOST_HEALTH_CHECKS, dry_run=dry_run)
+            self.registry.wait_for_services(health_checks, dry_run=dry_run)
             ctx.set_detail(service_names)
 
         with self.console.phase("Registering boot defaults..."):
@@ -237,7 +238,7 @@ class QuadletsDeployer(BaseDeployer):
         ]
         self._write_text_file(self.openchami_config_dir / "openchami.env", "\n".join(lines), dry_run=dry_run)
 
-    def _render_configs(self, runtime: dict[str, str], *, dry_run: bool) -> None:
+    def _render_configs(self, config: DeployConfig, runtime: dict[str, str], *, dry_run: bool) -> None:
         # Copy static config files from quadlets source directory.
         source_dir = self.quadlets_dir / "configs"
         for path in source_dir.iterdir():
@@ -272,20 +273,26 @@ class QuadletsDeployer(BaseDeployer):
             "pcs_db_name": runtime["PCS_DB_NAME"],
             "pcs_db_user": runtime["PCS_DB_USER"],
             "pcs_db_password": runtime["PCS_DB_PASSWORD"],
+            "enable_stork": config.enable_stork,
         }
 
         rendered_kea = self.renderer.render("shared/kea-dhcp4.conf.j2", context)
         self._write_text_file(self.openchami_configs_dir / "kea-dhcp4.conf", rendered_kea, dry_run=dry_run)
         rendered_boot = self.renderer.render("shared/boot.ipxe.j2", context)
         self._write_text_file(self.openchami_configs_dir / "boot.ipxe", rendered_boot, dry_run=dry_run)
-        rendered_stork = self.renderer.render("shared/stork-server.env.j2", context)
-        self._write_text_file(self.openchami_configs_dir / "stork-server.env", rendered_stork, dry_run=dry_run)
+        if config.enable_stork:
+            rendered_stork = self.renderer.render("shared/stork-server.env.j2", context)
+            self._write_text_file(self.openchami_configs_dir / "stork-server.env", rendered_stork, dry_run=dry_run)
         rendered_nginx = self.renderer.render("shared/nginx-default.conf.j2", context)
         self._write_text_file(self.openchami_configs_dir / "nginx-default.conf", rendered_nginx, dry_run=dry_run)
 
-    def _install_units(self, runtime: dict[str, str], *, dry_run: bool) -> None:
+    _STORK_UNITS = {"stork-server.container", "stork-agent.container"}
+
+    def _install_units(self, config: DeployConfig, runtime: dict[str, str], *, dry_run: bool) -> None:
         containers_dir = self.quadlets_dir / "containers"
         for path in sorted(containers_dir.glob("*.container")):
+            if not config.enable_stork and path.name in self._STORK_UNITS:
+                continue
             rendered = substitute_env_vars(path.read_text(encoding="utf-8"), runtime)
             self._write_text_file(self.quadlets_install_dir / path.name, rendered, dry_run=dry_run)
         for path in sorted(containers_dir.glob("*.target")):

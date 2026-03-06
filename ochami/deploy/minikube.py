@@ -91,7 +91,7 @@ class MinikubeDeployer(BaseDeployer):
             self._build_images(config=config, dry_run=dry_run)
 
         runtime = self._build_runtime_values(config=config, host_ip=host_ip)
-        values_content = self._build_values_file_content(runtime)
+        values_content = self._build_values_file_content(config, runtime)
         values_file: Path | None = None
 
         with self.console.phase("Deploying Helm chart..."):
@@ -107,7 +107,7 @@ class MinikubeDeployer(BaseDeployer):
 
                 self._run(["minikube", "kubectl", "--", "create", "ns", "ochami"], dry_run=dry_run, check=False)
                 self._wait_for_service_account(dry_run=dry_run)
-                self._restart_openchami_pods(dry_run=dry_run)
+                self._restart_openchami_pods(config=config, dry_run=dry_run)
 
                 self._run(
                     [
@@ -233,7 +233,7 @@ class MinikubeDeployer(BaseDeployer):
         )
         return runtime
 
-    def _build_values_file_content(self, runtime: dict[str, str]) -> str:
+    def _build_values_file_content(self, config: DeployConfig, runtime: dict[str, str]) -> str:
         values: dict[str, object] = {
             "externalIp": runtime["HOST_IP"],
             "pxeInterface": runtime["PXE_INTERFACE"],
@@ -269,6 +269,7 @@ class MinikubeDeployer(BaseDeployer):
                 }
             },
             "bootScriptUrl": f"http://{runtime['HOST_IP']}/boot/v1/bootscript?mac=${{mac}}",
+            "stork": {"enabled": config.enable_stork},
         }
         num_vms = int(runtime["NUM_VMS"])
         if num_vms > 0:
@@ -291,7 +292,7 @@ class MinikubeDeployer(BaseDeployer):
             self._sleep(1)
         raise RuntimeError("default service account in namespace ochami was not ready in time")
 
-    def _restart_openchami_pods(self, dry_run: bool) -> None:
+    def _restart_openchami_pods(self, config: DeployConfig, dry_run: bool) -> None:
         components = [
             "http-server",
             "tftp",
@@ -301,8 +302,9 @@ class MinikubeDeployer(BaseDeployer):
             "bss",
             "cloud-init",
             "pcs",
-            "stork-server",
         ]
+        if config.enable_stork:
+            components.append("stork-server")
         for component in components:
             self._run(
                 [
