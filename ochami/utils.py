@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 import hashlib
 import ipaddress
 import os
@@ -42,6 +42,7 @@ def run(
     env: Mapping[str, str] | None = None,
     check: bool = True,
     dry_run: bool = False,
+    capture: bool = False,
 ) -> int:
     if dry_run:
         return 0
@@ -50,15 +51,37 @@ def run(
     if env:
         full_env.update(env)
 
+    extra: dict[str, object] = {}
+    if capture:
+        extra["capture_output"] = True
+        extra["text"] = True
+
     completed = subprocess.run(
         list(cmd),
         cwd=str(cwd) if cwd else None,
         env=full_env,
         check=False,
+        **extra,
     )
     if check and completed.returncode != 0:
-        raise RuntimeError(f"command failed ({completed.returncode}): {' '.join(cmd)}")
+        msg = f"command failed ({completed.returncode}): {' '.join(cmd)}"
+        if capture and completed.stderr:
+            msg += f"\n{completed.stderr.strip()}"
+        raise RuntimeError(msg)
     return completed.returncode
+
+
+def make_quiet_runner() -> Callable[..., int]:
+    """Return a ``run`` wrapper that always captures subprocess output."""
+
+    def quiet_run(
+        cmd: Sequence[str],
+        **kwargs: object,
+    ) -> int:
+        kwargs.setdefault("capture", True)
+        return run(cmd, **kwargs)  # type: ignore[arg-type]
+
+    return quiet_run
 
 
 def run_output(

@@ -13,7 +13,7 @@ def test_render_kea_template_preserves_ipxe_mac_placeholder() -> None:
     renderer = TemplateRenderer(_repo_root() / "templates")
 
     content = renderer.render(
-        "compose/kea-dhcp4.conf.j2",
+        "shared/kea-dhcp4.conf.j2",
         {
             "pxe_interface": "virbr-pxe",
             "kea_db_name": "kea",
@@ -37,7 +37,7 @@ def test_render_boot_template() -> None:
     renderer = TemplateRenderer(_repo_root() / "templates")
 
     content = renderer.render(
-        "compose/boot.ipxe.j2",
+        "shared/boot.ipxe.j2",
         {
             "host_ip": "10.1.2.3",
             "http_port": 8080,
@@ -46,3 +46,45 @@ def test_render_boot_template() -> None:
 
     assert "Server: 10.1.2.3:8080" in content
     assert "set base-url http://10.1.2.3:8080" in content
+
+
+def test_render_stork_template() -> None:
+    renderer = TemplateRenderer(_repo_root() / "templates")
+
+    content = renderer.render(
+        "shared/stork-server.env.j2",
+        {
+            "postgres_port": 5432,
+            "stork_db_name": "stork",
+            "stork_db_user": "stork-user",
+            "stork_db_password": "secret",
+            "stork_port": 28010,
+        },
+    )
+
+    assert "STORK_DATABASE_NAME=stork" in content
+    assert "STORK_DATABASE_USER_NAME=stork-user" in content
+    assert "STORK_SERVER_PORT=28010" in content
+
+
+def test_render_nginx_template() -> None:
+    renderer = TemplateRenderer(_repo_root() / "templates")
+
+    content = renderer.render(
+        "shared/nginx-default.conf.j2",
+        {
+            "http_port": 80,
+            "bss_port": 27778,
+            "smd_port": 27779,
+            "cloud_init_port": 27777,
+            "pcs_port": 28007,
+            "stork_port": 28010,
+        },
+    )
+
+    assert "listen       80;" in content
+    assert "/boot/v1/" in content
+    assert "/hsm/" in content
+    assert "/cloud-init/" in content
+    assert "/power-control/" in content
+    assert "/stork/" in content

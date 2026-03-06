@@ -103,10 +103,10 @@ def test_compose_deployer_generates_env_and_configs(tmp_path: Path) -> None:
     configs_dir.mkdir(parents=True)
     (compose_dir / "docker-compose.yml").write_text("services: {}\n", encoding="utf-8")
 
-    _write_template(project_root / "templates/compose/kea-dhcp4.conf.j2", '{"interfaces":["{{ pxe_interface }}"],"boot":"http://{{ host_ip }}:{{ http_port }}/boot/v1/bootscript?mac=${mac}"}\n')
-    _write_template(project_root / "templates/compose/boot.ipxe.j2", "set base-url http://{{ host_ip }}:{{ http_port }}\n")
-    _write_template(project_root / "templates/compose/stork-server.env.j2", "STORK_SERVER_PORT={{ stork_port }}\n")
-    _write_template(project_root / "templates/nginx-default.conf.j2", "listen {{ http_port }};\n")
+    _write_template(project_root / "templates/shared/kea-dhcp4.conf.j2", '{"interfaces":["{{ pxe_interface }}"],"boot":"http://{{ host_ip }}:{{ http_port }}/boot/v1/bootscript?mac=${mac}"}\n')
+    _write_template(project_root / "templates/shared/boot.ipxe.j2", "set base-url http://{{ host_ip }}:{{ http_port }}\n")
+    _write_template(project_root / "templates/shared/stork-server.env.j2", "STORK_SERVER_PORT={{ stork_port }}\n")
+    _write_template(project_root / "templates/shared/nginx-default.conf.j2", "listen {{ http_port }};\n")
 
     static_ctrl_agent = configs_dir / "kea-ctrl-agent.conf"
     static_ctrl_agent.write_text("{}", encoding="utf-8")
@@ -189,10 +189,10 @@ def test_compose_deployer_uses_resolved_postgres_port(tmp_path: Path) -> None:
     configs_dir.mkdir(parents=True)
     (compose_dir / "docker-compose.yml").write_text("services: {}\n", encoding="utf-8")
 
-    _write_template(project_root / "templates/compose/kea-dhcp4.conf.j2", "{}\n")
-    _write_template(project_root / "templates/compose/boot.ipxe.j2", "set base-url\n")
-    _write_template(project_root / "templates/compose/stork-server.env.j2", "STORK_SERVER_PORT={{ stork_port }}\n")
-    _write_template(project_root / "templates/nginx-default.conf.j2", "listen {{ http_port }};\n")
+    _write_template(project_root / "templates/shared/kea-dhcp4.conf.j2", "{}\n")
+    _write_template(project_root / "templates/shared/boot.ipxe.j2", "set base-url\n")
+    _write_template(project_root / "templates/shared/stork-server.env.j2", "STORK_SERVER_PORT={{ stork_port }}\n")
+    _write_template(project_root / "templates/shared/nginx-default.conf.j2", "listen {{ http_port }};\n")
     (configs_dir / "kea-ctrl-agent.conf").write_text("{}", encoding="utf-8")
 
     commands: list[list[str]] = []

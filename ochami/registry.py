@@ -9,12 +9,8 @@ import time
 from urllib import error, request
 
 from ochami.config import DeployConfig, DiscoveryMethod
+from ochami.defaults import BSS_PORT, HTTP_PORT, SMD_PORT
 from ochami.utils import command_exists, is_macos, run, run_output, validate_ip, validate_mac
-
-
-BSS_PORT = 27778
-SMD_PORT = 27779
-HTTP_PORT = 80
 
 
 @dataclass(slots=True)

@@ -18,12 +18,12 @@ def test_deploy_cli_uses_python_minikube_deployer(monkeypatch: Any) -> None:
     payload: dict[str, Any] = {}
 
     class FakeDeployer:
-        def run(self, config: Any, dry_run: bool) -> None:
+        def run(self, config: Any, dry_run: bool, **_: Any) -> None:
             payload["method"] = config.method.value
             payload["dry_run"] = dry_run
             payload["interface"] = config.pxe_interface
 
-    monkeypatch.setattr("ochami.cli.MinikubeDeployer", lambda: FakeDeployer())
+    monkeypatch.setattr("ochami.cli.MinikubeDeployer", lambda **_: FakeDeployer())
 
     result = runner.invoke(
         app,
@@ -52,13 +52,13 @@ def test_deploy_cli_uses_python_compose_deployer(monkeypatch: Any) -> None:
     payload: dict[str, Any] = {}
 
     class FakeDeployer:
-        def run(self, config: Any, dry_run: bool) -> None:
+        def run(self, config: Any, dry_run: bool, **_: Any) -> None:
             payload["method"] = config.method.value
             payload["dry_run"] = dry_run
             payload["interface"] = config.pxe_interface
             payload["set_fs_protected_regular"] = config.set_fs_protected_regular
 
-    monkeypatch.setattr("ochami.cli.ComposeDeployer", lambda: FakeDeployer())
+    monkeypatch.setattr("ochami.cli.ComposeDeployer", lambda **_: FakeDeployer())
 
     result = runner.invoke(
         app,
@@ -85,12 +85,12 @@ def test_deploy_cli_can_disable_default_fs_protected_regular_workaround(monkeypa
     payload: dict[str, Any] = {}
 
     class FakeDeployer:
-        def run(self, config: Any, dry_run: bool) -> None:
+        def run(self, config: Any, dry_run: bool, **_: Any) -> None:
             payload["method"] = config.method.value
             payload["set_fs_protected_regular"] = config.set_fs_protected_regular
             payload["dry_run"] = dry_run
 
-    monkeypatch.setattr("ochami.cli.ComposeDeployer", lambda: FakeDeployer())
+    monkeypatch.setattr("ochami.cli.ComposeDeployer", lambda **_: FakeDeployer())
 
     result = runner.invoke(
         app,
@@ -115,12 +115,12 @@ def test_deploy_cli_uses_python_quadlets_deployer(monkeypatch: Any) -> None:
     payload: dict[str, Any] = {}
 
     class FakeDeployer:
-        def run(self, config: Any, dry_run: bool) -> None:
+        def run(self, config: Any, dry_run: bool, **_: Any) -> None:
             payload["method"] = config.method.value
             payload["dry_run"] = dry_run
             payload["interface"] = config.pxe_interface
 
-    monkeypatch.setattr("ochami.cli.QuadletsDeployer", lambda: FakeDeployer())
+    monkeypatch.setattr("ochami.cli.QuadletsDeployer", lambda **_: FakeDeployer())
 
     result = runner.invoke(
         app,
@@ -149,7 +149,7 @@ def test_teardown_cli_uses_python_minikube_teardown(monkeypatch: Any) -> None:
     payload: dict[str, Any] = {}
 
     class FakeTeardown:
-        def run(self, config: Any, dry_run: bool) -> None:
+        def run(self, config: Any, dry_run: bool, **_: Any) -> None:
             payload["method"] = config.method.value
             payload["dry_run"] = dry_run
             payload["remove_images"] = config.remove_images
@@ -183,7 +183,7 @@ def test_teardown_cli_uses_python_compose_teardown(monkeypatch: Any) -> None:
     payload: dict[str, Any] = {}
 
     class FakeTeardown:
-        def run(self, config: Any, dry_run: bool) -> None:
+        def run(self, config: Any, dry_run: bool, **_: Any) -> None:
             payload["method"] = config.method.value
             payload["dry_run"] = dry_run
             payload["remove_images"] = config.remove_images
@@ -209,7 +209,7 @@ def test_teardown_cli_uses_python_quadlets_teardown(monkeypatch: Any) -> None:
     payload: dict[str, Any] = {}
 
     class FakeTeardown:
-        def run(self, config: Any, dry_run: bool) -> None:
+        def run(self, config: Any, dry_run: bool, **_: Any) -> None:
             payload["method"] = config.method.value
             payload["dry_run"] = dry_run
             payload["remove_images"] = config.remove_images
@@ -245,13 +245,13 @@ def test_deploy_cli_with_config_file(monkeypatch: Any, tmp_path: Any) -> None:
     payload: dict[str, Any] = {}
 
     class FakeDeployer:
-        def run(self, config: Any, dry_run: bool) -> None:
+        def run(self, config: Any, dry_run: bool, **_: Any) -> None:
             payload["method"] = config.method.value
             payload["pxe_ip"] = config.pxe_ip
             payload["interface"] = config.pxe_interface
             payload["dry_run"] = dry_run
 
-    monkeypatch.setattr("ochami.cli.ComposeDeployer", lambda: FakeDeployer())
+    monkeypatch.setattr("ochami.cli.ComposeDeployer", lambda **_: FakeDeployer())
 
     result = runner.invoke(app, ["deploy", "--config", str(cfg_file), "--dry-run"])
 
@@ -271,11 +271,11 @@ def test_deploy_cli_cli_overrides_config_file(monkeypatch: Any, tmp_path: Any) -
     payload: dict[str, Any] = {}
 
     class FakeDeployer:
-        def run(self, config: Any, dry_run: bool) -> None:
+        def run(self, config: Any, dry_run: bool, **_: Any) -> None:
             payload["method"] = config.method.value
             payload["pxe_ip"] = config.pxe_ip
 
-    monkeypatch.setattr("ochami.cli.ComposeDeployer", lambda: FakeDeployer())
+    monkeypatch.setattr("ochami.cli.ComposeDeployer", lambda **_: FakeDeployer())
 
     result = runner.invoke(
         app,
@@ -293,10 +293,10 @@ def test_deploy_cli_method_from_config_file(monkeypatch: Any, tmp_path: Any) -> 
     payload: dict[str, Any] = {}
 
     class FakeDeployer:
-        def run(self, config: Any, dry_run: bool) -> None:
+        def run(self, config: Any, dry_run: bool, **_: Any) -> None:
             payload["method"] = config.method.value
 
-    monkeypatch.setattr("ochami.cli.QuadletsDeployer", lambda: FakeDeployer())
+    monkeypatch.setattr("ochami.cli.QuadletsDeployer", lambda **_: FakeDeployer())
 
     result = runner.invoke(app, ["deploy", "--config", str(cfg_file), "--dry-run"])
 
@@ -311,7 +311,7 @@ def test_teardown_cli_with_config_file(monkeypatch: Any, tmp_path: Any) -> None:
     payload: dict[str, Any] = {}
 
     class FakeTeardown:
-        def run(self, config: Any, dry_run: bool) -> None:
+        def run(self, config: Any, dry_run: bool, **_: Any) -> None:
             payload["method"] = config.method.value
             payload["pxe_ip"] = config.pxe_ip
 
@@ -336,13 +336,13 @@ def test_apply_cli_with_explicit_config(monkeypatch: Any, tmp_path: Any) -> None
     payload: dict[str, Any] = {}
 
     class FakeDeployer:
-        def apply(self, config: Any, *, state_path: Any, force: bool, dry_run: bool) -> None:
+        def apply(self, config: Any, *, state_path: Any, force: bool, dry_run: bool, **_: Any) -> None:
             payload["method"] = config.method.value
             payload["pxe_ip"] = config.pxe_ip
             payload["force"] = force
             payload["dry_run"] = dry_run
 
-    monkeypatch.setattr("ochami.cli.ComposeDeployer", lambda: FakeDeployer())
+    monkeypatch.setattr("ochami.cli.ComposeDeployer", lambda **_: FakeDeployer())
 
     result = runner.invoke(app, ["apply", "--config", str(cfg_file), "--dry-run"])
 
@@ -359,11 +359,11 @@ def test_apply_cli_with_method_flag(monkeypatch: Any) -> None:
     payload: dict[str, Any] = {}
 
     class FakeDeployer:
-        def apply(self, config: Any, *, state_path: Any, force: bool, dry_run: bool) -> None:
+        def apply(self, config: Any, *, state_path: Any, force: bool, dry_run: bool, **_: Any) -> None:
             payload["method"] = config.method.value
             payload["dry_run"] = dry_run
 
-    monkeypatch.setattr("ochami.cli.MinikubeDeployer", lambda: FakeDeployer())
+    monkeypatch.setattr("ochami.cli.MinikubeDeployer", lambda **_: FakeDeployer())
 
     result = runner.invoke(app, ["apply", "--method", "minikube", "--dry-run"])
 
@@ -375,10 +375,10 @@ def test_apply_cli_force_flag(monkeypatch: Any) -> None:
     payload: dict[str, Any] = {}
 
     class FakeDeployer:
-        def apply(self, config: Any, *, state_path: Any, force: bool, dry_run: bool) -> None:
+        def apply(self, config: Any, *, state_path: Any, force: bool, dry_run: bool, **_: Any) -> None:
             payload["force"] = force
 
-    monkeypatch.setattr("ochami.cli.ComposeDeployer", lambda: FakeDeployer())
+    monkeypatch.setattr("ochami.cli.ComposeDeployer", lambda **_: FakeDeployer())
 
     result = runner.invoke(
         app, ["apply", "--method", "docker-compose", "--force", "--dry-run"]
@@ -401,10 +401,10 @@ def test_apply_cli_default_config_silent_when_missing(monkeypatch: Any) -> None:
     payload: dict[str, Any] = {}
 
     class FakeDeployer:
-        def apply(self, config: Any, *, state_path: Any, force: bool, dry_run: bool) -> None:
+        def apply(self, config: Any, *, state_path: Any, force: bool, dry_run: bool, **_: Any) -> None:
             payload["method"] = config.method.value
 
-    monkeypatch.setattr("ochami.cli.QuadletsDeployer", lambda: FakeDeployer())
+    monkeypatch.setattr("ochami.cli.QuadletsDeployer", lambda **_: FakeDeployer())
 
     result = runner.invoke(app, ["apply", "--method", "quadlets", "--dry-run"])
 

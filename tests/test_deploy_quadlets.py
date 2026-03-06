@@ -104,9 +104,6 @@ def test_quadlets_deployer_generates_runtime_files_and_units(tmp_path: Path) -> 
     configs_src.mkdir(parents=True)
     units_src.mkdir(parents=True)
 
-    _write(configs_src / "kea-dhcp4.conf.template", '{"boot":"http://${HOST_IP}:${HTTP_PORT}/boot/v1/bootscript?mac=${mac}"}\n')
-    _write(configs_src / "boot.ipxe.template", "set base-url http://${HOST_IP}:${HTTP_PORT}\n")
-    _write(configs_src / "stork-server.env.template", "STORK_SERVER_PORT=${STORK_PORT}\n")
     _write(configs_src / "index.html", "<h1>ok</h1>\n")
     _write(configs_src / "kea-ctrl-agent.conf", "{}\n")
     _write(configs_src / "postgres-init-db.sh", "#!/bin/sh\necho init\n")
@@ -119,7 +116,11 @@ def test_quadlets_deployer_generates_runtime_files_and_units(tmp_path: Path) -> 
     )
     _write(units_src / "openchami.target", "[Unit]\nDescription=OpenCHAMI\n")
 
-    _write(project_root / "templates/nginx-default.conf.j2", "listen {{ http_port }};\n")
+    # Shared Jinja2 templates (used by both compose and quadlets).
+    _write(project_root / "templates/shared/kea-dhcp4.conf.j2", '{"boot":"http://{{ host_ip }}:{{ http_port }}/boot/v1/bootscript?mac=${mac}"}\n')
+    _write(project_root / "templates/shared/boot.ipxe.j2", "set base-url http://{{ host_ip }}:{{ http_port }}\n")
+    _write(project_root / "templates/shared/stork-server.env.j2", "STORK_SERVER_PORT={{ stork_port }}\n")
+    _write(project_root / "templates/shared/nginx-default.conf.j2", "listen {{ http_port }};\n")
 
     commands: list[list[str]] = []
 
@@ -175,6 +176,7 @@ def test_quadlets_deployer_generates_runtime_files_and_units(tmp_path: Path) -> 
     assert "POSTGRES_MULTIPLE_DATABASES=" in env_content
 
     rendered_kea = (config_dir / "configs" / "kea-dhcp4.conf").read_text(encoding="utf-8")
+    assert "192.168.100.2" in rendered_kea
     assert "bootscript?mac=${mac}" in rendered_kea
     assert (config_dir / "configs" / "nginx-default.conf").is_file()
     assert (config_dir / "configs" / "index.html").is_file()
@@ -294,7 +296,10 @@ def test_quadlets_deployer_uses_sudo_fallback_on_permission_error(tmp_path: Path
     _write(configs_src / "postgres-init-db.sh", "#!/bin/sh\necho init\n")
     _write(units_src / "pcs.container", "Environment=POSTGRES_USER=${PCS_DB_USER}\n")
     _write(units_src / "openchami.target", "[Unit]\nDescription=OpenCHAMI\n")
-    _write(project_root / "templates/nginx-default.conf.j2", "listen {{ http_port }};\n")
+    _write(project_root / "templates/shared/kea-dhcp4.conf.j2", "{}\n")
+    _write(project_root / "templates/shared/boot.ipxe.j2", "set base-url\n")
+    _write(project_root / "templates/shared/stork-server.env.j2", "STORK_SERVER_PORT={{ stork_port }}\n")
+    _write(project_root / "templates/shared/nginx-default.conf.j2", "listen {{ http_port }};\n")
 
     blocked_root = project_root / "blocked"
     install_dir = blocked_root / "etc/containers/systemd"

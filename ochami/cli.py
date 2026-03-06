@@ -16,9 +16,11 @@ from ochami.config import (
     load_config_file,
     merge_deploy_config,
 )
+from ochami.console import Console
 from ochami.deploy.compose import ComposeDeployer
 from ochami.deploy.minikube import MinikubeDeployer
 from ochami.deploy.quadlets import QuadletsDeployer
+from ochami.utils import make_quiet_runner
 from ochami.mcp.server import main as mcp_server_main
 from ochami.registry import RegistryManager
 from ochami.teardown.compose import ComposeTeardown
@@ -181,6 +183,7 @@ def deploy(
         typer.Option("--magellan-insecure", help="Skip TLS verification for Magellan"),
     ] = None,
     dry_run: Annotated[bool, typer.Option("--dry-run", help="Show command/env without execution")] = False,
+    verbose: Annotated[bool, typer.Option("--verbose", "-v", help="Show subprocess output")] = False,
 ) -> None:
     if fail_on_conflict and auto_kill:
         raise typer.BadParameter("choose only one of --fail-on-conflict or --auto-kill")
@@ -243,14 +246,20 @@ def deploy(
     except ValueError as exc:
         _raise_validation(exc)
 
+    console = Console(verbose=verbose, dry_run=dry_run)
+    runner = None if verbose else make_quiet_runner()
+
     if cfg.method == DeploymentMethod.DOCKER_COMPOSE:
-        ComposeDeployer().run(cfg, dry_run=dry_run)
+        deployer = ComposeDeployer(**({"runner": runner} if runner else {}))
+        deployer.run(cfg, dry_run=dry_run, console=console)
         return
     if cfg.method == DeploymentMethod.QUADLETS:
-        QuadletsDeployer().run(cfg, dry_run=dry_run)
+        deployer = QuadletsDeployer(**({"runner": runner} if runner else {}))
+        deployer.run(cfg, dry_run=dry_run, console=console)
         return
     if cfg.method == DeploymentMethod.MINIKUBE:
-        MinikubeDeployer().run(cfg, dry_run=dry_run)
+        deployer = MinikubeDeployer(**({"runner": runner} if runner else {}))
+        deployer.run(cfg, dry_run=dry_run, console=console)
         return
 
     raise typer.BadParameter(f"unsupported deployment method: {cfg.method.value}")
@@ -371,6 +380,7 @@ def apply(
         typer.Option("--magellan-insecure", help="Skip TLS verification for Magellan"),
     ] = None,
     dry_run: Annotated[bool, typer.Option("--dry-run", help="Show command/env without execution")] = False,
+    verbose: Annotated[bool, typer.Option("--verbose", "-v", help="Show subprocess output")] = False,
 ) -> None:
     """Idempotent deploy: skip if config unchanged, run full deploy otherwise."""
     if fail_on_conflict and auto_kill:
@@ -439,17 +449,22 @@ def apply(
     except ValueError as exc:
         _raise_validation(exc)
 
+    console = Console(verbose=verbose, dry_run=dry_run)
+    runner_kwargs: dict[str, object] = {}
+    if not verbose:
+        runner_kwargs["runner"] = make_quiet_runner()
+
     deployer: ComposeDeployer | QuadletsDeployer | MinikubeDeployer
     if cfg.method == DeploymentMethod.DOCKER_COMPOSE:
-        deployer = ComposeDeployer()
+        deployer = ComposeDeployer(**runner_kwargs)  # type: ignore[arg-type]
     elif cfg.method == DeploymentMethod.QUADLETS:
-        deployer = QuadletsDeployer()
+        deployer = QuadletsDeployer(**runner_kwargs)  # type: ignore[arg-type]
     elif cfg.method == DeploymentMethod.MINIKUBE:
-        deployer = MinikubeDeployer()
+        deployer = MinikubeDeployer(**runner_kwargs)  # type: ignore[arg-type]
     else:
         raise typer.BadParameter(f"unsupported deployment method: {cfg.method.value}")
 
-    deployer.apply(cfg, state_path=_DEFAULT_STATE_PATH, force=force, dry_run=dry_run)
+    deployer.apply(cfg, state_path=_DEFAULT_STATE_PATH, force=force, dry_run=dry_run, console=console)
 
 
 @app.command("teardown")

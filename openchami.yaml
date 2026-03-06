@@ -1,0 +1,51 @@
+# OpenCHAMI configuration file
+#
+# This file defines deployment settings for ochamifs.
+# Precedence: dataclass defaults < config file < CLI flags
+#
+# Usage:
+#   ochamifs deploy --config openchami.yaml
+#   ochamifs deploy --config openchami.yaml --ip 10.0.0.5  # CLI overrides file
+#
+# Only set what you need to change from defaults.
+# All fields are optional except 'method'.
+
+# Deployment method: minikube, quadlets, or docker-compose
+method: docker-compose
+
+# PXE network settings
+pxe_interface: virbr-pxe
+pxe_ip: 192.168.100.2
+pxe_cidr: 24
+# phy_iface: eth0  # physical interface to bridge (optional)
+
+# DHCP pool
+dhcp_start: 192.168.100.100
+dhcp_end: 192.168.100.200
+dhcp_netmask: 255.255.255.0
+# dhcp_conflict_policy: fail  # or auto-kill
+
+# Deployment mode
+mode: libvirt    # libvirt or hardware
+num_vms: 2    # number of virtual compute nodes (libvirt mode)
+# nodes_file: nodes.csv  # CSV of hardware nodes (hardware mode)
+
+# rebuild: false
+# set_fs_protected_regular: true
+
+# Git refs for component builds
+# smd_ref: main
+# bss_ref: main
+# pcs_ref: main
+# smd_repo_uri: https://github.com/aescoubas/ochami-smd.git
+# bss_repo_uri: https://github.com/aescoubas/ochami-bss.git
+# pcs_repo_uri: https://github.com/OpenCHAMI/power-control.git
+
+# Discovery
+# discovery_method: static  # or magellan
+# magellan_subnets: "10.0.0.0/24"
+# magellan_hosts: ""
+# magellan_subnet_mask: ""
+# magellan_bmc_user: ""
+# magellan_bmc_pass: ""
+# magellan_insecure: false

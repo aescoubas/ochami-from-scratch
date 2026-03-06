@@ -8,8 +8,8 @@ from typing import Callable
 
 from ochami.build import BuildManager
 from ochami.config import DeployConfig, DeploymentMethod
+from ochami.defaults import DEFAULT_DATABASES, HTTP_PORT, MCP_PROXY_PORT, ensure_runtime_secrets
 from ochami.deploy.base import BaseDeployer
-from ochami.deploy.compose import DEFAULT_DATABASES, ensure_runtime_secrets
 from ochami.network import NetworkManager
 from ochami.prerequisites import PrerequisitesInstaller
 from ochami.registry import RegistryManager
@@ -19,10 +19,6 @@ from ochami.system import (
     relax_permissions,
 )
 from ochami.utils import is_macos, run, run_output
-
-
-HTTP_PORT = 80
-MCP_PROXY_PORT = 30080
 
 
 class MinikubeDeployer(BaseDeployer):
@@ -78,62 +74,77 @@ class MinikubeDeployer(BaseDeployer):
         self._active_interface = active_interface
         return host_ip
 
+    def _method_label(self) -> str:
+        return "minikube"
+
+    def _mcp_port(self) -> int | str:
+        return MCP_PROXY_PORT
+
     def deploy(self, config: DeployConfig, host_ip: str, dry_run: bool) -> None:
-        self._install_prerequisites(config=config, dry_run=dry_run)
-        self._ensure_minikube_running(dry_run=dry_run)
-        self._build_images(config=config, dry_run=dry_run)
+        with self.console.phase("Installing prerequisites..."):
+            self._install_prerequisites(config=config, dry_run=dry_run)
+
+        with self.console.phase("Starting minikube..."):
+            self._ensure_minikube_running(dry_run=dry_run)
+
+        with self.console.phase("Building images..."):
+            self._build_images(config=config, dry_run=dry_run)
 
         runtime = self._build_runtime_values(config=config, host_ip=host_ip)
         values_content = self._build_values_file_content(runtime)
         values_file: Path | None = None
 
-        try:
-            if not dry_run:
-                tmp = tempfile.NamedTemporaryFile(mode="w", delete=False, encoding="utf-8", suffix=".yaml")
-                tmp.write(values_content)
-                tmp.flush()
-                tmp.close()
-                values_file = Path(tmp.name)
-            else:
-                values_file = self.project_root / ".tmp-minikube-values.yaml"
+        with self.console.phase("Deploying Helm chart..."):
+            try:
+                if not dry_run:
+                    tmp = tempfile.NamedTemporaryFile(mode="w", delete=False, encoding="utf-8", suffix=".yaml")
+                    tmp.write(values_content)
+                    tmp.flush()
+                    tmp.close()
+                    values_file = Path(tmp.name)
+                else:
+                    values_file = self.project_root / ".tmp-minikube-values.yaml"
 
-            self._run(["minikube", "kubectl", "--", "create", "ns", "ochami"], dry_run=dry_run, check=False)
-            self._wait_for_service_account(dry_run=dry_run)
-            self._restart_openchami_pods(dry_run=dry_run)
+                self._run(["minikube", "kubectl", "--", "create", "ns", "ochami"], dry_run=dry_run, check=False)
+                self._wait_for_service_account(dry_run=dry_run)
+                self._restart_openchami_pods(dry_run=dry_run)
 
-            self._run(
-                [
-                    "helm",
-                    "upgrade",
-                    "--install",
-                    "ochami",
-                    str(self.helm_dir),
-                    "-n",
-                    "ochami",
-                    "-f",
-                    str(self.values_base_file),
-                    "-f",
-                    str(values_file),
-                    "--wait",
-                    "--timeout",
-                    "10m0s",
-                ],
-                dry_run=dry_run,
-            )
-        finally:
-            if values_file is not None and values_file.exists() and not dry_run:
-                values_file.unlink()
+                self._run(
+                    [
+                        "helm",
+                        "upgrade",
+                        "--install",
+                        "ochami",
+                        str(self.helm_dir),
+                        "-n",
+                        "ochami",
+                        "-f",
+                        str(self.values_base_file),
+                        "-f",
+                        str(values_file),
+                        "--wait",
+                        "--timeout",
+                        "10m0s",
+                    ],
+                    dry_run=dry_run,
+                )
+            finally:
+                if values_file is not None and values_file.exists() and not dry_run:
+                    values_file.unlink()
 
     def post_deploy(self, config: DeployConfig, host_ip: str, dry_run: bool) -> None:
-        bss_ip = self._discover_service_cluster_ip("ochami-bss", dry_run=dry_run)
-        self.registry.register_bss_defaults(
-            host=bss_ip,
-            host_ip=host_ip,
-            extra_params=f"ds=nocloud-net;s=http://{host_ip}:{HTTP_PORT}/cloud-init/",
-            dry_run=dry_run,
-        )
-        self.registry.run_post_deploy_flow(config, host_ip=host_ip, orchestrator="minikube", dry_run=dry_run)
-        self._write_mcp_defaults(host_ip=host_ip, dry_run=dry_run)
+        with self.console.phase("Registering boot defaults..."):
+            bss_ip = self._discover_service_cluster_ip("ochami-bss", dry_run=dry_run)
+            self.registry.register_bss_defaults(
+                host=bss_ip,
+                host_ip=host_ip,
+                extra_params=f"ds=nocloud-net;s=http://{host_ip}:{HTTP_PORT}/cloud-init/",
+                dry_run=dry_run,
+            )
+            self.registry.run_post_deploy_flow(config, host_ip=host_ip, orchestrator="minikube", dry_run=dry_run)
+
+        with self.console.phase("Writing MCP defaults..."):
+            self.write_mcp_defaults(host_ip=host_ip, http_port=MCP_PROXY_PORT, method_label="minikube", dry_run=dry_run)
 
     def ensure_healthy(self, config: DeployConfig, dry_run: bool = False) -> None:
         self._run(["minikube", "status"], dry_run=dry_run)
@@ -332,18 +343,3 @@ class MinikubeDeployer(BaseDeployer):
             self._sleep(2)
         raise RuntimeError(f"failed to determine ClusterIP for service {service}")
 
-    def _write_mcp_defaults(self, host_ip: str, dry_run: bool) -> None:
-        if dry_run:
-            return
-        path = self.project_root / ".openchami-mcp.env"
-        path.write_text(
-            (
-                "# Generated by ochamifs deploy --method minikube\n"
-                "# OpenCHAMI MCP defaults (minikube host reverse proxy)\n"
-                f"OPENCHAMI_BASE_URL=http://{host_ip}:{MCP_PROXY_PORT}\n"
-                "OPENCHAMI_MCP_MODE=read-only\n"
-                "# Set to true only when you explicitly want mutating operations.\n"
-                "OPENCHAMI_MCP_ENABLE_WRITES=false\n"
-            ),
-            encoding="utf-8",
-        )

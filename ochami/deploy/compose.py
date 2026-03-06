@@ -1,54 +1,17 @@
 from __future__ import annotations
 
-import secrets
-import socket
 from pathlib import Path
 from typing import Callable
 
 from ochami.build import BuildManager
-from ochami.config import DeployConfig, DeployMode, DeploymentMethod
-from ochami.deploy.base import BaseDeployer
+from ochami.config import DeployConfig, DeploymentMethod
+from ochami.defaults import DEFAULT_DATABASES, DEFAULT_PORTS, ensure_runtime_secrets, resolve_host_port
+from ochami.deploy.base import LOCALHOST_HEALTH_CHECKS, BaseDeployer
 from ochami.network import NetworkManager
 from ochami.prerequisites import PrerequisitesInstaller
 from ochami.registry import RegistryManager
 from ochami.templates import TemplateRenderer
-from ochami.utils import is_macos, parse_env_file, run, run_output, write_env_file
-
-
-DEFAULT_PORTS = {
-    "SMD_PORT": "27779",
-    "BSS_PORT": "27778",
-    "POSTGRES_PORT": "5432",
-    "HTTP_PORT": "80",
-    "CLOUD_INIT_PORT": "27777",
-    "PCS_PORT": "28007",
-    "STORK_PORT": "28010",
-    "STORK_AGENT_PORT": "28011",
-}
-
-DEFAULT_DATABASES = {
-    "POSTGRES_USER": "ochami",
-    "SMD_DB_NAME": "hmsds",
-    "SMD_DB_USER": "smd-user",
-    "BSS_DB_NAME": "bssdb",
-    "BSS_DB_USER": "bss-user",
-    "KEA_DB_NAME": "kea",
-    "KEA_DB_USER": "kea-user",
-    "PCS_DB_NAME": "pcsdb",
-    "PCS_DB_USER": "pcs-user",
-    "STORK_DB_NAME": "stork",
-    "STORK_DB_USER": "stork-user",
-}
-
-SECRET_KEYS = [
-    "POSTGRES_PASSWORD",
-    "SMD_DB_PASSWORD",
-    "BSS_DB_PASSWORD",
-    "KEA_DB_PASSWORD",
-    "PCS_DB_PASSWORD",
-    "STORK_DB_PASSWORD",
-    "HYDRA_DB_PASSWORD",
-]
+from ochami.utils import is_macos, run, run_output, write_env_file
 
 
 class ComposeDeployer(BaseDeployer):
@@ -93,9 +56,15 @@ class ComposeDeployer(BaseDeployer):
     def configure_network(self, config: DeployConfig, dry_run: bool) -> str:
         return self.network.configure_for_compose(config, dry_run=dry_run)
 
+    def _method_label(self) -> str:
+        return "docker-compose"
+
     def deploy(self, config: DeployConfig, host_ip: str, dry_run: bool) -> None:
-        self._install_prerequisites(config, dry_run=dry_run)
-        self._build_images(config, dry_run=dry_run)
+        with self.console.phase("Installing prerequisites..."):
+            self._install_prerequisites(config, dry_run=dry_run)
+
+        with self.console.phase("Building images..."):
+            self._build_images(config, dry_run=dry_run)
 
         runtime = self._build_runtime_values(config=config, host_ip=host_ip)
 
@@ -103,37 +72,38 @@ class ComposeDeployer(BaseDeployer):
             self._generate_env_file(config=config, runtime=runtime)
             self._render_compose_configs(runtime=runtime)
 
-        compose_cmd = self._compose_command()
-        files = [self.compose_dir / "docker-compose.yml"]
-        if self._is_macos and (self.compose_dir / "docker-compose.macos.yml").is_file():
-            files.append(self.compose_dir / "docker-compose.macos.yml")
+        with self.console.phase("Starting services..."):
+            compose_cmd = self._compose_command()
+            files = [self.compose_dir / "docker-compose.yml"]
+            if self._is_macos and (self.compose_dir / "docker-compose.macos.yml").is_file():
+                files.append(self.compose_dir / "docker-compose.macos.yml")
 
-        command: list[str] = [*compose_cmd, "-p", "ochami"]
-        for file_path in files:
-            command.extend(["-f", str(file_path)])
-        command.extend(["--env-file", str(self.compose_dir / ".env")])
-        if config.num_vms > 0:
-            command.extend(["--profile", "emulator"])
-        command.extend(["up", "-d", "--wait"])
-        self._run(command, dry_run=dry_run)
+            command: list[str] = [*compose_cmd, "-p", "ochami"]
+            for file_path in files:
+                command.extend(["-f", str(file_path)])
+            command.extend(["--env-file", str(self.compose_dir / ".env")])
+            if config.num_vms > 0:
+                command.extend(["--profile", "emulator"])
+            command.extend(["up", "-d", "--wait"])
+            self._run(command, dry_run=dry_run)
 
     def post_deploy(self, config: DeployConfig, host_ip: str, dry_run: bool) -> None:
-        checks = [
-            ("SMD", "http://localhost:27779/hsm/v2/service/ready"),
-            ("BSS", "http://localhost:27778/boot/v1/bootparameters"),
-            ("cloud-init", "http://localhost:27777/cloud-init/version"),
-            ("PCS", "http://localhost:28007/liveness"),
-            ("Stork", "http://localhost:28010/api/version"),
-        ]
-        self.registry.wait_for_services(checks, dry_run=dry_run)
-        self.registry.register_bss_defaults(
-            host="localhost",
-            host_ip=host_ip,
-            extra_params=f"ds=nocloud-net;s=http://{host_ip}:80/cloud-init/",
-            dry_run=dry_run,
-        )
-        self.registry.run_post_deploy_flow(config, host_ip=host_ip, orchestrator="docker-compose", dry_run=dry_run)
-        self._write_mcp_defaults(host_ip=host_ip, http_port=DEFAULT_PORTS["HTTP_PORT"], dry_run=dry_run)
+        service_names = ", ".join(name for name, _ in LOCALHOST_HEALTH_CHECKS)
+        with self.console.phase("Waiting for services...") as ctx:
+            self.registry.wait_for_services(LOCALHOST_HEALTH_CHECKS, dry_run=dry_run)
+            ctx.set_detail(service_names)
+
+        with self.console.phase("Registering boot defaults..."):
+            self.registry.register_bss_defaults(
+                host="localhost",
+                host_ip=host_ip,
+                extra_params=f"ds=nocloud-net;s=http://{host_ip}:80/cloud-init/",
+                dry_run=dry_run,
+            )
+            self.registry.run_post_deploy_flow(config, host_ip=host_ip, orchestrator="docker-compose", dry_run=dry_run)
+
+        with self.console.phase("Writing MCP defaults..."):
+            self.write_mcp_defaults(host_ip=host_ip, http_port=DEFAULT_PORTS["HTTP_PORT"], method_label="docker-compose", dry_run=dry_run)
 
     def ensure_healthy(self, config: DeployConfig, dry_run: bool = False) -> None:
         compose_cmd = self._compose_command()
@@ -246,64 +216,14 @@ class ComposeDeployer(BaseDeployer):
             "pcs_db_password": runtime["PCS_DB_PASSWORD"],
         }
 
-        self.renderer.render_to_file("compose/kea-dhcp4.conf.j2", configs_dir / "kea-dhcp4.conf", context)
-        self.renderer.render_to_file("compose/boot.ipxe.j2", configs_dir / "boot.ipxe", context)
-        self.renderer.render_to_file("compose/stork-server.env.j2", configs_dir / "stork-server.env", context)
-        self.renderer.render_to_file("nginx-default.conf.j2", configs_dir / "nginx-default.conf", context)
+        self.renderer.render_to_file("shared/kea-dhcp4.conf.j2", configs_dir / "kea-dhcp4.conf", context)
+        self.renderer.render_to_file("shared/boot.ipxe.j2", configs_dir / "boot.ipxe", context)
+        self.renderer.render_to_file("shared/stork-server.env.j2", configs_dir / "stork-server.env", context)
+        self.renderer.render_to_file("shared/nginx-default.conf.j2", configs_dir / "nginx-default.conf", context)
 
     def _compose_command(self) -> list[str]:
         # Keep the same command preference as existing scripts.
         return ["docker", "compose"]
 
-    def _write_mcp_defaults(self, host_ip: str, http_port: str, dry_run: bool) -> None:
-        if dry_run:
-            return
-        path = self.project_root / ".openchami-mcp.env"
-        path.write_text(
-            (
-                "# Generated by ochamifs deploy --method docker-compose\n"
-                "# OpenCHAMI MCP defaults (docker-compose host reverse proxy)\n"
-                f"OPENCHAMI_BASE_URL=http://{host_ip}:{http_port}\n"
-                "OPENCHAMI_MCP_MODE=read-only\n"
-                "# Set to true only when you explicitly want mutating operations.\n"
-                "OPENCHAMI_MCP_ENABLE_WRITES=false\n"
-            ),
-            encoding="utf-8",
-        )
 
 
-def ensure_runtime_secrets(project_root: Path) -> dict[str, str]:
-    path = project_root / ".openchami-secrets.env"
-    values = parse_env_file(path)
-
-    for key in SECRET_KEYS:
-        env_override = values.get(key, "")
-        if key in values and env_override:
-            continue
-        values[key] = values.get(key) or secrets.token_hex(24)
-
-    ordered = {key: values[key] for key in SECRET_KEYS}
-    write_env_file(path, ordered)
-    path.chmod(0o600)
-    return ordered
-
-
-def resolve_host_port(preferred_port: int) -> int:
-    if _is_host_port_available(preferred_port):
-        return preferred_port
-
-    for candidate in range(15432, 16433):
-        if _is_host_port_available(candidate):
-            return candidate
-
-    raise RuntimeError("could not find an available host port for PostgreSQL")
-
-
-def _is_host_port_available(port: int) -> bool:
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        try:
-            sock.bind(("0.0.0.0", port))
-        except OSError:
-            return False
-    return True

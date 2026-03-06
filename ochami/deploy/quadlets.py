@@ -7,8 +7,8 @@ from typing import Callable
 
 from ochami.build import BuildManager
 from ochami.config import DeployConfig, DeploymentMethod
-from ochami.deploy.base import BaseDeployer
-from ochami.deploy.compose import DEFAULT_DATABASES, DEFAULT_PORTS, ensure_runtime_secrets, resolve_host_port
+from ochami.defaults import DEFAULT_DATABASES, DEFAULT_PORTS, ensure_runtime_secrets, resolve_host_port
+from ochami.deploy.base import LOCALHOST_HEALTH_CHECKS, BaseDeployer
 from ochami.network import NetworkManager
 from ochami.prerequisites import PrerequisitesInstaller
 from ochami.registry import RegistryManager
@@ -69,9 +69,16 @@ class QuadletsDeployer(BaseDeployer):
     def configure_network(self, config: DeployConfig, dry_run: bool) -> str:
         return self.network.configure_for_quadlets(config, dry_run=dry_run)
 
+    def _method_label(self) -> str:
+        return "quadlets"
+
     def deploy(self, config: DeployConfig, host_ip: str, dry_run: bool) -> None:
-        self._install_prerequisites(config=config, dry_run=dry_run)
-        self._build_images(config=config, dry_run=dry_run)
+        with self.console.phase("Installing prerequisites..."):
+            self._install_prerequisites(config=config, dry_run=dry_run)
+
+        with self.console.phase("Building images..."):
+            self._build_images(config=config, dry_run=dry_run)
+
         runtime = self._build_runtime_values(config=config, host_ip=host_ip)
 
         if not dry_run:
@@ -81,27 +88,28 @@ class QuadletsDeployer(BaseDeployer):
             self._install_units(runtime, dry_run=dry_run)
             self._ensure_postgres_init_executable(dry_run=dry_run)
 
-        self._run(["sudo", "systemctl", "daemon-reload"], dry_run=dry_run)
-        self._run(["sudo", "systemctl", "enable", "openchami.target"], dry_run=dry_run, check=False)
-        self._run(["sudo", "systemctl", "start", "openchami.target"], dry_run=dry_run)
+        with self.console.phase("Starting services..."):
+            self._run(["sudo", "systemctl", "daemon-reload"], dry_run=dry_run)
+            self._run(["sudo", "systemctl", "enable", "openchami.target"], dry_run=dry_run, check=False)
+            self._run(["sudo", "systemctl", "start", "openchami.target"], dry_run=dry_run)
 
     def post_deploy(self, config: DeployConfig, host_ip: str, dry_run: bool) -> None:
-        checks = [
-            ("SMD", "http://localhost:27779/hsm/v2/service/ready"),
-            ("BSS", "http://localhost:27778/boot/v1/bootparameters"),
-            ("cloud-init", "http://localhost:27777/cloud-init/version"),
-            ("PCS", "http://localhost:28007/liveness"),
-            ("Stork", "http://localhost:28010/api/version"),
-        ]
-        self.registry.wait_for_services(checks, dry_run=dry_run)
-        self.registry.register_bss_defaults(
-            host=host_ip,
-            host_ip=host_ip,
-            extra_params=f"ds=nocloud-net;s=http://{host_ip}:80/cloud-init/",
-            dry_run=dry_run,
-        )
-        self.registry.run_post_deploy_flow(config, host_ip=host_ip, orchestrator="quadlets", dry_run=dry_run)
-        self._write_mcp_defaults(host_ip=host_ip, http_port=DEFAULT_PORTS["HTTP_PORT"], dry_run=dry_run)
+        service_names = ", ".join(name for name, _ in LOCALHOST_HEALTH_CHECKS)
+        with self.console.phase("Waiting for services...") as ctx:
+            self.registry.wait_for_services(LOCALHOST_HEALTH_CHECKS, dry_run=dry_run)
+            ctx.set_detail(service_names)
+
+        with self.console.phase("Registering boot defaults..."):
+            self.registry.register_bss_defaults(
+                host=host_ip,
+                host_ip=host_ip,
+                extra_params=f"ds=nocloud-net;s=http://{host_ip}:80/cloud-init/",
+                dry_run=dry_run,
+            )
+            self.registry.run_post_deploy_flow(config, host_ip=host_ip, orchestrator="quadlets", dry_run=dry_run)
+
+        with self.console.phase("Writing MCP defaults..."):
+            self.write_mcp_defaults(host_ip=host_ip, http_port=DEFAULT_PORTS["HTTP_PORT"], method_label="quadlets", dry_run=dry_run)
 
     def ensure_healthy(self, config: DeployConfig, dry_run: bool = False) -> None:
         self._run(
@@ -229,25 +237,49 @@ class QuadletsDeployer(BaseDeployer):
         self._write_text_file(self.openchami_config_dir / "openchami.env", "\n".join(lines), dry_run=dry_run)
 
     def _render_configs(self, runtime: dict[str, str], *, dry_run: bool) -> None:
+        # Copy static config files from quadlets source directory.
         source_dir = self.quadlets_dir / "configs"
         for path in source_dir.iterdir():
             if path.name.endswith(".template"):
-                destination = self.openchami_configs_dir / path.name.removesuffix(".template")
-                rendered = substitute_env_vars(path.read_text(encoding="utf-8"), runtime)
-                self._write_text_file(destination, rendered, dry_run=dry_run)
-            elif path.suffix in {".sh", ".py", ".conf", ".html"} or path.name in {"user-data", "meta-data"}:
+                continue  # handled below via shared Jinja2 templates
+            if path.suffix in {".sh", ".py", ".conf", ".html"} or path.name in {"user-data", "meta-data"}:
                 destination = self.openchami_configs_dir / path.name
                 self._write_bytes_file(destination, path.read_bytes(), dry_run=dry_run)
 
+        # Render shared Jinja2 templates (same templates as compose).
         context = {
+            "host_ip": runtime["HOST_IP"],
+            "pxe_interface": runtime["PXE_INTERFACE"],
+            "pxe_cidr": runtime["PXE_CIDR"],
+            "dhcp_start": runtime["DHCP_START"],
+            "dhcp_end": runtime["DHCP_END"],
+            "dhcp_netmask": runtime["DHCP_NETMASK"],
             "http_port": runtime["HTTP_PORT"],
             "smd_port": runtime["SMD_PORT"],
             "bss_port": runtime["BSS_PORT"],
+            "postgres_port": runtime["POSTGRES_PORT"],
             "cloud_init_port": runtime["CLOUD_INIT_PORT"],
             "pcs_port": runtime["PCS_PORT"],
             "stork_port": runtime["STORK_PORT"],
+            "stork_agent_port": runtime["STORK_AGENT_PORT"],
+            "kea_db_name": runtime["KEA_DB_NAME"],
+            "kea_db_user": runtime["KEA_DB_USER"],
+            "kea_db_password": runtime["KEA_DB_PASSWORD"],
+            "stork_db_name": runtime["STORK_DB_NAME"],
+            "stork_db_user": runtime["STORK_DB_USER"],
+            "stork_db_password": runtime["STORK_DB_PASSWORD"],
+            "pcs_db_name": runtime["PCS_DB_NAME"],
+            "pcs_db_user": runtime["PCS_DB_USER"],
+            "pcs_db_password": runtime["PCS_DB_PASSWORD"],
         }
-        rendered_nginx = self.renderer.render("nginx-default.conf.j2", context)
+
+        rendered_kea = self.renderer.render("shared/kea-dhcp4.conf.j2", context)
+        self._write_text_file(self.openchami_configs_dir / "kea-dhcp4.conf", rendered_kea, dry_run=dry_run)
+        rendered_boot = self.renderer.render("shared/boot.ipxe.j2", context)
+        self._write_text_file(self.openchami_configs_dir / "boot.ipxe", rendered_boot, dry_run=dry_run)
+        rendered_stork = self.renderer.render("shared/stork-server.env.j2", context)
+        self._write_text_file(self.openchami_configs_dir / "stork-server.env", rendered_stork, dry_run=dry_run)
+        rendered_nginx = self.renderer.render("shared/nginx-default.conf.j2", context)
         self._write_text_file(self.openchami_configs_dir / "nginx-default.conf", rendered_nginx, dry_run=dry_run)
 
     def _install_units(self, runtime: dict[str, str], *, dry_run: bool) -> None:
@@ -305,22 +337,6 @@ class QuadletsDeployer(BaseDeployer):
             return
         except PermissionError:
             self._install_file(path, content, mode="0644", dry_run=dry_run)
-
-    def _write_mcp_defaults(self, host_ip: str, http_port: str, dry_run: bool) -> None:
-        if dry_run:
-            return
-        path = self.project_root / ".openchami-mcp.env"
-        path.write_text(
-            (
-                "# Generated by ochamifs deploy --method quadlets\n"
-                "# OpenCHAMI MCP defaults (quadlets host reverse proxy)\n"
-                f"OPENCHAMI_BASE_URL=http://{host_ip}:{http_port}\n"
-                "OPENCHAMI_MCP_MODE=read-only\n"
-                "# Set to true only when you explicitly want mutating operations.\n"
-                "OPENCHAMI_MCP_ENABLE_WRITES=false\n"
-            ),
-            encoding="utf-8",
-        )
 
     def _install_file(self, destination: Path, content: bytes, *, mode: str, dry_run: bool) -> None:
         with tempfile.NamedTemporaryFile(delete=False) as tmp:

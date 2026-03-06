@@ -248,10 +248,11 @@ Core Python package:
 
 - `ochami/cli.py` — CLI entry point (Typer commands)
 - `ochami/config.py` — Configuration dataclasses and YAML loading
+- `ochami/defaults.py` — Shared constants (ports, databases, secrets) and helpers
 - `ochami/state.py` — Apply state tracking (config hashing, save/load)
 - `ochami/deploy/` — Deployers (base, compose, minikube, quadlets)
 - `ochami/teardown/` — Teardown implementations
 - `ochami/mcp/` — MCP server
 - `ochami/utils.py` — Shared utilities
-- `templates/` — Jinja2 templates for config rendering
+- `templates/shared/` — Jinja2 templates for config rendering (kea, boot.ipxe, stork, nginx)
 - `tests/` — pytest test suite
