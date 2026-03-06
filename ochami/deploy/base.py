@@ -12,7 +12,7 @@ from ochami.state import AppliedState, config_hash, load_state, needs_apply, sav
 LOCALHOST_HEALTH_CHECKS: list[tuple[str, str]] = [
     ("SMD", f"http://localhost:{DEFAULT_PORTS['SMD_PORT']}/hsm/v2/service/ready"),
     ("BSS", f"http://localhost:{DEFAULT_PORTS['BSS_PORT']}/boot/v1/bootparameters"),
-    ("cloud-init", f"http://localhost:{DEFAULT_PORTS['CLOUD_INIT_PORT']}/cloud-init/version"),
+    ("cloud-init", f"http://localhost:{DEFAULT_PORTS['CLOUD_INIT_PORT']}/version"),
     ("PCS", f"http://localhost:{DEFAULT_PORTS['PCS_PORT']}/liveness"),
     ("Stork", f"http://localhost:{DEFAULT_PORTS['STORK_PORT']}/api/version"),
 ]

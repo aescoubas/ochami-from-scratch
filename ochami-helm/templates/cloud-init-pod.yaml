@@ -40,7 +40,7 @@ spec:
         - "--insecure"
       livenessProbe:
         httpGet:
-          path: /cloud-init/version
+          path: /version
           port: http
         initialDelaySeconds: 20
         periodSeconds: 10
@@ -48,7 +48,7 @@ spec:
         failureThreshold: 6
       readinessProbe:
         httpGet:
-          path: /cloud-init/version
+          path: /version
           port: http
         initialDelaySeconds: 20
         periodSeconds: 10

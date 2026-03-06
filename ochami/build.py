@@ -184,6 +184,10 @@ class BuildManager:
     def build_cloud_init(self, *, config: DeployConfig, container_tool: str, dry_run: bool) -> None:
         repo_dir = self._prepare_repo_with_retry("cloud-init", config.cloud_init_ref, config.cloud_init_repo_uri, dry_run=dry_run)
         self._run_with_retry(
+            lambda: self._run(["go", "build", "-o", "cloud-init-server", "./cmd/cloud-init-server/"], cwd=repo_dir, dry_run=dry_run),
+            "go build cloud-init-server",
+        )
+        self._run_with_retry(
             lambda: self._run_container(container_tool, ["build", "-t", IMAGE_CLOUD_INIT, "."], cwd=repo_dir, dry_run=dry_run),
             f"build {IMAGE_CLOUD_INIT}",
         )
@@ -324,7 +328,7 @@ class BuildManager:
             self._run_container(container_tool, ["rm", container_id], dry_run=False, check=False)
             self._run_container(container_tool, ["rmi", "-f", "custom-image-builder-sles"], dry_run=False, check=False)
 
-            artifacts_root = self.project_root / "ochami-helm" / "http-server" / "artifacts"
+            artifacts_root = self.project_root / "images"
             opensuse_dir = artifacts_root / "opensuse"
             ubuntu_dir = artifacts_root / "ubuntu"
             for path in (opensuse_dir, ubuntu_dir):
@@ -336,6 +340,9 @@ class BuildManager:
                 shutil.copy2(self.project_root / shared, ubuntu_dir / shared)
             shutil.move(str(opensuse_sq), str(opensuse_dir / "rootfs.squashfs"))
             shutil.move(str(ubuntu_sq), str(ubuntu_dir / "rootfs.squashfs"))
+
+            # Ensure all artifacts are world-readable so nginx can serve them.
+            self._run(["chmod", "-R", "a+rX", str(artifacts_root)])
 
         self._build_local_image(
             image=IMAGE_HTTP,

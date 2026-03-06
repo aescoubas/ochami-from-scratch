@@ -216,7 +216,7 @@ def test_quadlets_teardown_removes_artifacts_and_calls_systemd(tmp_path: Path) -
     _write(install_dir / "a.container", "[Unit]\n")
     _write(systemd_dir / "openchami.target", "[Unit]\n")
     _write(config_dir / "openchami.env", "HOST_IP=1.2.3.4\n")
-    artifacts_dir = project_root / "ochami-helm/http-server/artifacts"
+    artifacts_dir = project_root / "images"
     (artifacts_dir / "opensuse").mkdir(parents=True)
     (artifacts_dir / "ubuntu").mkdir(parents=True)
     for name in ("vmlinuz-lts", "initramfs-lts", "rootfs.squashfs"):
@@ -418,6 +418,66 @@ def test_quadlets_teardown_uses_sudo_fallback_on_permission_error(tmp_path: Path
     assert ["sudo", "rm", "-f", str(install_dir / "a.container")] in commands
     assert ["sudo", "rm", "-f", str(systemd_dir / "openchami.target")] in commands
     assert ["sudo", "rm", "-rf", str(config_dir)] in commands
+
+
+def test_quadlets_runtime_includes_images_dir_and_substitutes_into_units(tmp_path: Path) -> None:
+    project_root = tmp_path
+    quadlets_dir = project_root / "ochami-quadlets"
+    configs_src = quadlets_dir / "configs"
+    units_src = quadlets_dir / "containers"
+    configs_src.mkdir(parents=True)
+    units_src.mkdir(parents=True)
+
+    _write(configs_src / "postgres-init-db.sh", "#!/bin/sh\necho init\n")
+    _write(
+        units_src / "http-server.container",
+        "Volume=${IMAGES_DIR}:/usr/share/nginx/html/artifacts:ro\n",
+    )
+    _write(units_src / "openchami.target", "[Unit]\nDescription=OpenCHAMI\n")
+    _write(project_root / "templates/shared/kea-dhcp4.conf.j2", "{}\n")
+    _write(project_root / "templates/shared/boot.ipxe.j2", "set base-url\n")
+    _write(project_root / "templates/shared/stork-server.env.j2", "STORK_SERVER_PORT={{ stork_port }}\n")
+    _write(project_root / "templates/shared/nginx-default.conf.j2", "listen {{ http_port }};\n")
+
+    commands: list[list[str]] = []
+
+    def fake_run(cmd: list[str], **_: Any) -> int:
+        commands.append(cmd)
+        return 0
+
+    install_dir = project_root / "etc/containers/systemd"
+    config_dir = project_root / "etc/openchami"
+    systemd_dir = project_root / "etc/systemd/system"
+
+    deployer = QuadletsDeployer(
+        project_root=project_root,
+        runner=fake_run,
+        renderer=TemplateRenderer(project_root / "templates"),
+        network=StubNetwork(),
+        registry=StubRegistry(),
+        prerequisites=StubPrerequisites(),
+        builder=StubBuilder(),
+        secrets_provider=lambda: {
+            "POSTGRES_PASSWORD": "pg-pass",
+            "SMD_DB_PASSWORD": "smd-pass",
+            "BSS_DB_PASSWORD": "bss-pass",
+            "KEA_DB_PASSWORD": "kea-pass",
+            "PCS_DB_PASSWORD": "pcs-pass",
+            "STORK_DB_PASSWORD": "stork-pass",
+            "HYDRA_DB_PASSWORD": "hydra-pass",
+        },
+        quadlets_install_dir=install_dir,
+        openchami_config_dir=config_dir,
+        systemd_dir=systemd_dir,
+        linux=True,
+    )
+
+    cfg = DeployConfig(method=DeploymentMethod.QUADLETS, pxe_ip="192.168.100.2", num_vms=0)
+    deployer.run(cfg, dry_run=False)
+
+    unit_content = (install_dir / "http-server.container").read_text(encoding="utf-8")
+    expected_volume = f"Volume={project_root / 'images'}:/usr/share/nginx/html/artifacts:ro"
+    assert expected_volume in unit_content, f"Expected IMAGES_DIR substitution in unit, got: {unit_content}"
 
 
 def test_quadlet_templates_use_runtime_postgres_port() -> None:

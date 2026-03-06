@@ -1,6 +1,10 @@
 initramfs-lts
 rootfs.squashfs
 vmlinuz-lts
+images/
+boot_tmp/
+modules_tmp/
+usr_modules_tmp/
 coredhcp-values.yaml
 ochami-smd/
 ochami-bss/

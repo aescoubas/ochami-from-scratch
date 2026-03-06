@@ -117,7 +117,7 @@ services:
       - "ochami"
       - "--insecure"
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:${CLOUD_INIT_PORT:-27777}/cloud-init/version || exit 1"]
+      test: ["CMD-SHELL", "ss -tlnp sport = :${CLOUD_INIT_PORT:-27777} | grep -q ${CLOUD_INIT_PORT:-27777}"]
       interval: 5s
       timeout: 5s
       retries: 30
@@ -222,6 +222,7 @@ services:
     volumes:
       - ./configs/nginx-default.conf:/etc/nginx/conf.d/default.conf:ro
       - ./configs/boot.ipxe:/usr/share/nginx/html/boot.ipxe:ro
+      - ../images:/usr/share/nginx/html/artifacts:ro
 
   tftp:
     image: localhost/tftp:latest

@@ -179,7 +179,7 @@ def test_minikube_deployer_runs_expected_flow(tmp_path: Path) -> None:
 
 def test_minikube_teardown_runs_expected_flow(tmp_path: Path) -> None:
     project_root = tmp_path
-    artifacts_dir = project_root / "ochami-helm/http-server/artifacts"
+    artifacts_dir = project_root / "images"
     (artifacts_dir / "opensuse").mkdir(parents=True)
     (artifacts_dir / "ubuntu").mkdir(parents=True)
     _write(artifacts_dir / "vmlinuz-lts", "kernel\n")

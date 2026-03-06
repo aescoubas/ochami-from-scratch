@@ -145,6 +145,7 @@ class QuadletsDeployer(BaseDeployer):
                 "PXE_CIDR": str(config.pxe_cidr),
                 "NUM_VMS": str(config.num_vms),
                 "PROJECT_ROOT": str(self.project_root),
+                "IMAGES_DIR": str(self.project_root / "images"),
             }
         )
         return runtime

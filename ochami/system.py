@@ -40,7 +40,7 @@ def destroy_vms(
 
 
 def cleanup_build_artifacts(project_root: Path, *, dry_run: bool) -> None:
-    artifacts_root = project_root / "ochami-helm" / "http-server" / "artifacts"
+    artifacts_root = project_root / "images"
     for path in (
         artifacts_root / "opensuse",
         artifacts_root / "ubuntu",
