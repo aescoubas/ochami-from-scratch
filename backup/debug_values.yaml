@@ -1,4 +1,0 @@
-externalIp: "192.168.100.2"
-dhcpStart: "192.168.100.100"
-dhcpEnd: "192.168.100.200"
-dhcpNetmask: "255.255.255.0"
