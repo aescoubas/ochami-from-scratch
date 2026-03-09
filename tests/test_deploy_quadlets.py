@@ -114,6 +114,14 @@ def test_quadlets_deployer_generates_runtime_files_and_units(tmp_path: Path) -> 
         units_src / "pcs.container",
         "Environment=POSTGRES_USER=${PCS_DB_USER}\nEnvironment=POSTGRES_PORT=${POSTGRES_PORT}\n",
     )
+    _write(
+        units_src / "bss-init.container",
+        'Exec=sh -c "until curl -sf http://localhost:${HTTP_PORT}/hsm/v2/service/ready; do sleep 1; done; /usr/local/bin/bss-init"\n',
+    )
+    _write(
+        units_src / "cloud-init-server.container",
+        'Exec=bash -c "until exec 3<>/dev/tcp/localhost/${HTTP_PORT}; do sleep 1; done; /usr/local/bin/cloud-init-server --listen 0.0.0.0:${CLOUD_INIT_PORT} --smd-url http://localhost:${HTTP_PORT} --cluster-name ochami --insecure"\n',
+    )
     _write(units_src / "openchami.target", "[Unit]\nDescription=OpenCHAMI\n")
 
     # Shared Jinja2 templates (used by both compose and quadlets).
@@ -185,11 +193,30 @@ def test_quadlets_deployer_generates_runtime_files_and_units(tmp_path: Path) -> 
     pcs_unit = (install_dir / "pcs.container").read_text(encoding="utf-8")
     assert "Environment=POSTGRES_USER=pcs-user" in pcs_unit
     assert "Environment=POSTGRES_PORT=15432" in pcs_unit
+    bss_init_unit = (install_dir / "bss-init.container").read_text(encoding="utf-8")
+    assert 'Exec=sh -c "until curl -sf http://localhost:80/hsm/v2/service/ready; do sleep 1; done; /usr/local/bin/bss-init"' in bss_init_unit
+    cloud_init_unit = (install_dir / "cloud-init-server.container").read_text(encoding="utf-8")
+    assert 'Exec=bash -c "until exec 3<>/dev/tcp/localhost/80' in cloud_init_unit
+    assert "--listen 0.0.0.0:27777" in cloud_init_unit
     assert (systemd_dir / "openchami.target").is_file()
     assert (install_dir / "redfish-emulator-0.container").is_file()
     assert (install_dir / "redfish-emulator-1.container").is_file()
+    emulator0_unit = (install_dir / "redfish-emulator-0.container").read_text(encoding="utf-8")
+    emulator1_unit = (install_dir / "redfish-emulator-1.container").read_text(encoding="utf-8")
+    assert "Environment=VM_INDEX=0" in emulator0_unit
+    assert "Environment=EMULATOR_PORT=443" in emulator0_unit
+    assert "Environment=VM_INDEX=1" in emulator1_unit
+    assert "Environment=EMULATOR_PORT=8444" in emulator1_unit
 
     assert ["sudo", "systemctl", "daemon-reload"] in commands
+    assert ["sudo", "systemctl", "unmask", "openchami.target"] in commands
+    assert ["sudo", "systemctl", "unmask", "bss-init.service"] in commands
+    assert ["sudo", "systemctl", "unmask", "cloud-init-server.service"] in commands
+    assert ["sudo", "systemctl", "unmask", "pcs.service"] in commands
+    assert ["sudo", "systemctl", "stop", "openchami.target"] in commands
+    assert ["sudo", "systemctl", "stop", "bss-init.service"] in commands
+    assert ["sudo", "systemctl", "stop", "cloud-init-server.service"] in commands
+    assert ["sudo", "systemctl", "stop", "pcs.service"] in commands
     assert ["sudo", "systemctl", "start", "openchami.target"] in commands
     assert network.calls
     assert registry.bss_calls and registry.post_calls
@@ -238,6 +265,8 @@ def test_quadlets_teardown_removes_artifacts_and_calls_systemd(tmp_path: Path) -
     def fake_output(cmd: list[str], **_: Any) -> str:
         if cmd[:4] == ["sudo", "virsh", "list", "--all"]:
             return "virtual-compute-node\n"
+        if cmd == ["sudo", "systemctl", "show", "--property=LoadState", "--value", "ochami.service"]:
+            return "not-found"
         if cmd[:4] == ["sysctl", "-n", "fs.protected_regular"]:
             if fake_output.fs_read_count == 0:
                 fake_output.fs_read_count += 1
@@ -265,6 +294,7 @@ def test_quadlets_teardown_removes_artifacts_and_calls_systemd(tmp_path: Path) -
     assert ["sudo", "virsh", "destroy", "virtual-compute-node"] in commands
     assert ["sudo", "virsh", "undefine", "--nvram", "virtual-compute-node"] in commands
     assert ["sudo", "systemctl", "stop", "openchami.target"] in commands
+    assert ["sudo", "systemctl", "stop", "ochami.service"] not in commands
     assert ["sudo", "systemctl", "stop", "a.service"] in commands
     assert ["sudo", "systemctl", "daemon-reload"] in commands
     assert ["sudo", "podman", "volume", "rm", "systemd-postgres-data"] in commands

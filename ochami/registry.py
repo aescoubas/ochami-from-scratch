@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 from dataclasses import dataclass
+from ipaddress import IPv4Address
 import json
 from pathlib import Path
 import tempfile
@@ -10,6 +11,7 @@ from urllib import error, request
 
 from ochami.config import DeployConfig, DiscoveryMethod
 from ochami.defaults import BSS_PORT, HTTP_PORT, SMD_PORT
+from ochami.redfish import quadlet_redfish_host, vm_index_from_name
 from ochami.utils import command_exists, is_macos, run, run_output, validate_ip, validate_mac
 
 
@@ -339,7 +341,12 @@ class RegistryManager:
         raise RuntimeError(f"could not determine MAC address for VM {vm_name}")
 
     def _emulator_ip(self, vm_name: str, *, host_ip: str, orchestrator: str, dry_run: bool) -> str:
-        if orchestrator in {"quadlets", "docker-compose"}:
+        if orchestrator == "quadlets":
+            vm_index = vm_index_from_name(vm_name)
+            if vm_index is None:
+                return host_ip
+            return quadlet_redfish_host(host_ip, vm_index)
+        if orchestrator == "docker-compose":
             return host_ip
 
         suffix = vm_name.rsplit("-", 1)[-1]
@@ -391,15 +398,18 @@ class RegistryManager:
                 ]
             },
         )
-        self._request_json(
-            "POST",
-            f"http://{endpoints.smd_ip}:{SMD_PORT}/hsm/v2/Inventory/EthernetInterfaces",
-            {
-                "Description": "Node NIC",
-                "MACAddress": mac,
-                "IPAddresses": [{"IPAddress": ip}],
-                "ComponentID": component_id,
-            },
+        self._sync_ethernet_interface(
+            mac=mac,
+            ip=ip,
+            component_id=component_id,
+            endpoints=endpoints,
+        )
+        self._sync_kea_host(
+            mac=mac,
+            ip=ip,
+            component_id=component_id,
+            orchestrator=orchestrator,
+            dry_run=dry_run,
         )
 
         redfish_payload = {
@@ -432,7 +442,6 @@ class RegistryManager:
             f"http://{endpoints.bss_ip}:{BSS_PORT}/boot/v1/bootparameters",
             {
                 "hosts": [component_id],
-                "macs": [mac],
                 "kernel": f"{artifacts_url}/vmlinuz-lts",
                 "initrd": f"{artifacts_url}/initramfs-lts",
                 "params": f"console=ttyS0 ip=dhcp rd.neednet=1 root=live:{artifacts_url}/rootfs.squashfs",
@@ -447,12 +456,152 @@ class RegistryManager:
             dry_run=dry_run,
         )
 
+    def _sync_ethernet_interface(
+        self,
+        *,
+        mac: str,
+        ip: str,
+        component_id: str,
+        endpoints: ServiceEndpoints,
+    ) -> None:
+        collection_url = f"http://{endpoints.smd_ip}:{SMD_PORT}/hsm/v2/Inventory/EthernetInterfaces"
+        for item_id in self._stale_ethernet_interface_ids(
+            collection_url=collection_url,
+            mac=mac,
+            ip=ip,
+            component_id=component_id,
+        ):
+            self._request_json("DELETE", f"{collection_url}/{item_id}", None)
+
+        payload = {
+            "Description": "Node NIC",
+            "MACAddress": mac,
+            "IPAddresses": [{"IPAddress": ip}],
+            "ComponentID": component_id,
+        }
+        status, _ = self._request_json("POST", collection_url, payload)
+        if status == 409:
+            self._request_json("PUT", f"{collection_url}/{self._ethernet_interface_id(mac)}", payload)
+
+    def _stale_ethernet_interface_ids(
+        self,
+        *,
+        collection_url: str,
+        mac: str,
+        ip: str,
+        component_id: str,
+    ) -> list[str]:
+        status, body = self._request_json("GET", collection_url, None)
+        if status != 200:
+            return []
+        try:
+            interfaces = json.loads(body)
+        except json.JSONDecodeError:
+            return []
+        if not isinstance(interfaces, list):
+            return []
+
+        stale_ids: list[str] = []
+        current_mac = mac.lower()
+        for interface in interfaces:
+            if not isinstance(interface, dict):
+                continue
+            if str(interface.get("ComponentID", "")) != component_id:
+                continue
+            ip_addresses = interface.get("IPAddresses", [])
+            if not isinstance(ip_addresses, list):
+                continue
+            interface_ips = [
+                entry.get("IPAddress")
+                for entry in ip_addresses
+                if isinstance(entry, dict)
+            ]
+            if ip not in interface_ips:
+                continue
+            item_id = str(interface.get("ID", "")).strip()
+            item_mac = str(interface.get("MACAddress", "")).strip().lower()
+            if not item_id or item_mac == current_mac:
+                continue
+            stale_ids.append(item_id)
+        return stale_ids
+
+    def _sync_kea_host(
+        self,
+        *,
+        mac: str,
+        ip: str,
+        component_id: str,
+        orchestrator: str,
+        dry_run: bool,
+    ) -> None:
+        ip_int = int(IPv4Address(ip))
+        mac_hex = self._ethernet_interface_id(mac)
+        component_sql = component_id.replace("'", "''")
+        sql = (
+            "DELETE FROM hosts "
+            f"WHERE hostname = '{component_sql}' "
+            f"AND ipv4_address = {ip_int} "
+            f"AND dhcp_identifier <> decode('{mac_hex}', 'hex'); "
+            "WITH existing AS ("
+            "UPDATE hosts "
+            f"SET ipv4_address = {ip_int}, hostname = '{component_sql}' "
+            f"WHERE dhcp_identifier = decode('{mac_hex}', 'hex') "
+            "RETURNING host_id"
+            ") "
+            "INSERT INTO hosts (dhcp_identifier, dhcp_identifier_type, dhcp4_subnet_id, ipv4_address, hostname) "
+            f"SELECT decode('{mac_hex}', 'hex'), 0, 1, {ip_int}, '{component_sql}' "
+            "WHERE NOT EXISTS (SELECT 1 FROM existing);"
+        )
+        self._run_postgres_sql(
+            orchestrator=orchestrator,
+            database="kea",
+            user="kea-user",
+            sql=sql,
+            dry_run=dry_run,
+        )
+
+    def _ethernet_interface_id(self, mac: str) -> str:
+        return mac.replace(":", "").replace("-", "").lower()
+
     def _apply_bss_nodes_workaround(self, *, mac: str, nid: int, component_id: str, orchestrator: str, dry_run: bool) -> None:
-        update_sql = f"UPDATE nodes SET boot_mac = '{mac}', nid = {nid} WHERE xname = '{component_id}';"
+        mac_sql = mac.replace("'", "''")
+        component_sql = component_id.replace("'", "''")
+        update_sql = (
+            "WITH stale_nodes AS ("
+            "SELECT DISTINCT n.id "
+            "FROM nodes n "
+            "LEFT JOIN boot_group_assignments bga ON bga.node_id = n.id "
+            "WHERE COALESCE(n.xname, '') = '' "
+            "AND COALESCE(n.nid, 0) = 0 "
+            f"AND (n.boot_mac = '{mac_sql}' "
+            "OR bga.boot_group_id IN ("
+            "SELECT current_assignments.boot_group_id "
+            "FROM boot_group_assignments current_assignments "
+            "JOIN nodes current_nodes ON current_nodes.id = current_assignments.node_id "
+            f"WHERE current_nodes.xname = '{component_sql}'"
+            "))"
+            "), deleted_assignments AS ("
+            "DELETE FROM boot_group_assignments "
+            "WHERE node_id IN (SELECT id FROM stale_nodes) "
+            "RETURNING node_id"
+            ") "
+            "DELETE FROM nodes "
+            "WHERE id IN (SELECT id FROM stale_nodes UNION SELECT node_id FROM deleted_assignments); "
+            f"UPDATE nodes SET boot_mac = '{mac_sql}', nid = {nid} WHERE xname = '{component_sql}';"
+        )
+        self._run_postgres_sql(
+            orchestrator=orchestrator,
+            database="bssdb",
+            user="bss-user",
+            sql=update_sql,
+            dry_run=dry_run,
+        )
+
+    def _run_postgres_sql(self, *, orchestrator: str, database: str, user: str, sql: str, dry_run: bool) -> None:
         if orchestrator == "docker-compose":
             container_name = self._first_matching_container(["docker", "ps", "--format", "{{.Names}}"], "postgres", dry_run=dry_run)
             if container_name:
-                self._runner(["docker", "exec", container_name, "bash", "-lc", f"psql -U bss-user -d bssdb -c \"{update_sql}\""], dry_run=dry_run, check=False)
+                self._runner(["docker", "exec", container_name, "psql", "-U", user, "-d", database, "-c", sql], dry_run=dry_run, check=False)
             return
 
         if orchestrator == "quadlets":
@@ -462,11 +611,11 @@ class RegistryManager:
                 dry_run=dry_run,
             )
             if container_name:
-                self._runner(["sudo", "podman", "exec", container_name, "bash", "-lc", f"psql -U bss-user -d bssdb -c \"{update_sql}\""], dry_run=dry_run, check=False)
+                self._runner(["sudo", "podman", "exec", container_name, "psql", "-U", user, "-d", database, "-c", sql], dry_run=dry_run, check=False)
             return
 
         self._runner(
-            ["minikube", "kubectl", "--", "exec", "-n", "ochami", "ochami-postgres", "--", "bash", "-lc", f"psql -U bss-user -d bssdb -c \"{update_sql}\""],
+            ["minikube", "kubectl", "--", "exec", "-n", "ochami", "ochami-postgres", "--", "psql", "-U", user, "-d", database, "-c", sql],
             dry_run=dry_run,
             check=False,
         )
@@ -478,9 +627,10 @@ class RegistryManager:
                 return name.strip()
         return ""
 
-    def _request_json(self, method: str, url: str, payload: dict[str, object]) -> tuple[int, str]:
-        encoded = json.dumps(payload).encode("utf-8")
-        req = request.Request(url=url, data=encoded, method=method, headers={"Content-Type": "application/json"})
+    def _request_json(self, method: str, url: str, payload: object | None = None) -> tuple[int, str]:
+        encoded = None if payload is None else json.dumps(payload).encode("utf-8")
+        headers = {} if payload is None else {"Content-Type": "application/json"}
+        req = request.Request(url=url, data=encoded, method=method, headers=headers)
         try:
             with request.urlopen(req, timeout=10) as response:  # nosec: B310
                 return response.status, response.read().decode("utf-8", errors="replace")

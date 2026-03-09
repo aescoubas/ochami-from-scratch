@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Any
 
@@ -78,3 +79,93 @@ def test_build_images_if_needed_invokes_expected_build_steps(tmp_path: Path) -> 
     assert events.count("artifacts") == 1
     assert events.count("local-image") == 3
     assert "smd" in events and "bss" in events and "pcs" in events and "cloud_init" in events
+
+
+def test_build_images_if_needed_rebuilds_core_artifacts_when_missing(tmp_path: Path) -> None:
+    manager = BuildManager(
+        project_root=tmp_path,
+        runner=lambda _cmd, **_kwargs: 0,
+        output_runner=lambda _cmd, **_kwargs: "",
+    )
+    cfg = DeployConfig(method=DeploymentMethod.QUADLETS)
+
+    events: list[str] = []
+    manager._image_exists = lambda _image, **_kwargs: True  # type: ignore[method-assign]
+    manager._build_artifacts_and_core_images = lambda **_kwargs: events.append("artifacts")  # type: ignore[method-assign]
+    manager._build_local_image = lambda **_kwargs: events.append("local-image")  # type: ignore[method-assign]
+    manager._load_into_minikube_if_needed = lambda *_args, **_kwargs: None  # type: ignore[method-assign]
+    manager.build_smd = lambda **_kwargs: events.append("smd")  # type: ignore[method-assign]
+    manager.build_bss = lambda **_kwargs: events.append("bss")  # type: ignore[method-assign]
+    manager.build_pcs = lambda **_kwargs: events.append("pcs")  # type: ignore[method-assign]
+    manager.build_cloud_init = lambda **_kwargs: events.append("cloud_init")  # type: ignore[method-assign]
+
+    manager.build_images_if_needed(
+        cfg,
+        orchestrator="quadlets",
+        container_tool="sudo podman",
+        force_rebuild=False,
+        dry_run=False,
+    )
+
+    assert events == ["artifacts"]
+
+
+def test_copy_artifact_from_container_normalizes_permissions(tmp_path: Path) -> None:
+    calls: list[list[str]] = []
+
+    def fake_run(cmd: list[str], **_kwargs: Any) -> int:
+        calls.append(cmd)
+        return 0
+
+    manager = BuildManager(
+        project_root=tmp_path,
+        runner=fake_run,
+        output_runner=lambda _cmd, **_kwargs: "",
+    )
+
+    manager._copy_artifact_from_container(
+        "sudo podman",
+        "abc123",
+        "/boot/initrd.img",
+        tmp_path / "initramfs-lts",
+        dry_run=False,
+    )
+
+    assert calls == [
+        ["sudo", "podman", "cp", "abc123:/boot/initrd.img", str(tmp_path / "initramfs-lts")],
+        ["sudo", "chown", "-R", f"{os.getuid()}:{os.getgid()}", str(tmp_path / "initramfs-lts")],
+        ["chmod", "-R", "u+rwX,go+rX", str(tmp_path / "initramfs-lts")],
+    ]
+
+
+def test_unpinned_base_image_fallback_for_missing_registry_digest(tmp_path: Path) -> None:
+    manager = BuildManager(
+        project_root=tmp_path,
+        runner=lambda _cmd, **_kwargs: 0,
+        output_runner=lambda _cmd, **_kwargs: "",
+    )
+
+    fallback = manager._fallback_unpinned_base_image(  # type: ignore[attr-defined]
+        "opensuse/leap:15.6@sha256:deadbeef",
+        RuntimeError(
+            "failed to solve: failed to resolve source metadata for "
+            "docker.io/opensuse/leap:15.6@sha256:deadbeef: not found"
+        ),
+    )
+
+    assert fallback == "opensuse/leap:15.6"
+
+
+def test_unpinned_base_image_fallback_ignores_non_registry_errors(tmp_path: Path) -> None:
+    manager = BuildManager(
+        project_root=tmp_path,
+        runner=lambda _cmd, **_kwargs: 0,
+        output_runner=lambda _cmd, **_kwargs: "",
+    )
+
+    fallback = manager._fallback_unpinned_base_image(  # type: ignore[attr-defined]
+        "opensuse/leap:15.6@sha256:deadbeef",
+        RuntimeError("permission denied"),
+    )
+
+    assert fallback is None

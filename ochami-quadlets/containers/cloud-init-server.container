@@ -6,7 +6,7 @@ Requires=smd.service http-server.service
 [Container]
 Image=localhost/cloud-init:local-cloud-init
 Network=host
-Exec=sh -c "until curl -sf http://localhost:${HTTP_PORT}/hsm/v2/service/ready; do sleep 1; done; /usr/local/bin/cloud-init-server --listen 0.0.0.0:27777 --smd-url http://localhost:${HTTP_PORT} --cluster-name ochami --insecure"
+Exec=bash -c "until exec 3<>/dev/tcp/localhost/${HTTP_PORT} && printf 'GET /hsm/v2/service/ready HTTP/1.0\r\nHost: localhost\r\n\r\n' >&3 && grep -q '200' <&3; do echo 'waiting for SMD to be ready...'; sleep 1; done; /usr/local/bin/cloud-init-server --listen 0.0.0.0:${CLOUD_INIT_PORT} --smd-url http://localhost:${HTTP_PORT} --cluster-name ochami --insecure"
 
 [Service]
 Restart=on-failure

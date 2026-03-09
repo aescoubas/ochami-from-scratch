@@ -40,6 +40,8 @@ spec:
           value: "true"
         - name: BSS_INSECURE
           value: "true"
+        - name: BSS_DBSTEP
+          value: "3"
         - name: BSS_DBHOST
           value: "{{ include "ochami-helm.fullname" . }}-postgres"
         - name: BSS_DBPORT

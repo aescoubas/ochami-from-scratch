@@ -87,7 +87,8 @@ class QuadletsTeardown(BaseTeardown):
         quadlet_services = self._quadlet_service_names(dry_run=dry_run)
 
         self._run(["sudo", "systemctl", "stop", "openchami.target"], dry_run=dry_run, check=False)
-        self._run(["sudo", "systemctl", "stop", "ochami.service"], dry_run=dry_run, check=False)
+        if self._unit_load_state("ochami.service", dry_run=dry_run) != "not-found":
+            self._run(["sudo", "systemctl", "stop", "ochami.service"], dry_run=dry_run, check=False)
         for service in quadlet_services:
             self._run(["sudo", "systemctl", "stop", service], dry_run=dry_run, check=False)
 
@@ -194,3 +195,11 @@ class QuadletsTeardown(BaseTeardown):
                 services.add(unit)
 
         return sorted(services)
+
+    def _unit_load_state(self, unit: str, *, dry_run: bool) -> str:
+        state = self._run_output(
+            ["sudo", "systemctl", "show", "--property=LoadState", "--value", unit],
+            check=False,
+            dry_run=dry_run,
+        ).strip()
+        return state or "not-found"

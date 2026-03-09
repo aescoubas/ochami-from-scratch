@@ -31,7 +31,7 @@ DEFAULT_BASE_IMAGES = {
     "BASE_IMAGE_TFTP": "alpine:3.18.12@sha256:de0eb0b3f2a47ba1eb89389859a9bd88b28e82f5826b6969ad604979713c2d4f",
     "BASE_IMAGE_STORK_AGENT": "jonasal/kea-dhcp4:3.1.4@sha256:061b5cc8d6f67b507dc7647a8c21ee0603ed0f572bfce616dea83419f8d37295",
     "BASE_IMAGE_KEA_SIDECAR": "python:3.9.21-slim-bookworm@sha256:40007fe18a72a2e7166be350d52dab86b9fe18f2de08e6a38e26422fb247e81e",
-    "BASE_IMAGE_SLES_BUILDER": "opensuse/leap:15.6@sha256:ba2e33cef0c84c15fe5bc91c3a9fa8f9257e8c301040c4226f32ebb6ad9a0b39",
+    "BASE_IMAGE_SLES_BUILDER": "opensuse/leap:15.6@sha256:ae1a07a1b5bd1735c557de4bf171832d27cdba02b8ea6969e9ba951ffe6c50a0",
 }
 
 DEFAULT_REPO_URIS = {
@@ -94,9 +94,11 @@ class BuildManager:
         force_rebuild: bool,
         dry_run: bool,
     ) -> None:
-        if force_rebuild or not self._image_exists(IMAGE_HTTP, orchestrator=orchestrator, container_tool=container_tool, dry_run=dry_run):
-            self._build_artifacts_and_core_images(orchestrator=orchestrator, container_tool=container_tool, dry_run=dry_run)
-        elif not self._image_exists(IMAGE_EMULATOR, orchestrator=orchestrator, container_tool=container_tool, dry_run=dry_run):
+        core_artifacts_ready = self._core_artifacts_exist()
+        http_exists = self._image_exists(IMAGE_HTTP, orchestrator=orchestrator, container_tool=container_tool, dry_run=dry_run)
+        emulator_exists = self._image_exists(IMAGE_EMULATOR, orchestrator=orchestrator, container_tool=container_tool, dry_run=dry_run)
+
+        if force_rebuild or not core_artifacts_ready or not http_exists or not emulator_exists:
             self._build_artifacts_and_core_images(orchestrator=orchestrator, container_tool=container_tool, dry_run=dry_run)
 
         if force_rebuild or not self._image_exists(IMAGE_TFTP, orchestrator=orchestrator, container_tool=container_tool, dry_run=dry_run):
@@ -233,6 +235,39 @@ class BuildManager:
         listing = self._run_output(["minikube", "image", "ls"], check=False, dry_run=False)
         return image in listing
 
+    def _core_artifacts_exist(self) -> bool:
+        images_dir = self.project_root / "images"
+        required_paths = (
+            images_dir / "opensuse" / "vmlinuz-lts",
+            images_dir / "opensuse" / "initramfs-lts",
+            images_dir / "opensuse" / "rootfs.squashfs",
+            images_dir / "ubuntu" / "vmlinuz-lts",
+            images_dir / "ubuntu" / "initramfs-lts",
+            images_dir / "ubuntu" / "rootfs.squashfs",
+        )
+        return all(path.is_file() for path in required_paths)
+
+    def _copy_artifact_from_container(
+        self,
+        container_tool: str,
+        container_id: str,
+        source_path: str,
+        destination_path: Path,
+        *,
+        check: bool = True,
+        dry_run: bool,
+    ) -> None:
+        self._run_container(
+            container_tool,
+            ["cp", f"{container_id}:{source_path}", str(destination_path)],
+            check=check,
+            dry_run=dry_run,
+        )
+        if not check and not destination_path.exists():
+            return
+        self._run(["sudo", "chown", "-R", f"{os.getuid()}:{os.getgid()}", str(destination_path)], dry_run=dry_run)
+        self._run(["chmod", "-R", "u+rwX,go+rX", str(destination_path)], dry_run=dry_run)
+
     def _build_artifacts_and_core_images(self, *, orchestrator: str, container_tool: str, dry_run: bool) -> None:
         if dry_run:
             self._run_container(container_tool, ["build", "-t", "custom-image-builder-sles", "."], dry_run=True)
@@ -271,25 +306,31 @@ class BuildManager:
                 ),
                 encoding="utf-8",
             )
-            dockerfile.write_text(
-                (
-                    f"FROM {self.base_images['BASE_IMAGE_SLES_BUILDER']}\n"
-                    "RUN zypper ref && zypper install -y kernel-default dracut squashfs iproute2 util-linux shadow device-mapper tar dhcp-client curl udev\n"
-                    "RUN echo 'root:root' | chpasswd\n"
-                    "RUN mkdir -p /tmp/netconfig\n"
-                    "COPY eth0.xml /tmp/netconfig/eth0.xml\n"
-                    "RUN KVER=$(ls /lib/modules | head -n 1) && dracut -v --add \"network dmsquash-live livenet\" --include /tmp/netconfig/eth0.xml /etc/wicked/ifconfig/eth0.xml --no-hostonly --kver $KVER /boot/initrd.img\n"
-                ),
-                encoding="utf-8",
-            )
+            builder_base_image = self.base_images["BASE_IMAGE_SLES_BUILDER"]
+            self._write_sles_builder_dockerfile(dockerfile, builder_base_image)
 
-            self._run_container(container_tool, ["build", "-t", "custom-image-builder-sles", str(build_dir)], dry_run=False)
+            try:
+                self._run_container(container_tool, ["build", "-t", "custom-image-builder-sles", str(build_dir)], dry_run=False)
+            except RuntimeError as exc:
+                fallback_base_image = self._fallback_unpinned_base_image(builder_base_image, exc)
+                if fallback_base_image is None:
+                    raise
+                builder_base_image = fallback_base_image
+                self.base_images["BASE_IMAGE_SLES_BUILDER"] = builder_base_image
+                self._write_sles_builder_dockerfile(dockerfile, builder_base_image)
+                self._run_container(container_tool, ["build", "-t", "custom-image-builder-sles", str(build_dir)], dry_run=False)
             container_id = self._run_container_output(container_tool, ["create", "custom-image-builder-sles"], dry_run=False).strip()
             if not container_id:
                 raise RuntimeError("failed to create custom-image-builder-sles container")
 
             initramfs_path = self.project_root / "initramfs-lts"
-            self._run_container(container_tool, ["cp", f"{container_id}:/boot/initrd.img", str(initramfs_path)], dry_run=False)
+            self._copy_artifact_from_container(
+                container_tool,
+                container_id,
+                "/boot/initrd.img",
+                initramfs_path,
+                dry_run=False,
+            )
 
             boot_tmp = self.project_root / "boot_tmp"
             modules_tmp = self.project_root / "modules_tmp"
@@ -299,9 +340,29 @@ class BuildManager:
                     shutil.rmtree(path)
 
             boot_tmp.mkdir(parents=True, exist_ok=True)
-            self._run_container(container_tool, ["cp", f"{container_id}:/boot/.", str(boot_tmp)], dry_run=False)
-            self._run_container(container_tool, ["cp", f"{container_id}:/lib/modules", str(modules_tmp)], dry_run=False, check=False)
-            self._run_container(container_tool, ["cp", f"{container_id}:/usr/lib/modules", str(usr_modules_tmp)], dry_run=False, check=False)
+            self._copy_artifact_from_container(
+                container_tool,
+                container_id,
+                "/boot/.",
+                boot_tmp,
+                dry_run=False,
+            )
+            self._copy_artifact_from_container(
+                container_tool,
+                container_id,
+                "/lib/modules",
+                modules_tmp,
+                check=False,
+                dry_run=False,
+            )
+            self._copy_artifact_from_container(
+                container_tool,
+                container_id,
+                "/usr/lib/modules",
+                usr_modules_tmp,
+                check=False,
+                dry_run=False,
+            )
 
             vmlinuz = self._find_kernel_file([boot_tmp, modules_tmp, usr_modules_tmp])
             if vmlinuz is None:
@@ -470,6 +531,32 @@ class BuildManager:
 
     def _tool_parts(self, container_tool: str) -> list[str]:
         return shlex.split(container_tool)
+
+    def _write_sles_builder_dockerfile(self, dockerfile: Path, base_image: str) -> None:
+        dockerfile.write_text(
+            (
+                f"FROM {base_image}\n"
+                "RUN zypper ref && zypper install -y kernel-default dracut squashfs iproute2 util-linux shadow device-mapper tar dhcp-client curl udev\n"
+                "RUN echo 'root:root' | chpasswd\n"
+                "RUN mkdir -p /tmp/netconfig\n"
+                "COPY eth0.xml /tmp/netconfig/eth0.xml\n"
+                "RUN KVER=$(ls /lib/modules | head -n 1) && dracut -v --add \"network dmsquash-live livenet\" --include /tmp/netconfig/eth0.xml /etc/wicked/ifconfig/eth0.xml --no-hostonly --kver $KVER /boot/initrd.img\n"
+            ),
+            encoding="utf-8",
+        )
+
+    def _fallback_unpinned_base_image(self, image: str, error: Exception) -> str | None:
+        if "@sha256:" not in image:
+            return None
+        message = str(error).lower()
+        registry_miss_markers = (
+            "failed to resolve source metadata",
+            "manifest unknown",
+            "not found",
+        )
+        if not any(marker in message for marker in registry_miss_markers):
+            return None
+        return image.split("@sha256:", 1)[0]
 
     def _run_with_retry(self, func: Callable[[], None], description: str) -> None:
         last_error: Exception | None = None

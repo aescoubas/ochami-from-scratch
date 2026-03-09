@@ -11,7 +11,7 @@
 # All fields are optional except 'method'.
 
 # Deployment method: minikube, quadlets, or docker-compose
-method: minikube
+method: docker-compose
 
 # PXE network settings
 pxe_interface: virbr-pxe

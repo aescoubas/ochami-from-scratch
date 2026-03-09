@@ -9,6 +9,7 @@ Network=host
 Exec=sh -c "until curl -sf http://localhost:${HTTP_PORT}/hsm/v2/service/ready; do sleep 1; done; /usr/local/bin/bss-init"
 Environment=BSS_USESQL=true
 Environment=BSS_INSECURE=true
+Environment=BSS_DBSTEP=3
 Environment=BSS_DBHOST=localhost
 Environment=BSS_DBOPTS=sslmode=disable
 EnvironmentFile=/etc/openchami/openchami.env

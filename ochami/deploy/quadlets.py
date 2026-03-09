@@ -11,6 +11,7 @@ from ochami.defaults import DEFAULT_DATABASES, DEFAULT_PORTS, ensure_runtime_sec
 from ochami.deploy.base import BaseDeployer, get_health_checks
 from ochami.network import NetworkManager
 from ochami.prerequisites import PrerequisitesInstaller
+from ochami.redfish import quadlet_redfish_port
 from ochami.registry import RegistryManager
 from ochami.templates import TemplateRenderer
 from ochami.utils import is_macos, run, run_output, substitute_env_vars
@@ -90,6 +91,12 @@ class QuadletsDeployer(BaseDeployer):
 
         with self.console.phase("Starting services..."):
             self._run(["sudo", "systemctl", "daemon-reload"], dry_run=dry_run)
+            self._run(["sudo", "systemctl", "unmask", "openchami.target"], dry_run=dry_run, check=False)
+            for service in self._quadlet_service_names(config):
+                self._run(["sudo", "systemctl", "unmask", service], dry_run=dry_run, check=False)
+            self._run(["sudo", "systemctl", "stop", "openchami.target"], dry_run=dry_run, check=False)
+            for service in self._quadlet_service_names(config):
+                self._run(["sudo", "systemctl", "stop", service], dry_run=dry_run, check=False)
             self._run(["sudo", "systemctl", "enable", "openchami.target"], dry_run=dry_run, check=False)
             self._run(["sudo", "systemctl", "start", "openchami.target"], dry_run=dry_run)
 
@@ -209,7 +216,7 @@ class QuadletsDeployer(BaseDeployer):
             f"BSS_IPXE_SERVER={runtime['HOST_IP']}",
             f"BSS_ADVERTISE_ADDRESS={runtime['HOST_IP']}",
             f"NFD_URL=http://{runtime['HOST_IP']}:{runtime['HTTP_PORT']}/hmi/v1/subscribe",
-            "SMS_SERVER=http://localhost:${HTTP_PORT}",
+            f"SMS_SERVER=http://localhost:{runtime['HTTP_PORT']}",
             "",
             "# Kea Database",
             f"KEA_DB_NAME={runtime['KEA_DB_NAME']}",
@@ -225,7 +232,7 @@ class QuadletsDeployer(BaseDeployer):
             f"STORK_DB_NAME={runtime['STORK_DB_NAME']}",
             f"STORK_DB_USER={runtime['STORK_DB_USER']}",
             f"STORK_DB_PASSWORD={runtime['STORK_DB_PASSWORD']}",
-            "STORK_AGENT_SERVER_URL=http://localhost:${HTTP_PORT}",
+            f"STORK_AGENT_SERVER_URL=http://localhost:{runtime['HTTP_PORT']}",
             f"STORK_AGENT_HOST={runtime['HOST_IP']}",
             f"STORK_AGENT_PORT={runtime['STORK_AGENT_PORT']}",
             "",
@@ -288,6 +295,24 @@ class QuadletsDeployer(BaseDeployer):
 
     _STORK_UNITS = {"stork-server.container", "stork-agent.container"}
 
+    def _quadlet_service_names(self, config: DeployConfig) -> list[str]:
+        services: set[str] = set()
+
+        try:
+            container_files = sorted(self.quadlets_install_dir.glob("*.container"))
+        except PermissionError:
+            container_files = sorted((self.quadlets_dir / "containers").glob("*.container"))
+
+        for path in container_files:
+            if not config.enable_stork and path.name in self._STORK_UNITS:
+                continue
+            services.add(f"{path.stem}.service")
+
+        for idx in range(config.num_vms):
+            services.add(f"redfish-emulator-{idx}.service")
+
+        return sorted(services)
+
     def _install_units(self, config: DeployConfig, runtime: dict[str, str], *, dry_run: bool) -> None:
         containers_dir = self.quadlets_dir / "containers"
         for path in sorted(containers_dir.glob("*.container")):
@@ -308,6 +333,7 @@ class QuadletsDeployer(BaseDeployer):
                     "Image=localhost/redfish-emulator:latest\n"
                     "Network=host\n"
                     f"Environment=VM_INDEX={idx}\n"
+                    f"Environment=EMULATOR_PORT={quadlet_redfish_port(idx)}\n"
                     "Exec=python -u -c \"import os; idx=os.environ.get('VM_INDEX','0'); script=open('/emulator.py').read(); script=script.replace('INDEX = int(HOSTNAME.split(\\\"-\\\")[-1])', f'INDEX = {idx}'); exec(script)\"\n"
                     "Volume=/var/run/libvirt/libvirt-sock:/var/run/libvirt/libvirt-sock\n\n"
                     "[Service]\n"

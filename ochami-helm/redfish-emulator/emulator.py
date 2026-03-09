@@ -22,6 +22,7 @@ else:
         print(f"Warning: Could not determine index from hostname {HOSTNAME}, defaulting to 0. Error: {e}")
         INDEX = 0
 
+PORT = int(os.environ.get("EMULATOR_PORT", "443"))
 VM_NAME = f"{VM_NAME_PREFIX}{INDEX}"
 print(f"Emulator for VM: {VM_NAME}")
 
@@ -219,11 +220,11 @@ def run_server():
         os.system("openssl req -new -newkey rsa:2048 -days 365 -nodes -x509 -keyout /tmp/server.key -out /tmp/server.crt -subj '/CN=localhost'")
 
     try:
-        httpd = HTTPServer(('0.0.0.0', 443), RedfishHandler)
+        httpd = HTTPServer(('0.0.0.0', PORT), RedfishHandler)
         context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
         context.load_cert_chain(certfile='/tmp/server.crt', keyfile='/tmp/server.key')
         httpd.socket = context.wrap_socket(httpd.socket, server_side=True)
-        print("Starting Redfish Emulator on :443")
+        print(f"Starting Redfish Emulator on :{PORT}")
         httpd.serve_forever()
     except Exception as e:
         print(f"Server failed: {e}")
