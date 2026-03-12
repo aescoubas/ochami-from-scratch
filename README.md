@@ -1,222 +1,123 @@
-# OpenCHAMI From Scratch (Python CLI)
+# OpenCHAMI From Scratch
 
-This repository deploys a local OpenCHAMI stack using a Python CLI (`ochamifs`) with three orchestrators:
+This repository deploys a local OpenCHAMI bare-metal provisioning stack using three
+deployment methods, all driven by Nix-generated artifacts and Bash operational scripts:
 
-- `minikube`
-- `quadlets`
-- `docker-compose`
+- **Docker Compose** — `nix build .#docker-compose-yml`
+- **Podman Quadlets** — `nix build .#quadlet-units` + `nix build .#deploy-profile`
+- **Helm/Minikube** — `nix build .#helm-values`
 
-The legacy shell entrypoints were removed in favor of Python deploy/teardown workflows.
+## Architecture
+
+```
+nix/services/*.nix       ← single source of truth (ports, images, env, deps)
+nix/generators/*.nix     ← produces docker-compose.yml, .container files, values.yaml
+nix/images/*.nix         ← OCI image builds (Go services + utilities)
+nix/deploy/profile.nix   ← systemd unit generator for quadlet deployments
+nix/lab/*.nix            ← NixOS VM lab (controller + boot node)
+scripts/ops/             ← bash operational scripts (deploy, teardown, health check)
+ochami/mcp/              ← standalone MCP server for OpenCHAMI control
+```
 
 ## Install
 
+Nix is the primary workflow:
+
 ```bash
-python3 -m venv .venv
-. .venv/bin/activate
-pip install -e .[dev]
+nix develop    # enter dev shell with all tools
+nix build      # build the MCP server package
+nix flake check
 ```
-
-You can then use either:
-
-- `ochamifs ...`
-- `.venv/bin/python -m ochami.cli ...`
 
 ## Quick Start
 
-Deploy with Docker Compose:
+### Deploy with Docker Compose
 
 ```bash
-ochamifs deploy --method docker-compose
+make deploy METHOD=compose
 ```
 
-Deploy with Quadlets:
+### Deploy with Quadlets (systemd + Podman)
 
 ```bash
-ochamifs deploy --method quadlets
+make deploy METHOD=quadlets
 ```
 
-Deploy with Minikube:
+### Deploy with Minikube
 
 ```bash
-ochamifs deploy --method minikube
+make deploy METHOD=minikube
 ```
 
-Teardown:
+### Teardown
 
 ```bash
-ochamifs teardown --method docker-compose -y
-ochamifs teardown --method quadlets -y
-ochamifs teardown --method minikube -y
+make teardown METHOD=compose
+make teardown METHOD=quadlets
+make teardown METHOD=minikube
 ```
 
-`--method` is required for both `deploy` and `teardown`.
+## Generate Artifacts
 
-## Configuration File
-
-Instead of passing every flag on the command line, you can use a YAML config file.
-Copy the example and edit it:
+Build deployment artifacts from the Nix service definitions:
 
 ```bash
-cp openchami.example.yaml openchami.yaml
+# Generate all artifacts
+make generate
+
+# Or individually
+nix build .#docker-compose-yml --print-out-paths
+nix build .#quadlet-units --print-out-paths
+nix build .#helm-values --print-out-paths
+nix build .#deploy-profile --print-out-paths
 ```
 
-Then use it with any command:
+## Bash Scripts
 
-```bash
-ochamifs deploy --config openchami.yaml
-ochamifs apply --config openchami.yaml
-```
+All runtime operations use `scripts/ops/`:
 
-CLI flags override config file values (precedence: defaults < config file < CLI flags).
-Only `method` is required; all other fields are optional and fall back to defaults.
+| Script | Purpose |
+|--------|---------|
+| `deploy.sh` | Top-level orchestrator: deps → secrets → start → health → register |
+| `teardown.sh` | Tear down by method |
+| `check-deps.sh` | Verify required tools are installed |
+| `health-check.sh` | Wait for services to become healthy |
+| `register-nodes.sh` | Register nodes via SMD/BSS curl calls |
+| `register-bss-defaults.sh` | Register default boot parameters |
+| `lab-setup.sh` | Libvirt network + VM lifecycle |
 
-See `openchami.example.yaml` for all available fields with comments.
-
-## Validate Configuration
-
-Use `check` to validate a config file without deploying:
-
-```bash
-ochamifs check --config openchami.yaml
-```
-
-If `--config` is omitted, it defaults to `openchami.yaml` in the current directory.
-
-The command validates:
-
-- YAML structure and known keys (catches typos)
-- IP address format (`pxe_ip`, `dhcp_start`, `dhcp_end`, `dhcp_netmask`)
-- CIDR range (0-32)
-- DHCP pool consistency (start and end must be provided together)
-- Magellan discovery constraints (requires subnets/hosts, BMC user/pass pairing)
-- Non-empty git refs and repo URIs
-- `nodes_file` existence (when specified)
-
-## Idempotent Apply
-
-`apply` is a smarter alternative to `deploy`. It hashes the resolved configuration,
-compares it against the last successful deploy (stored in `.openchami-state.yaml`),
-and skips the full deploy when nothing changed — running only a lightweight health
-check instead.
-
-```bash
-# First run: full deploy
-ochamifs apply --config openchami.yaml
-
-# Second run with same config: skips deploy, runs health check
-ochamifs apply --config openchami.yaml
-
-# Force a full deploy regardless of state
-ochamifs apply --config openchami.yaml --force
-```
-
-When `--config` is omitted, `apply` automatically looks for `openchami.yaml` in the
-current directory (silently ignored if missing — you can still use `--method` and
-other CLI flags).
-
-`apply` accepts all the same flags as `deploy`.
-
-## Common Deploy Options
-
-```bash
-ochamifs deploy --method minikube \
-  --mode hardware \
-  --interface ens160 \
-  --ip 192.168.50.1 \
-  --cidr 24 \
-  --dhcp-start 192.168.50.100 \
-  --dhcp-end 192.168.50.200
-```
-
-Useful flags:
-
-- `--rebuild`
-- `--vms N`
-- `--nodes-file nodes.csv`
-- `--discovery-method magellan`
-- `--magellan-subnets ...`
-- `--auto-kill` / `--fail-on-conflict`
-- `--set-fs-protected-regular` (enabled by default) / `--no-set-fs-protected-regular`
-
-Minikube notes:
-
-- On Linux (`--driver=none`), deploy can auto-adjust `fs.protected_regular` and retry Minikube start for known lock-permission failures.
-- Previous `fs.protected_regular` is restored by teardown when it was changed by OpenCHAMI.
-- If UDP/67 is already in use, run teardown first or use `--auto-kill`.
-
-## Hardware Node Registration
-
-Register a hardware node after deployment:
-
-```bash
-ochamifs register-node \
-  --method minikube \
-  --host-ip 192.168.100.2 \
-  --mac 00:11:22:33:44:55 \
-  --ip 192.168.50.50 \
-  --component-id x1000c0s0b0n0 \
-  --nid 1000 \
-  --bmc-ip 192.168.50.100 \
-  --bmc-user root \
-  --bmc-pass password
-```
+All scripts support `--dry-run` and source `lib/common.sh` for shared functions.
 
 ## MCP Server
 
-Run the local MCP server from the Python CLI:
+The MCP server provides local control-plane access to OpenCHAMI deployments:
 
 ```bash
-ochamifs mcp --mode read-only
+nix run .#mcp -- --mode read-only
+nix run .#mcp -- --mode read-write --enable-writes
 ```
 
-For read-write tools:
+## NixOS VM Lab
+
+Run an interactive NixOS VM lab with a controller and boot node:
 
 ```bash
-ochamifs mcp --mode read-write --enable-writes
+nix run .#lab-driver
 ```
 
-Deployments write MCP defaults to `.openchami-mcp.env`:
+Or run the smoke test:
 
-- `minikube`: `OPENCHAMI_BASE_URL=http://<host_ip>:30080`
-- `docker-compose`: `OPENCHAMI_BASE_URL=http://<host_ip>:80`
-- `quadlets`: `OPENCHAMI_BASE_URL=http://<host_ip>:80`
-
-For Codex MCP client integration (`~/.codex/config.toml`), configure the server
-module entrypoint (the legacy `scripts/mcp/openchami_mcp_server.py` path was
-removed during the Python CLI migration):
-
-```toml
-[mcp_servers.openchami]
-command = "/home/escoubas/git_repos/github/aescoubas/ochami-from-scratch/.venv/bin/python"
-args = [
-  "-m", "ochami.mcp.server",
-  "--mode", "read-write",
-  "--base-url", "http://192.168.100.2:30080",
-  "--timeout", "10",
-  "--no-write-ack"
-]
-startup_timeout_sec = 60
+```bash
+nix flake check   # includes lab-smoke test on Linux
 ```
-
-Notes:
-
-- Use the `OPENCHAMI_BASE_URL` value from `.openchami-mcp.env` when available.
-- For safer defaults, prefer `--mode read-only`.
-- In read-write mode, prefer `--enable-writes` (or set `OPENCHAMI_MCP_ENABLE_WRITES=true`) instead of `--no-write-ack`.
 
 ## Testing
 
-Run the local test suite:
-
 ```bash
-make test
+make test          # pytest in Nix dev shell
 ```
 
-This runs pytest (`.venv/bin/python -m pytest`).
-
-## VM Integration Loops
-
-Libvirt integration loops are still available:
+## VM Integration Tests
 
 ```bash
 make test-vm-ubuntu
@@ -225,34 +126,18 @@ make test-vm
 make test-vm-destroy
 ```
 
-## CLI Commands
-
-| Command | Description |
-|---------|-------------|
-| `deploy` | Full deployment (prereqs, build, network, deploy, post-deploy) |
-| `apply` | Idempotent deploy (skips if config unchanged, health-checks instead) |
-| `check` | Validate a config file without deploying |
-| `teardown` | Tear down a deployment |
-| `register-node` | Register a hardware node after deployment |
-| `mcp` | Run the OpenCHAMI MCP server |
-
 ## Repository Layout
 
-Deployment artifacts:
-
-- `ochami-docker-compose/` — Docker Compose configs and templates
-- `ochami-helm/` — Helm chart for Minikube
-- `ochami-quadlets/` — Systemd quadlet units for Podman
-
-Core Python package:
-
-- `ochami/cli.py` — CLI entry point (Typer commands)
-- `ochami/config.py` — Configuration dataclasses and YAML loading
-- `ochami/defaults.py` — Shared constants (ports, databases, secrets) and helpers
-- `ochami/state.py` — Apply state tracking (config hashing, save/load)
-- `ochami/deploy/` — Deployers (base, compose, minikube, quadlets)
-- `ochami/teardown/` — Teardown implementations
-- `ochami/mcp/` — MCP server
-- `ochami/utils.py` — Shared utilities
-- `templates/shared/` — Jinja2 templates for config rendering (kea, boot.ipxe, stork, nginx)
-- `tests/` — pytest test suite
+```
+nix/
+  services/          Service definitions (single source of truth)
+  generators/        Artifact generators (docker-compose, quadlets, helm)
+  images/            OCI image build definitions
+  deploy/            Deploy profile (systemd units)
+  lab/               NixOS VM lab (controller, boot-node, secrets)
+  tests/             NixOS VM smoke tests
+scripts/ops/         Bash operational scripts
+ochami/mcp/          MCP server (standalone Python, stdlib only)
+ochami-helm/         Helm chart templates
+tests/               pytest test suite
+```

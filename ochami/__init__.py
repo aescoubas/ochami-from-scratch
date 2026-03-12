@@ -1,4 +1,4 @@
-"""OpenCHAMI Python CLI package."""
+"""OpenCHAMI MCP server package."""
 
 __all__ = ["__version__"]
 

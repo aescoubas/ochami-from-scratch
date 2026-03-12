@@ -1,6 +1,34 @@
 # OpenCHAMI From Scratch Roadmap
 
 ## In Progress
+- [x] Architecture overhaul: Nix + Bash separation
+  - [x] Phase 1: Nix artifact generators (`nix/generators/{docker-compose,quadlets,helm-values}.nix`)
+    - [x] `nix build .#docker-compose-yml` generates docker-compose.yml from service definitions
+    - [x] `nix build .#quadlet-units` generates .container files from service definitions
+    - [x] `nix build .#helm-values` generates values.yaml from service definitions
+    - [x] `nix/services/defaults.nix` extended with localImages, baseImages, and repos
+  - [x] Phase 2: Nix OCI image build definitions (`nix/images/*.nix`)
+    - [x] Go services: smd, bss, pcs, cloud-init (fetchFromGitHub + buildGoModule + dockerTools)
+    - [x] Utilities: http-server, tftp, kea-sidecar, redfish-emulator
+    - [x] Note: Go services use lib.fakeHash — update with real vendorHash to build
+  - [x] Phase 3: Bash operational scripts (`scripts/ops/`)
+    - [x] lib/common.sh (logging, wait-for-url, secret gen, dry-run support)
+    - [x] check-deps.sh, health-check.sh, register-nodes.sh, register-bss-defaults.sh
+    - [x] teardown.sh, deploy.sh, lab-setup.sh
+    - [x] Makefile targets: deploy, teardown, check, generate
+  - [x] Phase 4: NixOS VM lab upgrades
+    - [x] Controller: podman enabled, increased memory, jq available
+    - [x] Lab secrets (deterministic test passwords)
+    - [x] Lab images helper (upstream image pull script)
+    - [x] Smoke test: podman availability check added
+  - [x] Phase 5: Cleanup
+    - [x] Removed ochami/ Python CLI (deploy, teardown, config, build, etc.)
+    - [x] Removed hand-written docker-compose.yml and quadlet .container files
+    - [x] Removed Jinja2 templates (replaced by Nix generators)
+    - [x] Preserved ochami/mcp/ as standalone MCP server (zero deps on CLI)
+    - [x] Updated pyproject.toml: ochami-mcp only, no CLI deps
+    - [x] Updated flake.nix: MCP as default app, removed ochamifs
+    - [x] Removed 15 test files, updated 5, rewrote README
 - [x] Remove production TODO grace-period behavior in Helm pod templates (`smd`, `bss`, `pcs`) by making the value configurable and production-safe by default.
 - [x] Deduplicate deploy lifecycle orchestration across Minikube, Quadlets, and Docker Compose using shared pipeline helpers.
   - [x] `scripts/deploy/minikube.sh`, `scripts/deploy/quadlets.sh`, and `scripts/deploy/docker-compose.sh` call shared lifecycle functions from `scripts/deploy/lib/pipeline.sh`.
@@ -14,6 +42,14 @@
   - [x] Add regression tests and README usage docs for MCP workflow.
 
 ## Completed
+- [x] Add a first NixOS VM lab smoke target via the NixOS test driver.
+  - [x] Define controller and boot-node NixOS modules that share an isolated PXE/test network.
+  - [x] Export a Linux-only `checks.lab-smoke` derivation and interactive `apps.lab-driver` entrypoint from the flake.
+  - [x] Document the VM lab target and verify it with local pytest coverage plus `nix flake check`.
+- [x] Add a minimal Nix-native flake for the Python CLI.
+  - [x] Export `packages.default`, `apps.default`, `checks.default`, and `devShells.default`.
+  - [x] Package the Python CLI natively without bundling the external runtime stack into the main output.
+  - [x] Document `nix develop`, `nix build`, `nix run`, and `nix flake check`, then verify with local pytest and `nix flake check`.
 - [x] Default deploy behavior now temporarily adjusts `fs.protected_regular` without requiring explicit user opt-in.
   - [x] Set `DeployConfig.set_fs_protected_regular` default to `true`.
   - [x] Update deploy CLI to default-enable the behavior and expose `--no-set-fs-protected-regular` opt-out.

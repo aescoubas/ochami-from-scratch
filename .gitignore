@@ -2,6 +2,7 @@ initramfs-lts
 rootfs.squashfs
 vmlinuz-lts
 images/
+!nix/images/
 boot_tmp/
 modules_tmp/
 usr_modules_tmp/
@@ -33,3 +34,4 @@ __pycache__/
 .pytest_cache/
 *.pyc
 *.egg-info/
+result
