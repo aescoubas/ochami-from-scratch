@@ -60,12 +60,16 @@ let
   # Build environment block.
   mkEnvironment = svc:
     let
-      env = (svc.environment or { }) // (
-        lib.mapAttrs
-          (_containerVar: secretVar:
-            "\${${secretVar}:?${secretVar} is required}")
-          (svc.envMapping or { })
-      );
+      # secretEnvKeys: pass-through vars with same name (e.g. SMD_DB_PASSWORD → SMD_DB_PASSWORD)
+      secretPassthrough = builtins.listToAttrs (map
+        (k: { name = k; value = "\${${k}:?${k} is required}"; })
+        (svc.secretEnvKeys or [ ]));
+      # envMapping: rename vars (e.g. SMD_DBPASS → SMD_DB_PASSWORD)
+      mappedSecrets = lib.mapAttrs
+        (_containerVar: secretVar:
+          "\${${secretVar}:?${secretVar} is required}")
+        (svc.envMapping or { });
+      env = (svc.environment or { }) // secretPassthrough // mappedSecrets;
     in
     if env == { } then ""
     else
@@ -74,6 +78,19 @@ let
         (k: v: "  ${k}: ${builtins.toJSON v}")
         env);
 
+  # Map a volume source: config file names become ./configs/<name> paths.
+  mapVolSrc = v:
+    let
+      parts = lib.splitString ":" v;
+      src = builtins.head parts;
+      rest = lib.concatStringsSep ":" (builtins.tail parts);
+      isPath = lib.hasPrefix "/" src;
+      isOchami = lib.hasPrefix "ochami-" src;
+      isConfigFile = lib.hasInfix "." src && !isPath && !isOchami;
+    in
+    if isConfigFile then "./configs/${src}:${rest}"
+    else v;
+
   # Build volumes block.
   mkVolumes = svc:
     let vols = svc.volumes or [ ];
@@ -81,7 +98,7 @@ let
     if vols == [ ] then ""
     else
       "volumes:\n" +
-      lib.concatStringsSep "\n" (map (v: "  - ${v}") vols);
+      lib.concatStringsSep "\n" (map (v: "  - ${mapVolSrc v}") vols);
 
   # Build healthcheck block.
   mkHealthcheck = svc:
@@ -174,7 +191,7 @@ let
     in
     lib.unique (map extractSrc (lib.filter isNamedVol allVols));
 
-  volumeNames = (map (v: builtins.replaceStrings [ "ochami-" ] [ "" ] v) namedVolumes) ++ simpleNamedVolumes;
+  volumeNames = namedVolumes ++ simpleNamedVolumes;
 
   volumesBlock =
     if volumeNames == [ ] then ""

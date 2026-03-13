@@ -52,6 +52,18 @@
     keaSidecar = "localhost/kea-sidecar:latest";
   };
 
+  # Image overrides: map upstream image keys to locally-built refs.
+  # Third-party images (postgres, keaAdmin, keaDhcp4, storkServer) stay upstream.
+  localImageOverrides = {
+    smd = "localhost/smd:local-smd";
+    bss = "localhost/bss:local-bss";
+    pcs = "localhost/pcs:local-pcs";
+    cloudInit = "localhost/cloud-init:local-cloud-init";
+    keaSidecar = "localhost/kea-sidecar:latest";
+    tftp = "localhost/tftp:latest";
+    nginx = "localhost/http-server:latest";
+  };
+
   # Base images used to build local images.
   baseImages = {
     httpServer = "nginx:1.27.5-alpine";

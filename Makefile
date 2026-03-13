@@ -1,5 +1,5 @@
 .PHONY: test test-vm test-vm-ubuntu test-vm-fedora test-vm-destroy
-.PHONY: deploy teardown check generate
+.PHONY: deploy teardown check generate build-images
 
 METHOD ?= compose
 
@@ -33,3 +33,6 @@ generate:
 	nix build .#quadlet-units --no-link --print-out-paths
 	@echo "Building helm values..."
 	nix build .#helm-values --no-link --print-out-paths
+
+build-images:
+	scripts/ops/build-images.sh

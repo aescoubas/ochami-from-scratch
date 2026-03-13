@@ -4,10 +4,11 @@
 #   nix build .#oci-kea-sidecar
 #   podman load < result
 #
-{ pkgs }:
+{ pkgs
+, sidecarSrc
+}:
 
 let
-  sidecarSrc = ../../../ochami-helm/kea-sidecar;
 
   pythonEnv = pkgs.python3.withPackages (ps: [
     ps.requests

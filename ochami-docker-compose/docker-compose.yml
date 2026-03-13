@@ -1,0 +1,219 @@
+services:
+  postgres:
+    image: docker.io/postgres:11.5-alpine
+    network_mode: host
+    environment:
+      BSS_DB_PASSWORD: "${BSS_DB_PASSWORD:?BSS_DB_PASSWORD is required}"
+      KEA_DB_PASSWORD: "${KEA_DB_PASSWORD:?KEA_DB_PASSWORD is required}"
+      PCS_DB_PASSWORD: "${PCS_DB_PASSWORD:?PCS_DB_PASSWORD is required}"
+      POSTGRES_USER: "ochami"
+      SMD_DB_PASSWORD: "${SMD_DB_PASSWORD:?SMD_DB_PASSWORD is required}"
+      STORK_DB_PASSWORD: "${STORK_DB_PASSWORD:?STORK_DB_PASSWORD is required}"
+    command: ["postgres", "-p", "5432"]
+    volumes:
+      - /nix/store/xwc4syr5czrjgbx9i2961axxi6gi63p6-postgres-init-db.sh:/docker-entrypoint-initdb.d/multi-psql-db.sh:ro
+      - ochami-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ochami -p 5432"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  smd-init:
+    image: ghcr.io/openchami/smd:latest
+    network_mode: host
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      SMD_DBHOST: "localhost"
+      SMD_DBNAME: "hmsds"
+      SMD_DBOPTS: "sslmode=disable"
+      SMD_DBPASS: "${SMD_DB_PASSWORD:?SMD_DB_PASSWORD is required}"
+      SMD_DBPORT: "5432"
+      SMD_DBUSER: "smd-user"
+      SMD_DB_PASSWORD: "${SMD_DB_PASSWORD:?SMD_DB_PASSWORD is required}"
+    command: ["/smd-init"]
+    restart: "no"
+
+  smd:
+    image: ghcr.io/openchami/smd:latest
+    network_mode: host
+    depends_on:
+      smd-init:
+        condition: service_completed_successfully
+    environment:
+      SMD_DBHOST: "localhost"
+      SMD_DBNAME: "hmsds"
+      SMD_DBOPTS: "sslmode=disable"
+      SMD_DBPASS: "${SMD_DB_PASSWORD:?SMD_DB_PASSWORD is required}"
+      SMD_DBPORT: "5432"
+      SMD_DBUSER: "smd-user"
+      SMD_DB_PASSWORD: "${SMD_DB_PASSWORD:?SMD_DB_PASSWORD is required}"
+      SMD_JWKS_URL: ""
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:27779/hsm/v2/service/ready"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  bss-init:
+    image: ghcr.io/openchami/bss:latest
+    network_mode: host
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      BSS_DBHOST: "localhost"
+      BSS_DBNAME: "bssdb"
+      BSS_DBOPTS: "sslmode=disable"
+      BSS_DBPASS: "${BSS_DB_PASSWORD:?BSS_DB_PASSWORD is required}"
+      BSS_DBPORT: "5432"
+      BSS_DBSTEP: "3"
+      BSS_DBUSER: "bss-user"
+      BSS_DB_PASSWORD: "${BSS_DB_PASSWORD:?BSS_DB_PASSWORD is required}"
+      BSS_INSECURE: "true"
+    command: ["/usr/local/bin/bss-init"]
+    restart: "no"
+
+  bss:
+    image: ghcr.io/openchami/bss:latest
+    network_mode: host
+    depends_on:
+      smd:
+        condition: service_healthy
+      bss-init:
+        condition: service_completed_successfully
+    environment:
+      BSS_ADVERTISE_ADDRESS: "192.168.100.1"
+      BSS_CHAIN_PROTO: "http"
+      BSS_DBHOST: "localhost"
+      BSS_DBNAME: "bssdb"
+      BSS_DBOPTS: "sslmode=disable"
+      BSS_DBPASS: "${BSS_DB_PASSWORD:?BSS_DB_PASSWORD is required}"
+      BSS_DBPORT: "5432"
+      BSS_DBUSER: "bss-user"
+      BSS_DB_PASSWORD: "${BSS_DB_PASSWORD:?BSS_DB_PASSWORD is required}"
+      BSS_DEBUG: "true"
+      BSS_ENDPOINT: "localhost"
+      BSS_INSECURE: "true"
+      BSS_IPXE_SERVER: "192.168.100.1"
+      BSS_JWKS_URL: ""
+      HSM_URL: "http://localhost:80"
+      NFD_URL: "http://192.168.100.1:80/hmi/v1/subscribe"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:27778/boot/v1/bootparameters"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  cloud-init:
+    image: ghcr.io/openchami/cloud-init:latest
+    network_mode: host
+    depends_on:
+      smd:
+        condition: service_healthy
+    command: ["/usr/local/bin/cloud-init-server", "--listen", "0.0.0.0:27777", "--smd-url", "http://localhost:80", "--cluster-name", "ochami", "--insecure"]
+    healthcheck:
+      test: ["CMD-SHELL", "ss -tlnp sport = :27777 | grep -q 27777"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  pcs-init:
+    image: ghcr.io/openchami/power-control:latest
+    network_mode: host
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PCS_DB_PASSWORD: "${PCS_DB_PASSWORD:?PCS_DB_PASSWORD is required}"
+      POSTGRES_DBNAME: "pcsdb"
+      POSTGRES_HOST: "localhost"
+      POSTGRES_INSECURE: "true"
+      POSTGRES_PASSWORD: "${PCS_DB_PASSWORD:?PCS_DB_PASSWORD is required}"
+      POSTGRES_PORT: "5432"
+      POSTGRES_USER: "pcs-user"
+    command: ["power-control", "init-postgres"]
+    restart: "no"
+
+  pcs:
+    image: ghcr.io/openchami/power-control:latest
+    network_mode: host
+    depends_on:
+      smd:
+        condition: service_healthy
+      pcs-init:
+        condition: service_completed_successfully
+    environment:
+      FAKE_VAULT_ENABLED: "false"
+      HSMLOCK_ENABLED: "true"
+      LOG_LEVEL: "INFO"
+      PCS_DB_PASSWORD: "${PCS_DB_PASSWORD:?PCS_DB_PASSWORD is required}"
+      POSTGRES_DBNAME: "pcsdb"
+      POSTGRES_HOST: "localhost"
+      POSTGRES_INSECURE: "true"
+      POSTGRES_PASSWORD: "${PCS_DB_PASSWORD:?PCS_DB_PASSWORD is required}"
+      POSTGRES_PORT: "5432"
+      POSTGRES_USER: "pcs-user"
+      SMS_SERVER: "http://localhost:80"
+      STORAGE: "POSTGRES"
+      TRS_IMPLEMENTATION: "LOCAL"
+      VAULT_ENABLED: "false"
+    command: ["power-control", "--run-control"]
+
+  kea-init:
+    image: docker.io/jonasal/kea-admin:3.1.4
+    network_mode: host
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: ["db-init", "pgsql", "-h", "localhost", "-P", "5432", "-u", "kea-user", "-p", "$KEA_DB_PASSWORD", "-n", "kea"]
+    restart: "no"
+
+  kea:
+    image: docker.io/jonasal/kea-dhcp4:3.1.4
+    network_mode: host
+    depends_on:
+      kea-init:
+        condition: service_completed_successfully
+    command: ["-c", "/etc/kea/kea-dhcp4.conf"]
+    volumes:
+      - ./configs/kea-dhcp4.conf:/etc/kea/kea-dhcp4.conf:ro
+      - ochami-kea-sockets:/kea/sockets
+    cap_add:
+      - NET_RAW
+      - NET_ADMIN
+
+  kea-sidecar:
+    image: ghcr.io/openchami/kea-sidecar:latest
+    network_mode: host
+    depends_on:
+      smd:
+        condition: service_healthy
+      kea-init:
+        condition: service_completed_successfully
+    environment:
+      DB_HOST: "localhost"
+      DB_NAME: "kea"
+      DB_PASS: "${KEA_DB_PASSWORD:?KEA_DB_PASSWORD is required}"
+      DB_PORT: "5432"
+      DB_USER: "kea-user"
+      KEA_DB_PASSWORD: "${KEA_DB_PASSWORD:?KEA_DB_PASSWORD is required}"
+      SMD_URL: "http://localhost:80"
+    command: ["python", "-u", "/app/smd_sync.py"]
+
+  http-server:
+    image: docker.io/nginx:alpine
+    network_mode: host
+    volumes:
+      - ./configs/nginx-default.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./configs/boot.ipxe:/usr/share/nginx/html/boot.ipxe:ro
+
+  tftp:
+    image: ghcr.io/openchami/tftp:latest
+    network_mode: host
+
+volumes:
+  ochami-postgres-data:
+  ochami-kea-sockets:

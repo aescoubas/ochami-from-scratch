@@ -150,6 +150,14 @@ class TestDefaultsNixLocalImages:
                      "redfishEmulator", "storkAgent", "keaSidecar"]:
             assert svc in self.content, f"defaults.nix should have localImages.{svc}"
 
+    def test_has_local_image_overrides(self):
+        assert "localImageOverrides" in self.content
+
+    def test_local_image_overrides_maps_core_services(self):
+        for svc in ["smd", "bss", "pcs", "cloudInit", "keaSidecar", "tftp", "nginx"]:
+            assert svc in self.content, \
+                f"defaults.nix localImageOverrides should map {svc}"
+
     def test_has_base_images(self):
         assert "baseImages" in self.content
 
@@ -157,3 +165,19 @@ class TestDefaultsNixLocalImages:
         assert "repos" in self.content
         for svc in ["smd", "bss", "pcs", "cloudInit"]:
             assert svc in self.content
+
+
+class TestGeneratorsAcceptImageOverrides:
+    """All generators must accept imageOverrides parameter."""
+
+    def test_docker_compose_accepts_image_overrides(self):
+        content = (ROOT / "nix" / "generators" / "docker-compose.nix").read_text()
+        assert "imageOverrides" in content
+
+    def test_quadlets_accepts_image_overrides(self):
+        content = (ROOT / "nix" / "generators" / "quadlets.nix").read_text()
+        assert "imageOverrides" in content
+
+    def test_deploy_profile_accepts_image_overrides(self):
+        content = (ROOT / "nix" / "deploy" / "profile.nix").read_text()
+        assert "imageOverrides" in content

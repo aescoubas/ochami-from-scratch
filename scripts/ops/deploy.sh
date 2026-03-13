@@ -5,9 +5,10 @@
 # Steps:
 #   1. Check dependencies
 #   2. Ensure secrets
-#   3. Start services
-#   4. Health check
-#   5. Register BSS defaults
+#   3. Build local OCI images
+#   4. Start services
+#   5. Health check
+#   6. Register BSS defaults
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$SCRIPT_DIR/lib/common.sh"
@@ -26,25 +27,51 @@ if [ "$DRY_RUN" = "true" ]; then
 fi
 
 # Step 1: Check dependencies
-log_info "step 1/5: checking dependencies..."
+log_info "step 1/6: checking dependencies..."
 "$SCRIPT_DIR/check-deps.sh" --method "$METHOD" $DRY_RUN_FLAG
 
 # Step 2: Ensure secrets
 SECRETS_FILE="${OPENCHAMI_SECRETS:-/etc/openchami/secrets.env}"
-log_info "step 2/5: ensuring secrets at $SECRETS_FILE..."
+log_info "step 2/6: ensuring secrets at $SECRETS_FILE..."
 if [ "$DRY_RUN" != "true" ]; then
   ensure_secrets_file "$SECRETS_FILE"
 fi
 
-# Step 3: Start services
-log_info "step 3/5: starting services (method=$METHOD)..."
+# Step 3: Build local OCI images (compose and quadlets only)
+case "$METHOD" in
+  compose|docker-compose|quadlets)
+    if [ "${SKIP_IMAGE_BUILD:-}" != "true" ]; then
+      log_info "step 3/6: building local OCI images..."
+      RUNTIME_FLAG=""
+      if [ "$METHOD" = "quadlets" ]; then
+        RUNTIME_FLAG="--runtime podman"
+      fi
+      "$SCRIPT_DIR/build-images.sh" $RUNTIME_FLAG
+    else
+      log_info "step 3/6: skipping image build (SKIP_IMAGE_BUILD=true)"
+    fi
+    ;;
+  *)
+    log_info "step 3/6: skipping image build (not applicable for $METHOD)"
+    ;;
+esac
+
+# Step 4: Start services
+log_info "step 4/6: starting services (method=$METHOD)..."
 case "$METHOD" in
   compose|docker-compose)
-    COMPOSE_DIR="${COMPOSE_DIR:-$(dirname "$SCRIPT_DIR")/ochami-docker-compose}"
+    COMPOSE_DIR="${COMPOSE_DIR:-$(dirname "$(dirname "$SCRIPT_DIR")")/ochami-docker-compose}"
     COMPOSE_FILE="${COMPOSE_DIR}/docker-compose.yml"
     if [ ! -f "$COMPOSE_FILE" ]; then
-      log_error "docker-compose.yml not found at $COMPOSE_FILE"
-      exit 1
+      log_info "generating docker-compose.yml via nix..."
+      GENERATED=$(nix build .#docker-compose-yml --no-link --print-out-paths 2>/dev/null)
+      if [ -z "$GENERATED" ] || [ ! -f "$GENERATED" ]; then
+        log_error "failed to generate docker-compose.yml"
+        exit 1
+      fi
+      cp "$GENERATED" "$COMPOSE_FILE"
+      chmod 644 "$COMPOSE_FILE"
+      log_info "docker-compose.yml generated at $COMPOSE_FILE"
     fi
     run_cmd docker compose -f "$COMPOSE_FILE" --env-file "$SECRETS_FILE" up -d
     ;;
@@ -84,12 +111,12 @@ case "$METHOD" in
     ;;
 esac
 
-# Step 4: Health check
-log_info "step 4/5: running health checks..."
+# Step 5: Health check
+log_info "step 5/6: running health checks..."
 "$SCRIPT_DIR/health-check.sh" $DRY_RUN_FLAG
 
-# Step 5: Register BSS defaults
-log_info "step 5/5: registering BSS defaults..."
+# Step 6: Register BSS defaults
+log_info "step 6/6: registering BSS defaults..."
 "$SCRIPT_DIR/register-bss-defaults.sh" $DRY_RUN_FLAG
 
 log_info "deployment complete (method=$METHOD)"

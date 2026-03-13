@@ -10,7 +10,7 @@
     owner = "openchami";
     repo = "cloud-init";
     rev = "main";
-    hash = lib.fakeHash;
+    hash = "sha256-TxEYFe9Kkp2i9bmx/+BGMJgDfiklTi2J0kV4ydk31Ns=";
   }
 }:
 
@@ -19,8 +19,9 @@ let
     pname = "cloud-init-server";
     version = "unstable";
     src = cloudInitSrc;
-    vendorHash = lib.fakeHash;
+    vendorHash = "sha256-ZpOjgzPU3dksbHpe9QTH+uGRQvg6clZUjfLEOLfUyfw=";
     subPackages = [ "cmd/cloud-init-server" ];
+    buildInputs = [ pkgs.duckdb ];
     doCheck = false;
   };
 in

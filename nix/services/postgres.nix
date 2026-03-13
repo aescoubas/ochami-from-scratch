@@ -35,6 +35,7 @@ in
     environment = {
       POSTGRES_USER = defaults.databases.superuser;
     };
+    secretEnvKeys = map (db: db.passwordEnv) defaults.databases.entries;
     volumes = [
       "${initScript}:/docker-entrypoint-initdb.d/multi-psql-db.sh:ro"
       "ochami-postgres-data:/var/lib/postgresql/data"

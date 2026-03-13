@@ -15,7 +15,11 @@ BSS_URL="http://localhost:${BSS_PORT}/boot/v1/bootparameters"
 ARTIFACTS_URL="http://${HOST}:${HTTP_PORT}/artifacts/opensuse"
 
 log_info "waiting for BSS to be ready..."
-wait_for_url "$BSS_URL" 30 2
+if [ "$DRY_RUN" = "true" ]; then
+  log_info "[dry-run] would wait for $BSS_URL"
+else
+  wait_for_url "$BSS_URL" 30 2
+fi
 
 log_info "registering default boot parameters"
 run_cmd curl -sf -X PUT \

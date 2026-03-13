@@ -10,7 +10,7 @@
     owner = "OpenCHAMI";
     repo = "power-control";
     rev = "main";
-    hash = lib.fakeHash;
+    hash = "sha256-CmTGafEqDZg2rpjLdo32qpy5mMHS567OSM0ITco34Sk=";
   }
 }:
 
@@ -19,7 +19,7 @@ let
     pname = "power-control";
     version = "unstable";
     src = pcsSrc;
-    vendorHash = lib.fakeHash;
+    vendorHash = "sha256-hiCp1uHyJx75sFQGW7L+x6YtYsH9y5ZkL54I6dQdQu0=";
     subPackages = [ "cmd/power-control" ];
     doCheck = false;
   };

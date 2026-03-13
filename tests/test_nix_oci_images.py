@@ -46,11 +46,14 @@ class TestGoServiceImages:
             assert "dockerTools.buildLayeredImage" in content, \
                 f"{name} should use dockerTools.buildLayeredImage"
 
-    def test_uses_fake_hash_for_dev(self):
+    def test_has_real_hashes(self):
+        """Go service images must have real (non-fakeHash) source and vendor hashes."""
         for name in self.GO_SERVICES:
             content = (IMAGES_DIR / name).read_text()
-            assert "fakeHash" in content, \
-                f"{name} should use lib.fakeHash (update with real hashes to build)"
+            assert "fakeHash" not in content, \
+                f"{name} should use real hashes, not lib.fakeHash"
+            assert "sha256-" in content, \
+                f"{name} should contain real sha256 hashes"
 
 
 class TestUtilityImages:
@@ -63,6 +66,20 @@ class TestUtilityImages:
             content = (IMAGES_DIR / name).read_text()
             assert "dockerTools.buildLayeredImage" in content, \
                 f"{name} should use dockerTools.buildLayeredImage"
+
+
+class TestParameterizedSourcePaths:
+    """kea-sidecar and redfish-emulator use parameterized source paths."""
+
+    def test_kea_sidecar_uses_parameter(self):
+        content = (IMAGES_DIR / "kea-sidecar.nix").read_text()
+        assert "sidecarSrc" in content, "kea-sidecar.nix should accept sidecarSrc parameter"
+        assert "../../../" not in content, "kea-sidecar.nix should not use relative paths"
+
+    def test_redfish_emulator_uses_parameter(self):
+        content = (IMAGES_DIR / "redfish-emulator.nix").read_text()
+        assert "emulatorSrc" in content, "redfish-emulator.nix should accept emulatorSrc parameter"
+        assert "../../../" not in content, "redfish-emulator.nix should not use relative paths"
 
 
 class TestFlakeExportsOciImages:
@@ -78,6 +95,13 @@ class TestFlakeExportsOciImages:
     def test_exports_utility_images(self):
         for name in ["oci-http-server", "oci-tftp", "oci-kea-sidecar", "oci-redfish-emulator"]:
             assert name in self.flake, f"flake.nix should export {name}"
+
+    def test_passes_source_paths_to_images(self):
+        assert "sidecarSrc = ./ochami-helm/kea-sidecar" in self.flake
+        assert "emulatorSrc = ./ochami-helm/redfish-emulator" in self.flake
+
+    def test_passes_local_image_overrides_to_generators(self):
+        assert "localImageOverrides" in self.flake
 
 
 class TestLabFiles:

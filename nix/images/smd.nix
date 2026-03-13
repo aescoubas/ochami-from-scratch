@@ -10,7 +10,7 @@
     owner = "openchami";
     repo = "smd";
     rev = "main";
-    hash = lib.fakeHash;
+    hash = "sha256-SKAao/ib26e2I0QKprxQjUcxD9gFKdFHUwJpGfLTLkc=";
   }
 }:
 
@@ -19,7 +19,7 @@ let
     pname = "smd";
     version = "unstable";
     src = smdSrc;
-    vendorHash = lib.fakeHash;
+    vendorHash = "sha256-Gqvn+GMctybEOhLsXo1/2TewpGiO7c0IO/YFC2TPWKQ=";
     subPackages = [ "cmd/smd" "cmd/smd-init" ];
     doCheck = false;
   };

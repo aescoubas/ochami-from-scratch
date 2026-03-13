@@ -10,7 +10,7 @@
   - [x] Phase 2: Nix OCI image build definitions (`nix/images/*.nix`)
     - [x] Go services: smd, bss, pcs, cloud-init (fetchFromGitHub + buildGoModule + dockerTools)
     - [x] Utilities: http-server, tftp, kea-sidecar, redfish-emulator
-    - [x] Note: Go services use lib.fakeHash — update with real vendorHash to build
+    - [x] Go services now have real hashes (no longer use lib.fakeHash)
   - [x] Phase 3: Bash operational scripts (`scripts/ops/`)
     - [x] lib/common.sh (logging, wait-for-url, secret gen, dry-run support)
     - [x] check-deps.sh, health-check.sh, register-nodes.sh, register-bss-defaults.sh
@@ -40,6 +40,15 @@
   - [x] Implement MCP tools for health/status, SMD component/group reads, BSS reads/writes, PCS power status, and gated write operations (power transitions + group CRUD/member updates).
   - [x] Integrate MCP usage guidance and generated defaults for Minikube, Docker Compose, and Quadlets deploy flows.
   - [x] Add regression tests and README usage docs for MCP workflow.
+
+- [x] Local OCI image builds for OpenCHAMI services
+  - [x] Fix kea-sidecar and redfish-emulator source paths (parameterized, no relative paths)
+  - [x] Compute real hashes for Go services (smd, bss, pcs, cloud-init) — no more lib.fakeHash
+  - [x] Add `localImageOverrides` to defaults.nix and wire as default in generators
+  - [x] Add `build-images.sh` script to build + load all OCI images via Nix
+  - [x] Integrate image build step into deploy.sh (step 3/6, skippable via SKIP_IMAGE_BUILD)
+  - [x] Add `build-images` Makefile target
+  - [x] Update tests to verify local image infrastructure
 
 ## Completed
 - [x] Add a first NixOS VM lab smoke target via the NixOS test driver.

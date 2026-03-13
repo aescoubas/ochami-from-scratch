@@ -36,7 +36,14 @@ case "$METHOD" in
   compose|docker-compose)
     log_info "checking docker-compose dependencies..."
     check docker "container runtime"
-    check docker-compose "docker compose v1" || check "docker compose" "docker compose v2" || true
+    if command_exists docker-compose; then
+      log_info "  ✓ docker-compose (v1)"
+    elif docker compose version &>/dev/null; then
+      log_info "  ✓ docker compose (v2 plugin)"
+    else
+      log_warn "  ✗ docker compose (neither v1 nor v2 found)"
+      missing=$((missing + 1))
+    fi
     ;;
 
   quadlets)

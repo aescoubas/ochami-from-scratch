@@ -10,7 +10,7 @@
     owner = "openchami";
     repo = "bss";
     rev = "main";
-    hash = lib.fakeHash;
+    hash = "sha256-NGgLB/2o6KW1ZPAlbITtlRSurja93lLBjyHVkhmDGaE=";
   }
 }:
 
@@ -19,7 +19,7 @@ let
     pname = "bss";
     version = "unstable";
     src = bssSrc;
-    vendorHash = lib.fakeHash;
+    vendorHash = "sha256-TXBznp95gkHKc76UgwQJ+xQHD8HfAC7nbfse0YrjH9A=";
     subPackages = [ "cmd/boot-script-service" "cmd/bss-init" ];
     doCheck = false;
   };

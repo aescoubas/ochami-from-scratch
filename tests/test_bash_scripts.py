@@ -20,6 +20,7 @@ class TestScriptsExist:
         "teardown.sh",
         "lab-setup.sh",
         "deploy.sh",
+        "build-images.sh",
     ]
 
     def test_all_scripts_exist(self):
@@ -88,6 +89,32 @@ class TestScriptStructure:
         assert "check-deps.sh" in content
         assert "health-check.sh" in content
         assert "register-bss-defaults.sh" in content
+        assert "build-images.sh" in content
+
+    def test_deploy_builds_images_before_services(self):
+        content = self._read_script("deploy.sh")
+        build_pos = content.index("build-images.sh")
+        compose_up_pos = content.index("docker compose")
+        assert build_pos < compose_up_pos, \
+            "build-images.sh should run before docker compose up"
+
+    def test_deploy_supports_skip_image_build(self):
+        content = self._read_script("deploy.sh")
+        assert "SKIP_IMAGE_BUILD" in content
+
+    def test_build_images_sources_common(self):
+        content = self._read_script("build-images.sh")
+        assert "common.sh" in content
+
+    def test_build_images_builds_all_oci_images(self):
+        content = self._read_script("build-images.sh")
+        for img in ["oci-smd", "oci-bss", "oci-pcs", "oci-cloud-init",
+                     "oci-http-server", "oci-tftp", "oci-kea-sidecar"]:
+            assert img in content, f"build-images.sh should build {img}"
+
+    def test_build_images_supports_runtime_flag(self):
+        content = self._read_script("build-images.sh")
+        assert "--runtime" in content
 
     def test_scripts_support_dry_run(self):
         for name in ["check-deps.sh", "health-check.sh", "teardown.sh",
@@ -120,3 +147,7 @@ class TestMakefileTargets:
 
     def test_deploy_calls_script(self):
         assert "scripts/ops/deploy.sh" in self.content
+
+    def test_has_build_images_target(self):
+        assert "build-images:" in self.content
+        assert "build-images.sh" in self.content

@@ -4,10 +4,11 @@
 #   nix build .#oci-redfish-emulator
 #   podman load < result
 #
-{ pkgs }:
+{ pkgs
+, emulatorSrc
+}:
 
 let
-  emulatorSrc = ../../../ochami-helm/redfish-emulator;
 
   pythonEnv = pkgs.python3.withPackages (ps: [
     ps.flask
