@@ -8,7 +8,7 @@
 , lib
 , defaults
 , hostIP ? "192.168.100.1"
-, pxeInterface ? "eth1"
+, pxeInterface ? "virbr-pxe"
 , dhcpRange ? "192.168.100.50 - 192.168.100.150"
 , pxeCidr ? "24"
 , enableStork ? false

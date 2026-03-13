@@ -1,6 +1,14 @@
 # OpenCHAMI From Scratch Roadmap
 
 ## In Progress
+- [x] Make Docker Compose Kea startup and health gating reliable
+  - [x] Default the generated PXE interface to the VM lab bridge instead of `eth1`.
+  - [x] Fail deployment if Kea never becomes healthy.
+- [x] Restore generated Docker Compose deployment and local runtime image parity
+  - [x] Remove the checked-in Docker Compose artifact and make deploy/teardown use a managed generated compose file.
+  - [x] Align local service commands with the binaries exposed by the Nix-built images.
+  - [x] Package the runtime assets and user/group data required by PCS, nginx, and tftp local images.
+  - [x] Verify with `make test`, `nix build .#docker-compose-yml`, `nix build .#quadlet-units`, `nix build .#deploy-profile`, and a live `make deploy METHOD=compose` / `make teardown METHOD=compose` cycle.
 - [x] Architecture overhaul: Nix + Bash separation
   - [x] Phase 1: Nix artifact generators (`nix/generators/{docker-compose,quadlets,helm-values}.nix`)
     - [x] `nix build .#docker-compose-yml` generates docker-compose.yml from service definitions

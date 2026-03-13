@@ -1,0 +1,88 @@
+"""Regression tests for local-image runtime parity."""
+
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+
+
+class TestServiceCommandPaths:
+    """Service definitions should match the binaries exposed by local images."""
+
+    def test_smd_init_uses_bin_path(self):
+        content = (ROOT / "nix" / "services" / "smd.nix").read_text()
+        assert 'command = "/bin/smd-init -migrationsdir /persistent_migrations/postgres";' in content
+
+    def test_bss_init_uses_bin_path(self):
+        content = (ROOT / "nix" / "services" / "bss.nix").read_text()
+        assert 'command = "/bin/bss-init --postgres-migrations /migrations/postgres";' in content
+        assert 'BSS_DBSTEP = "2";' in content
+
+    def test_cloud_init_uses_bin_path(self):
+        content = (ROOT / "nix" / "services" / "cloud-init.nix").read_text()
+        assert 'command = "/bin/cloud-init-server' in content
+        assert "--smd-url https://localhost:" in content
+        assert "bash -c 'exec 3<>/dev/tcp/127.0.0.1/" in content
+
+    def test_smd_healthcheck_uses_https(self):
+        content = (ROOT / "nix" / "services" / "smd.nix").read_text()
+        assert 'curl -kfs https://localhost:' in content
+
+    def test_bss_uses_direct_smd_url(self):
+        content = (ROOT / "nix" / "services" / "bss.nix").read_text()
+        assert 'HSM_URL = "https://localhost:${smdPort}";' in content
+
+    def test_kea_sidecar_uses_direct_smd_url_without_tls_verification(self):
+        content = (ROOT / "nix" / "services" / "kea.nix").read_text()
+        assert 'SMD_URL = "https://localhost:${smdPort}";' in content
+        assert 'SMD_VERIFY_TLS = "false";' in content
+
+    def test_kea_service_uses_control_socket_healthcheck(self):
+        content = (ROOT / "nix" / "services" / "kea.nix").read_text()
+        assert 'healthCheck = "test -S /kea/sockets/kea4-ctrl-socket";' in content
+
+    def test_kea_sidecar_waits_for_kea_service(self):
+        content = (ROOT / "nix" / "services" / "kea.nix").read_text()
+        assert 'after = [ "smd" "kea-init" "kea" ];' in content
+
+
+class TestRuntimeImageAssets:
+    """Local images should include the runtime assets they need at startup."""
+
+    def test_pcs_image_packages_migrations_and_workdir(self):
+        content = (ROOT / "nix" / "images" / "pcs.nix").read_text()
+        assert "cp -r ${pcsSrc}/migrations app/migrations" in content
+        assert 'WorkingDir = "/app";' in content
+
+    def test_smd_image_packages_persistent_migrations(self):
+        content = (ROOT / "nix" / "images" / "smd.nix").read_text()
+        assert "mkdir -p persistent_migrations" in content
+        assert "cp -r ${smdSrc}/migrations/. persistent_migrations/" in content
+
+    def test_bss_image_packages_migrations(self):
+        content = (ROOT / "nix" / "images" / "bss.nix").read_text()
+        assert "mkdir -p migrations" in content
+        assert "cp -r ${bssSrc}/migrations/. migrations/" in content
+
+    def test_go_service_images_include_shell_for_compose_healthchecks(self):
+        for name in ["smd.nix", "bss.nix", "pcs.nix", "cloud-init.nix"]:
+            content = (ROOT / "nix" / "images" / name).read_text()
+            assert "pkgs.bash" in content
+
+    def test_http_server_image_defines_nobody_user(self):
+        content = (ROOT / "nix" / "images" / "http-server.nix").read_text()
+        assert "nobody:x:65534:65534:nobody" in content
+        assert "nogroup:x:65534:" in content
+        assert "mkdir -p tmp/nginx_client_body" in content
+        assert "etc/passwd" in content
+        assert "etc/group" in content
+
+    def test_tftp_image_defines_nobody_user_and_explicit_runtime_user(self):
+        content = (ROOT / "nix" / "images" / "tftp.nix").read_text()
+        assert "nobody:x:65534:65534:nobody" in content
+        assert '"--user" "nobody"' in content
+        assert "mkdir -p srv/tftp" in content
+
+    def test_nginx_proxies_smd_over_https(self):
+        content = (ROOT / "nix" / "services" / "nginx.nix").read_text()
+        assert "proxy_pass https://localhost:${smdPort};" in content
+        assert "proxy_ssl_verify off;" in content

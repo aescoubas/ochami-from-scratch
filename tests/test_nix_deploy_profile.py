@@ -69,6 +69,12 @@ def test_flake_exports_deploy_profile():
     assert "nix/deploy/profile.nix" in flake
 
 
+def test_deploy_profile_defaults_to_virbr_pxe_interface():
+    """The deploy profile should default to the VM lab PXE bridge."""
+    profile = (ROOT / "nix" / "deploy" / "profile.nix").read_text()
+    assert 'pxeInterface ? "virbr-pxe"' in profile
+
+
 def test_all_services_have_required_fields():
     """Verify each service .nix file defines the expected structure."""
     services_dir = ROOT / "nix" / "services"

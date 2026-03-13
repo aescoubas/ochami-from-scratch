@@ -55,6 +55,13 @@ class TestScriptStructure:
         assert "generate_secret" in content
         assert "ensure_secrets_file" in content
 
+    def test_common_sh_has_bridge_carrier_helpers(self):
+        content = self._read_script("lib/common.sh")
+        assert "ensure_bridge_carrier" in content
+        assert "remove_bridge_carrier_dummy" in content
+        assert "disable_conflicting_dhcp_networks" in content
+        assert "restore_conflicting_dhcp_networks" in content
+
     def test_common_sh_has_dry_run_support(self):
         content = self._read_script("lib/common.sh")
         assert "DRY_RUN" in content
@@ -77,6 +84,8 @@ class TestScriptStructure:
         assert "compose" in content
         assert "quadlets" in content
         assert "minikube" in content
+        assert "check ss" in content
+        assert "check ip" in content
 
     def test_teardown_supports_all_methods(self):
         content = self._read_script("teardown.sh")
@@ -102,6 +111,26 @@ class TestScriptStructure:
         content = self._read_script("deploy.sh")
         assert "SKIP_IMAGE_BUILD" in content
 
+    def test_deploy_uses_managed_generated_compose_file(self):
+        content = self._read_script("deploy.sh")
+        assert "docker-compose.generated.yml" in content
+        assert 'cp "$GENERATED" "$COMPOSE_FILE"' in content
+        assert 'if [ ! -f "$COMPOSE_FILE" ]' not in content
+        assert 'nix build .#deploy-profile' in content
+        assert "envsubst" in content
+        assert "--wait" in content
+        assert "CHECK_KEA=true" in content
+        assert ".tmp/openchami-secrets.env" in content
+        assert "ensure_bridge_carrier" in content
+        assert "disable_conflicting_dhcp_networks" in content
+
+    def test_teardown_uses_managed_generated_compose_file(self):
+        content = self._read_script("teardown.sh")
+        assert '$(dirname "$(dirname "$SCRIPT_DIR")")/ochami-docker-compose' in content
+        assert "docker-compose.generated.yml" in content
+        assert "remove_bridge_carrier_dummy" in content
+        assert "restore_conflicting_dhcp_networks" in content
+
     def test_build_images_sources_common(self):
         content = self._read_script("build-images.sh")
         assert "common.sh" in content
@@ -122,6 +151,14 @@ class TestScriptStructure:
             content = self._read_script(name)
             assert "dry-run" in content or "DRY_RUN" in content, \
                 f"{name} should support --dry-run"
+
+    def test_health_check_can_fail_when_kea_is_down(self):
+        content = self._read_script("health-check.sh")
+        assert "CHECK_KEA" in content
+        assert "checking kea container health via docker compose" in content
+        assert "ps --format json kea" in content
+        assert "checking kea on UDP port" in content
+        assert "ss -lun" in content
 
 
 class TestMakefileTargets:

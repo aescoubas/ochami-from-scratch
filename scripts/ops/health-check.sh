@@ -13,6 +13,9 @@ SMD_PORT="${SMD_PORT:-27779}"
 BSS_PORT="${BSS_PORT:-27778}"
 CLOUD_INIT_PORT="${CLOUD_INIT_PORT:-27777}"
 PCS_PORT="${PCS_PORT:-28007}"
+KEA_PORT="${KEA_PORT:-67}"
+CHECK_KEA="${CHECK_KEA:-false}"
+PXE_INTERFACE="${PXE_INTERFACE:-virbr-pxe}"
 
 MAX_ATTEMPTS="${MAX_ATTEMPTS:-60}"
 INTERVAL="${INTERVAL:-5}"
@@ -22,12 +25,13 @@ failed=0
 check_service() {
   local name="$1"
   local url="$2"
+  local curl_flags="${3:-}"
   log_info "checking $name at $url"
   if [ "$DRY_RUN" = "true" ]; then
     log_info "[dry-run] would check $url"
     return 0
   fi
-  if wait_for_url "$url" "$MAX_ATTEMPTS" "$INTERVAL"; then
+  if wait_for_url "$url" "$MAX_ATTEMPTS" "$INTERVAL" "$curl_flags"; then
     log_info "$name is healthy"
   else
     log_error "$name is NOT healthy"
@@ -35,10 +39,33 @@ check_service() {
   fi
 }
 
-check_service "PostgreSQL" "http://${HOST}:${HTTP_PORT}/hsm/v2/service/ready"
-check_service "SMD" "http://${HOST}:${SMD_PORT}/hsm/v2/service/ready"
+check_service "HTTP server" "http://${HOST}:${HTTP_PORT}/"
+check_service "SMD" "https://${HOST}:${SMD_PORT}/hsm/v2/service/ready" "-k"
 check_service "BSS" "http://${HOST}:${BSS_PORT}/boot/v1/bootparameters"
-check_service "Nginx" "http://${HOST}:${HTTP_PORT}/"
+if [ "$CHECK_KEA" = "true" ]; then
+  if [ -n "${COMPOSE_FILE:-}" ]; then
+    log_info "checking kea container health via docker compose"
+    if [ "$DRY_RUN" = "true" ]; then
+      log_info "[dry-run] would check kea health via docker compose"
+    elif docker compose -f "$COMPOSE_FILE" --env-file "${SECRETS_FILE}" ps --format json kea \
+      | jq -s -e 'length == 1 and .[0].Service == "kea" and .[0].State == "running" and .[0].Health == "healthy"' >/dev/null; then
+      log_info "kea is healthy"
+    else
+      log_error "kea is NOT healthy"
+      failed=$((failed + 1))
+    fi
+  else
+    log_info "checking kea on UDP port ${KEA_PORT} via ${PXE_INTERFACE}"
+    if [ "$DRY_RUN" = "true" ]; then
+      log_info "[dry-run] would check kea on UDP port ${KEA_PORT} via ${PXE_INTERFACE}"
+    elif ss -lun "sport = :${KEA_PORT}" | grep -q "%${PXE_INTERFACE}:${KEA_PORT}"; then
+      log_info "kea is healthy (UDP port ${KEA_PORT} is listening on ${PXE_INTERFACE})"
+    else
+      log_error "kea is NOT healthy"
+      failed=$((failed + 1))
+    fi
+  fi
+fi
 # Cloud-init and PCS don't have simple GET healthchecks; check via port
 if [ "$DRY_RUN" != "true" ]; then
   for svc_check in "cloud-init:${CLOUD_INIT_PORT}" "pcs:${PCS_PORT}"; do

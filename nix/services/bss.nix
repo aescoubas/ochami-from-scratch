@@ -5,16 +5,17 @@ let
   pgPort = toString defaults.ports.postgres;
   httpPort = toString defaults.ports.http;
   bssPort = toString defaults.ports.bss;
+  smdPort = toString defaults.ports.smd;
   artifactsUrl = "http://${hostIP}:${httpPort}/artifacts/opensuse";
 in
 {
   init = {
     name = "bss-init";
     image = defaults.images.bss;
-    command = "/usr/local/bin/bss-init";
+    command = "/bin/bss-init --postgres-migrations /migrations/postgres";
     environment = {
       BSS_INSECURE = "true";
-      BSS_DBSTEP = "3";
+      BSS_DBSTEP = "2";
       BSS_DBHOST = "localhost";
       BSS_DBPORT = pgPort;
       BSS_DBNAME = "bssdb";
@@ -31,7 +32,7 @@ in
     name = "bss";
     image = defaults.images.bss;
     environment = {
-      HSM_URL = "http://localhost:${httpPort}";
+      HSM_URL = "https://localhost:${smdPort}";
       BSS_INSECURE = "true";
       BSS_DEBUG = "true";
       BSS_DBHOST = "localhost";

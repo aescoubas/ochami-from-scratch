@@ -29,9 +29,14 @@ pkgs.dockerTools.buildLayeredImage {
   tag = "local-smd";
   contents = [
     smd
+    pkgs.bash
     pkgs.cacert
     pkgs.curl
   ];
+  extraCommands = ''
+    mkdir -p persistent_migrations
+    cp -r ${smdSrc}/migrations/. persistent_migrations/
+  '';
   config = {
     Cmd = [ "${smd}/bin/smd" ];
   };

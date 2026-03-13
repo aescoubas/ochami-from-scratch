@@ -31,6 +31,9 @@ check() {
 log_info "checking common dependencies..."
 check curl "HTTP client"
 check jq "JSON processor"
+check envsubst "template rendering"
+check ss "socket inspection"
+check ip "network interface management"
 
 case "$METHOD" in
   compose|docker-compose)

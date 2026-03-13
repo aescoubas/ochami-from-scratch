@@ -81,6 +81,9 @@ class TestDockerComposeGenerator:
     def test_handles_capabilities(self):
         assert "cap_add" in self.content
 
+    def test_defaults_to_virbr_pxe_interface(self):
+        assert 'pxeInterface ? "virbr-pxe"' in self.content
+
 
 class TestQuadletsGenerator:
     """Structural checks on quadlets.nix."""
@@ -114,6 +117,9 @@ class TestQuadletsGenerator:
 
     def test_generates_target(self):
         assert "openchami.target" in self.content
+
+    def test_defaults_to_virbr_pxe_interface(self):
+        assert 'pxeInterface ? "virbr-pxe"' in self.content
 
 
 class TestHelmValuesGenerator:

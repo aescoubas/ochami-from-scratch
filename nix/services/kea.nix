@@ -5,6 +5,7 @@
 let
   pgPort = toString defaults.ports.postgres;
   httpPort = toString defaults.ports.http;
+  smdPort = toString defaults.ports.smd;
 
   keaConfig = builtins.toJSON {
     Dhcp4 = {
@@ -89,6 +90,7 @@ in
     ];
     capabilities = [ "NET_RAW" "NET_ADMIN" ];
     after = [ "kea-init" ];
+    healthCheck = "test -S /kea/sockets/kea4-ctrl-socket";
     type = "service";
   };
 
@@ -97,7 +99,8 @@ in
     image = defaults.images.keaSidecar;
     command = "python -u /app/smd_sync.py";
     environment = {
-      SMD_URL = "http://localhost:${httpPort}";
+      SMD_URL = "https://localhost:${smdPort}";
+      SMD_VERIFY_TLS = "false";
       DB_NAME = "kea";
       DB_USER = "kea-user";
       DB_HOST = "localhost";
@@ -105,7 +108,7 @@ in
     };
     secretEnvKeys = [ "KEA_DB_PASSWORD" ];
     envMapping = { DB_PASS = "KEA_DB_PASSWORD"; };
-    after = [ "smd" "kea-init" ];
+    after = [ "smd" "kea-init" "kea" ];
     type = "service";
   };
 

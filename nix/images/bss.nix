@@ -29,9 +29,14 @@ pkgs.dockerTools.buildLayeredImage {
   tag = "local-bss";
   contents = [
     bss
+    pkgs.bash
     pkgs.cacert
     pkgs.curl
   ];
+  extraCommands = ''
+    mkdir -p migrations
+    cp -r ${bssSrc}/migrations/. migrations/
+  '';
   config = {
     Cmd = [ "${bss}/bin/boot-script-service" ];
   };

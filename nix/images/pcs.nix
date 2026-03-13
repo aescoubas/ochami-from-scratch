@@ -29,10 +29,17 @@ pkgs.dockerTools.buildLayeredImage {
   tag = "local-pcs";
   contents = [
     pcs
+    pkgs.bash
     pkgs.cacert
     pkgs.curl
   ];
+  extraCommands = ''
+    mkdir -p app
+    cp -r ${pcsSrc}/configs app/configs
+    cp -r ${pcsSrc}/migrations app/migrations
+  '';
   config = {
+    WorkingDir = "/app";
     Cmd = [ "${pcs}/bin/power-control" ];
   };
 }

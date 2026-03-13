@@ -11,6 +11,7 @@
 #   6. Register BSS defaults
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(dirname "$(dirname "$SCRIPT_DIR")")"
 . "$SCRIPT_DIR/lib/common.sh"
 
 METHOD=""
@@ -25,13 +26,30 @@ DRY_RUN_FLAG=""
 if [ "$DRY_RUN" = "true" ]; then
   DRY_RUN_FLAG="--dry-run"
 fi
+PXE_INTERFACE="${PXE_INTERFACE:-virbr-pxe}"
+LIBVIRT_NET_STATE_FILE="${PROJECT_ROOT}/.tmp/libvirt-networks.paused"
+
+CHECK_KEA=false
+case "$METHOD" in
+  compose|docker-compose|quadlets)
+    CHECK_KEA=true
+    ;;
+esac
 
 # Step 1: Check dependencies
 log_info "step 1/6: checking dependencies..."
 "$SCRIPT_DIR/check-deps.sh" --method "$METHOD" $DRY_RUN_FLAG
 
 # Step 2: Ensure secrets
-SECRETS_FILE="${OPENCHAMI_SECRETS:-/etc/openchami/secrets.env}"
+case "$METHOD" in
+  compose|docker-compose)
+    DEFAULT_SECRETS_FILE="${PROJECT_ROOT}/.tmp/openchami-secrets.env"
+    ;;
+  *)
+    DEFAULT_SECRETS_FILE="/etc/openchami/secrets.env"
+    ;;
+esac
+SECRETS_FILE="${OPENCHAMI_SECRETS:-$DEFAULT_SECRETS_FILE}"
 log_info "step 2/6: ensuring secrets at $SECRETS_FILE..."
 if [ "$DRY_RUN" != "true" ]; then
   ensure_secrets_file "$SECRETS_FILE"
@@ -60,20 +78,37 @@ esac
 log_info "step 4/6: starting services (method=$METHOD)..."
 case "$METHOD" in
   compose|docker-compose)
-    COMPOSE_DIR="${COMPOSE_DIR:-$(dirname "$(dirname "$SCRIPT_DIR")")/ochami-docker-compose}"
-    COMPOSE_FILE="${COMPOSE_DIR}/docker-compose.yml"
-    if [ ! -f "$COMPOSE_FILE" ]; then
-      log_info "generating docker-compose.yml via nix..."
-      GENERATED=$(nix build .#docker-compose-yml --no-link --print-out-paths 2>/dev/null)
-      if [ -z "$GENERATED" ] || [ ! -f "$GENERATED" ]; then
-        log_error "failed to generate docker-compose.yml"
-        exit 1
-      fi
-      cp "$GENERATED" "$COMPOSE_FILE"
-      chmod 644 "$COMPOSE_FILE"
-      log_info "docker-compose.yml generated at $COMPOSE_FILE"
+    COMPOSE_DIR="${COMPOSE_DIR:-${PROJECT_ROOT}/ochami-docker-compose}"
+    COMPOSE_FILE="${COMPOSE_DIR}/docker-compose.generated.yml"
+    CONFIG_DIR="${COMPOSE_DIR}/configs"
+    disable_conflicting_dhcp_networks "$PXE_INTERFACE" "$LIBVIRT_NET_STATE_FILE"
+    ensure_bridge_carrier "$PXE_INTERFACE"
+    mkdir -p "$COMPOSE_DIR"
+    mkdir -p "$CONFIG_DIR"
+    log_info "generating docker-compose.yml via nix..."
+    GENERATED=$(nix build .#docker-compose-yml --no-link --print-out-paths 2>/dev/null)
+    if [ -z "$GENERATED" ] || [ ! -f "$GENERATED" ]; then
+      log_error "failed to generate docker-compose.yml"
+      exit 1
     fi
-    run_cmd docker compose -f "$COMPOSE_FILE" --env-file "$SECRETS_FILE" up -d
+    cp "$GENERATED" "$COMPOSE_FILE"
+    chmod 644 "$COMPOSE_FILE"
+    log_info "docker-compose.yml generated at $COMPOSE_FILE"
+    log_info "rendering compose config files via nix deploy profile..."
+    PROFILE_DIR=$(nix build .#deploy-profile --no-link --print-out-paths 2>/dev/null)
+    if [ -z "$PROFILE_DIR" ] || [ ! -d "$PROFILE_DIR" ]; then
+      log_error "failed to build deploy profile for compose configs"
+      exit 1
+    fi
+    # shellcheck disable=SC1090
+    . "$SECRETS_FILE"
+    export $(cut -d= -f1 "$SECRETS_FILE" | grep -v '^#')
+    envsubst_vars="$(cut -d= -f1 "$SECRETS_FILE" | grep -v '^#' | sed 's/^/${/; s/$/}/' | tr '\n' ' ')"
+    for f in "$PROFILE_DIR"/etc/openchami/configs/*; do
+      envsubst "$envsubst_vars" < "$f" > "$CONFIG_DIR/$(basename "$f")"
+      chmod 644 "$CONFIG_DIR/$(basename "$f")"
+    done
+    run_cmd docker compose -f "$COMPOSE_FILE" --env-file "$SECRETS_FILE" up -d --wait --wait-timeout "${COMPOSE_WAIT_TIMEOUT:-120}"
     ;;
 
   quadlets)
@@ -113,7 +148,7 @@ esac
 
 # Step 5: Health check
 log_info "step 5/6: running health checks..."
-"$SCRIPT_DIR/health-check.sh" $DRY_RUN_FLAG
+CHECK_KEA="$CHECK_KEA" PXE_INTERFACE="$PXE_INTERFACE" COMPOSE_FILE="${COMPOSE_FILE:-}" SECRETS_FILE="$SECRETS_FILE" "$SCRIPT_DIR/health-check.sh" $DRY_RUN_FLAG
 
 # Step 6: Register BSS defaults
 log_info "step 6/6: registering BSS defaults..."

@@ -17,6 +17,7 @@ nodes.csv
 
 # Docker Compose generated files
 ochami-docker-compose/.env
+ochami-docker-compose/docker-compose.generated.yml
 ochami-docker-compose/configs/kea-dhcp4.conf
 ochami-docker-compose/configs/nginx-default.conf
 ochami-docker-compose/configs/boot.ipxe
@@ -35,3 +36,4 @@ __pycache__/
 *.pyc
 *.egg-info/
 result
+.tmp/

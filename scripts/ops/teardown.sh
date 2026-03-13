@@ -16,13 +16,17 @@ fi
 case "$METHOD" in
   compose|docker-compose)
     log_info "tearing down docker-compose deployment..."
-    COMPOSE_DIR="${COMPOSE_DIR:-$(dirname "$SCRIPT_DIR")/ochami-docker-compose}"
-    if [ -f "$COMPOSE_DIR/docker-compose.yml" ]; then
-      run_cmd docker compose -f "$COMPOSE_DIR/docker-compose.yml" down -v --remove-orphans
+    COMPOSE_DIR="${COMPOSE_DIR:-$(dirname "$(dirname "$SCRIPT_DIR")")/ochami-docker-compose}"
+    COMPOSE_FILE="${COMPOSE_DIR}/docker-compose.generated.yml"
+    LIBVIRT_NET_STATE_FILE="$(dirname "$(dirname "$SCRIPT_DIR")")/.tmp/libvirt-networks.paused"
+    if [ -f "$COMPOSE_FILE" ]; then
+      run_cmd docker compose -f "$COMPOSE_FILE" down -v --remove-orphans
     else
       # Try generated compose file
       run_cmd docker compose down -v --remove-orphans
     fi
+    remove_bridge_carrier_dummy
+    restore_conflicting_dhcp_networks "$LIBVIRT_NET_STATE_FILE"
     ;;
 
   quadlets)

@@ -7,6 +7,7 @@ import psycopg2
 import requests
 
 SMD_URL = os.environ.get("SMD_URL")
+SMD_VERIFY_TLS = os.environ.get("SMD_VERIFY_TLS", "true").lower() == "true"
 DB_NAME = os.environ.get("DB_NAME")
 DB_USER = os.environ.get("DB_USER")
 DB_PASS = os.environ.get("DB_PASS")
@@ -42,7 +43,11 @@ def sync_hosts():
 
         print(f"Fetching interfaces from {SMD_URL}...")
         try:
-            resp = requests.get(f"{SMD_URL}/hsm/v2/Inventory/EthernetInterfaces", timeout=5)
+            resp = requests.get(
+                f"{SMD_URL}/hsm/v2/Inventory/EthernetInterfaces",
+                timeout=5,
+                verify=SMD_VERIFY_TLS,
+            )
             if resp.status_code != 200:
                 print(f"Error fetching SMD: {resp.status_code}")
                 return

@@ -8,7 +8,7 @@ in
   init = {
     name = "smd-init";
     image = defaults.images.smd;
-    command = "/smd-init";
+    command = "/bin/smd-init -migrationsdir /persistent_migrations/postgres";
     environment = {
       SMD_DBHOST = "localhost";
       SMD_DBPORT = port;
@@ -35,7 +35,7 @@ in
     };
     secretEnvKeys = [ "SMD_DB_PASSWORD" ];
     envMapping = { SMD_DBPASS = "SMD_DB_PASSWORD"; };
-    healthCheck = "curl -sf http://localhost:${toString defaults.ports.smd}/hsm/v2/service/ready";
+    healthCheck = "curl -kfs https://localhost:${toString defaults.ports.smd}/hsm/v2/service/ready";
     after = [ "smd-init" ];
     type = "service";
   };

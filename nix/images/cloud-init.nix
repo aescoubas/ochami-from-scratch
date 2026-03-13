@@ -30,6 +30,7 @@ pkgs.dockerTools.buildLayeredImage {
   tag = "local-cloud-init";
   contents = [
     cloudInit
+    pkgs.bash
     pkgs.cacert
     pkgs.curl
     pkgs.iproute2
