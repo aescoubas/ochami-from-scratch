@@ -9,13 +9,16 @@
 *   **MCP server:** `ochami/mcp/` (standalone Python, stdlib only)
 *   **Helm chart:** `ochami-helm/` (templates + values)
 *   **NixOS VM lab:** `nix/lab/` + `nix/tests/lab-smoke.nix`
-*   **Docs:** `README.md`, `docs/plans/ROADMAP.md`
-*   **Tests:** `tests/` (pytest, 83 tests)
+*   **Boot artifacts:** `nix/boot-artifacts.nix`
+*   **Docs:** `README.md`, `AGENTS.md`, `docs/architecture/`, `docs/plans/ROADMAP.md`
+*   **Tests:** `tests/` (pytest via `make test`)
 
 ## Architecture
 *   `nix/services/defaults.nix` is the shared constants file (ports, images, databases, secrets).
 *   All deployment artifacts (docker-compose.yml, .container files, values.yaml) are **generated** from `nix/services/*.nix` via `nix/generators/*.nix`.
+*   PXE/iPXE boot payloads are built by `nix/boot-artifacts.nix` and consumed by the local runtime.
 *   Runtime operations (deploy, teardown, health checks, node registration) are handled by bash scripts in `scripts/ops/`.
+*   The local Docker Compose PXE lab uses libvirt network `ochami-pxe-net`, bridge `virbr-ochami`, and `scripts/ops/create-test-vms.sh` for test VM bootstrap.
 *   The MCP server (`ochami/mcp/`) is self-contained with zero external dependencies (stdlib only).
 *   There is no Python CLI — the old `ochamifs` was removed. The only Python entry point is `ochami-mcp`.
 

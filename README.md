@@ -7,11 +7,19 @@ deployment methods, all driven by Nix-generated artifacts and Bash operational s
 - **Podman Quadlets** — `nix build .#quadlet-units` + `nix build .#deploy-profile`
 - **Helm/Minikube** — `nix build .#helm-values`
 
+For the local PXE lab, the repository also builds Nix-managed boot artifacts with
+`nix build .#boot-artifacts` and exposes them through the generated nginx/BSS runtime.
+
 ## Architecture
 
 `nix/services/*.nix` is the single source of truth for all service definitions
 (ports, images, environment variables, volumes, dependencies, health checks).
 Deployment artifacts are generated from these definitions — never hand-written.
+
+Architecture notes for the current runtime are in:
+
+- `docs/architecture/overview.md`
+- `docs/architecture/compose-pxe-lab.md`
 
 ```
 nix/
@@ -19,6 +27,7 @@ nix/
   services/defaults.nix  ← shared constants (ports, databases, secrets, image refs)
   generators/            ← produces docker-compose.yml, .container files, values.yaml
   images/                ← OCI image builds (Go services + utilities)
+  boot-artifacts.nix     ← generated PXE/iPXE kernel + initramfs package
   deploy/profile.nix     ← systemd unit generator for quadlet deployments
   lab/                   ← NixOS VM lab (controller + boot node + secrets)
   tests/lab-smoke.nix    ← NixOS VM smoke test
@@ -46,12 +55,28 @@ nix flake check
 make deploy METHOD=compose
 ```
 
+The compose deploy path now:
+
+- builds the local OCI images for OpenCHAMI-owned services
+- generates `docker-compose.generated.yml` and rendered config files from Nix
+- ensures the libvirt PXE network `ochami-pxe-net` exists on bridge `virbr-ochami`
+- prepares the PXE bridge so Kea can bind reliably
+- verifies HTTP, boot artifacts, SMD, BSS, Kea, cloud-init, and PCS
+- registers default BSS boot parameters from the generated `boot-artifacts` package
+
 After a successful compose deploy, create one or more libvirt PXE test VMs with:
 
 ```bash
 make create-test-vms COUNT=1
 # or:
 scripts/ops/create-test-vms.sh --count 2
+```
+
+To inspect the serial console of a test VM:
+
+```bash
+sudo virsh --connect qemu:///system console ochami-test-node-0
+# exit the console with Ctrl+]
 ```
 
 ### Deploy with Quadlets (systemd + Podman)
@@ -88,11 +113,15 @@ Build deployment artifacts from the Nix service definitions:
 # Generate all artifacts
 make generate
 
+# Generate the PXE/iPXE boot artifacts only
+make generate-images
+
 # Or individually
 nix build .#docker-compose-yml --print-out-paths
 nix build .#quadlet-units --print-out-paths
 nix build .#helm-values --print-out-paths
 nix build .#deploy-profile --print-out-paths
+nix build .#boot-artifacts --print-out-paths
 ```
 
 ## Operational Scripts
@@ -105,9 +134,9 @@ All runtime operations use `scripts/ops/`:
 | `teardown.sh` | Tear down by method |
 | `check-deps.sh` | Verify required tools are installed (does not install) |
 | `health-check.sh` | Wait for services to become healthy |
-| `create-test-vms.sh` | Ensure libvirt PXE test VMs exist, are registered, and are restarted into PXE |
+| `create-test-vms.sh` | Ensure libvirt PXE test VMs exist, are registered in OpenCHAMI, and are started into PXE |
 | `register-nodes.sh` | Register nodes via SMD/BSS curl calls |
-| `register-bss-defaults.sh` | Register default boot parameters |
+| `register-bss-defaults.sh` | Register default boot parameters from the generated boot artifacts |
 | `lab-setup.sh` | Libvirt PXE network lifecycle |
 
 All scripts support `--dry-run` and source `lib/common.sh` for shared functions
@@ -119,6 +148,14 @@ its bridge is `virbr-ochami`. During deploy, "prepare the bridge" means:
 - Ensure the `ochami-pxe-net` libvirt network exists on `virbr-ochami`
 - Stop conflicting libvirt DHCP networks temporarily
 - Attach a temporary dummy port if needed so the bridge reports carrier and Kea can bind
+
+The VM boot flow is:
+
+1. Kea serves DHCP on `virbr-ochami`
+2. nginx serves the first-stage iPXE script
+3. BSS serves the second-stage bootscript for the registered MAC
+4. nginx serves the generated kernel and initramfs from `boot-artifacts`
+5. the VM reaches the `ochami-netboot` NixOS environment on the serial console
 
 ## MCP Server
 
@@ -150,7 +187,10 @@ available for container-based service deployment.
 ## Testing
 
 ```bash
-make test          # pytest in Nix dev shell (83 tests)
+make test          # pytest in Nix dev shell
+nix build .#docker-compose-yml
+nix build .#quadlet-units
+nix build .#deploy-profile
 ```
 
 ## VM Integration Tests
@@ -169,6 +209,7 @@ nix/
   services/              Service definitions (single source of truth)
   generators/            Artifact generators (docker-compose, quadlets, helm)
   images/                OCI image build definitions
+  boot-artifacts.nix     PXE/iPXE boot artifact package
   deploy/                Deploy profile (systemd units + activate/deactivate)
   lab/                   NixOS VM lab (controller, boot-node, secrets, images)
   tests/                 NixOS VM smoke tests
@@ -176,9 +217,10 @@ scripts/ops/             Bash operational scripts
   lib/common.sh          Shared functions (logging, wait, secrets)
 ochami/mcp/              MCP server (standalone Python, stdlib only)
 ochami-helm/             Helm chart templates for Minikube
-ochami-docker-compose/   Static configs (kea, nginx) for Docker Compose
-ochami-quadlets/         Static configs for Podman Quadlets
+ochami-docker-compose/   Generated Compose runtime files and rendered configs
+ochami-quadlets/         Generated Podman Quadlet runtime files
 libvirt/                 Libvirt VM integration test scripts
+docs/architecture/       Architecture overview and compose PXE lab notes
 docs/plans/              Roadmap and planning docs
 tests/                   pytest test suite
 ```
