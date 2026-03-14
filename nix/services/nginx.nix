@@ -1,5 +1,5 @@
 # Nginx reverse proxy + boot.ipxe artifact.
-{ pkgs, lib, defaults, hostIP, enableStork ? false }:
+{ pkgs, lib, defaults, hostIP, enableStork ? false, bootArtifacts }:
 
 let
   httpPort = toString defaults.ports.http;
@@ -8,6 +8,29 @@ let
   ciPort = toString defaults.ports.cloudInit;
   pcsPort = toString defaults.ports.pcs;
   storkPort = toString defaults.ports.stork;
+  nginxMainConf = pkgs.writeText "nginx.conf" ''
+    worker_processes auto;
+    error_log /dev/stderr info;
+    pid /tmp/nginx.pid;
+
+    events {
+        worker_connections 1024;
+    }
+
+    http {
+        access_log /dev/stdout;
+        include ${pkgs.nginx}/conf/mime.types;
+        default_type application/octet-stream;
+        sendfile on;
+        keepalive_timeout 65;
+        client_body_temp_path /tmp/nginx_client_body;
+        proxy_temp_path /tmp/nginx_proxy;
+        fastcgi_temp_path /tmp/nginx_fastcgi;
+        uwsgi_temp_path /tmp/nginx_uwsgi;
+        scgi_temp_path /tmp/nginx_scgi;
+        include /etc/nginx/conf.d/*.conf;
+    }
+  '';
 
   nginxConf = pkgs.writeText "nginx-default.conf" ''
     server {
@@ -16,7 +39,8 @@ let
         server_name  localhost;
 
         location /apis/bss/ {
-            proxy_pass http://localhost:${bssPort}/;
+            rewrite ^/apis/bss/(.*)$ /$1 break;
+            proxy_pass http://localhost:${bssPort};
             proxy_set_header Host $host;
             proxy_set_header X-Real-IP $remote_addr;
         }
@@ -93,10 +117,10 @@ let
     set base-url http://${hostIP}:${httpPort}
 
     echo "Loading kernel..."
-    kernel ''${base-url}/artifacts/opensuse/vmlinuz-lts console=ttyS0 ip=dhcp rd.neednet=1 root=live:''${base-url}/artifacts/opensuse/rootfs.squashfs
+    kernel ''${base-url}/${bootArtifacts.relativeDir}/${bootArtifacts.kernelFile} ${bootArtifacts.kernelArgs}
 
     echo "Loading initramfs..."
-    initrd ''${base-url}/artifacts/opensuse/initramfs-lts
+    initrd ''${base-url}/${bootArtifacts.relativeDir}/${bootArtifacts.initrdFile}
 
     echo "Booting..."
     boot
@@ -107,6 +131,9 @@ in
     name = "http-server";
     image = defaults.images.nginx;
     volumes = [
+      "${bootArtifacts.package}/artifacts:/usr/share/nginx/html/artifacts:ro"
+    ] ++ [
+      "nginx.conf:/etc/nginx/nginx.conf:ro"
       "nginx-default.conf:/etc/nginx/conf.d/default.conf:ro"
       "boot.ipxe:/usr/share/nginx/html/boot.ipxe:ro"
     ];
@@ -115,6 +142,7 @@ in
   };
 
   configFiles = {
+    "nginx.conf" = nginxMainConf;
     "nginx-default.conf" = nginxConf;
     "boot.ipxe" = bootIpxe;
   };

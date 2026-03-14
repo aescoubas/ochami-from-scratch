@@ -33,10 +33,14 @@ class TestFlakeExportsGenerators:
     def test_flake_exports_helm_values(self):
         assert "helm-values" in self.flake
 
+    def test_flake_exports_boot_artifacts(self):
+        assert "boot-artifacts" in self.flake
+
     def test_flake_references_generator_paths(self):
         assert "nix/generators/docker-compose.nix" in self.flake
         assert "nix/generators/quadlets.nix" in self.flake
         assert "nix/generators/helm-values.nix" in self.flake
+        assert "nix/boot-artifacts.nix" in self.flake
 
 
 class TestDockerComposeGenerator:
@@ -81,8 +85,8 @@ class TestDockerComposeGenerator:
     def test_handles_capabilities(self):
         assert "cap_add" in self.content
 
-    def test_defaults_to_virbr_pxe_interface(self):
-        assert 'pxeInterface ? "virbr-pxe"' in self.content
+    def test_defaults_to_virbr_ochami_interface(self):
+        assert 'pxeInterface ? "virbr-ochami"' in self.content
 
 
 class TestQuadletsGenerator:
@@ -118,8 +122,8 @@ class TestQuadletsGenerator:
     def test_generates_target(self):
         assert "openchami.target" in self.content
 
-    def test_defaults_to_virbr_pxe_interface(self):
-        assert 'pxeInterface ? "virbr-pxe"' in self.content
+    def test_defaults_to_virbr_ochami_interface(self):
+        assert 'pxeInterface ? "virbr-ochami"' in self.content
 
 
 class TestHelmValuesGenerator:

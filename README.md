@@ -46,6 +46,14 @@ nix flake check
 make deploy METHOD=compose
 ```
 
+After a successful compose deploy, create one or more libvirt PXE test VMs with:
+
+```bash
+make create-test-vms COUNT=1
+# or:
+scripts/ops/create-test-vms.sh --count 2
+```
+
 ### Deploy with Quadlets (systemd + Podman)
 
 ```bash
@@ -97,12 +105,20 @@ All runtime operations use `scripts/ops/`:
 | `teardown.sh` | Tear down by method |
 | `check-deps.sh` | Verify required tools are installed (does not install) |
 | `health-check.sh` | Wait for services to become healthy |
+| `create-test-vms.sh` | Ensure libvirt PXE test VMs exist, are registered, and are restarted into PXE |
 | `register-nodes.sh` | Register nodes via SMD/BSS curl calls |
 | `register-bss-defaults.sh` | Register default boot parameters |
-| `lab-setup.sh` | Libvirt network + VM lifecycle |
+| `lab-setup.sh` | Libvirt PXE network lifecycle |
 
 All scripts support `--dry-run` and source `lib/common.sh` for shared functions
 (logging, `wait_for_url`, `generate_secret`, `ensure_secrets_file`).
+
+For Docker Compose PXE boot, the libvirt network is now named `ochami-pxe-net` and
+its bridge is `virbr-ochami`. During deploy, "prepare the bridge" means:
+
+- Ensure the `ochami-pxe-net` libvirt network exists on `virbr-ochami`
+- Stop conflicting libvirt DHCP networks temporarily
+- Attach a temporary dummy port if needed so the bridge reports carrier and Kea can bind
 
 ## MCP Server
 

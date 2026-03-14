@@ -15,7 +15,7 @@ CLOUD_INIT_PORT="${CLOUD_INIT_PORT:-27777}"
 PCS_PORT="${PCS_PORT:-28007}"
 KEA_PORT="${KEA_PORT:-67}"
 CHECK_KEA="${CHECK_KEA:-false}"
-PXE_INTERFACE="${PXE_INTERFACE:-virbr-pxe}"
+PXE_INTERFACE="${PXE_INTERFACE:-virbr-ochami}"
 
 MAX_ATTEMPTS="${MAX_ATTEMPTS:-60}"
 INTERVAL="${INTERVAL:-5}"
@@ -40,6 +40,8 @@ check_service() {
 }
 
 check_service "HTTP server" "http://${HOST}:${HTTP_PORT}/"
+check_service "Boot kernel" "http://${HOST}:${HTTP_PORT}/artifacts/opensuse/vmlinuz-lts" "-I"
+check_service "Boot initramfs" "http://${HOST}:${HTTP_PORT}/artifacts/opensuse/initramfs-lts" "-I"
 check_service "SMD" "https://${HOST}:${SMD_PORT}/hsm/v2/service/ready" "-k"
 check_service "BSS" "http://${HOST}:${BSS_PORT}/boot/v1/bootparameters"
 if [ "$CHECK_KEA" = "true" ]; then

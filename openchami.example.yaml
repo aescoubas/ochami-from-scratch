@@ -14,7 +14,7 @@
 method: docker-compose
 
 # PXE network settings
-pxe_interface: virbr-pxe
+pxe_interface: virbr-ochami
 pxe_ip: 192.168.100.2
 pxe_cidr: 24
 # phy_iface: eth0  # physical interface to bridge (optional)

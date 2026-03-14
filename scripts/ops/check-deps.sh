@@ -39,6 +39,7 @@ case "$METHOD" in
   compose|docker-compose)
     log_info "checking docker-compose dependencies..."
     check docker "container runtime"
+    check virsh "libvirt management"
     if command_exists docker-compose; then
       log_info "  ✓ docker-compose (v1)"
     elif docker compose version &>/dev/null; then

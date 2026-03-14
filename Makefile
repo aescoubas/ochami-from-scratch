@@ -1,7 +1,8 @@
 .PHONY: test test-vm test-vm-ubuntu test-vm-fedora test-vm-destroy
-.PHONY: deploy teardown check generate build-images
+.PHONY: deploy teardown check generate generate-images build-images create-test-vms
 
 METHOD ?= compose
+COUNT ?= 1
 
 test:
 	nix develop -c python -m pytest
@@ -34,5 +35,11 @@ generate:
 	@echo "Building helm values..."
 	nix build .#helm-values --no-link --print-out-paths
 
+generate-images:
+	nix build .#boot-artifacts --no-link --print-out-paths
+
 build-images:
 	scripts/ops/build-images.sh
+
+create-test-vms:
+	scripts/ops/create-test-vms.sh --count $(COUNT)

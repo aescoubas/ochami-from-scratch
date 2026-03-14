@@ -51,7 +51,7 @@ def get_vm_info():
         # Get MAC address from XML
         raw_xml = dom.XMLDesc(0)
         root = ET.fromstring(raw_xml)
-        # Find interface with source network='pxe-net' or bridge='virbr-pxe'
+        # Find interface with source network='ochami-pxe-net' or bridge='virbr-ochami'
         # Simplified: just take the first interface's mac
         mac = "00:00:00:00:00:00"
         for interface in root.findall("./devices/interface"):

@@ -22,6 +22,10 @@ pkgs.dockerTools.buildLayeredImage {
     mkdir -p var/cache/nginx
     mkdir -p run
     mkdir -p tmp/nginx_client_body
+    mkdir -p tmp/nginx_proxy
+    mkdir -p tmp/nginx_fastcgi
+    mkdir -p tmp/nginx_uwsgi
+    mkdir -p tmp/nginx_scgi
     cat > etc/passwd <<'EOF'
     root:x:0:0:root:/root:/bin/sh
     nobody:x:65534:65534:nobody:/var/empty:/bin/sh
@@ -33,7 +37,7 @@ pkgs.dockerTools.buildLayeredImage {
     EOF
   '';
   config = {
-    Cmd = [ "${pkgs.nginx}/bin/nginx" "-g" "daemon off;" ];
+    Cmd = [ "${pkgs.nginx}/bin/nginx" "-c" "/etc/nginx/nginx.conf" "-g" "daemon off;" ];
     ExposedPorts = {
       "80/tcp" = { };
     };

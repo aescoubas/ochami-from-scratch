@@ -7,9 +7,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 parse_common_args "$@"
 
-NETWORK_NAME="${NETWORK_NAME:-pxe-net}"
-NETWORK_BRIDGE="${NETWORK_BRIDGE:-virbr-pxe}"
-NETWORK_CIDR="${NETWORK_CIDR:-192.168.100.0/24}"
+NETWORK_NAME="${NETWORK_NAME:-ochami-pxe-net}"
+NETWORK_BRIDGE="${NETWORK_BRIDGE:-virbr-ochami}"
+NETWORK_CIDR="${NETWORK_CIDR:-24}"
 CONTROLLER_IP="${CONTROLLER_IP:-192.168.100.1}"
 CONTROLLER_VM="${CONTROLLER_VM:-ochami-controller}"
 BOOT_NODE_VM="${BOOT_NODE_VM:-ochami-boot-node}"
@@ -17,29 +17,8 @@ BOOT_NODE_VM="${BOOT_NODE_VM:-ochami-boot-node}"
 # --- Network setup ---
 
 setup_network() {
-  log_info "setting up libvirt network: $NETWORK_NAME"
-
-  if virsh net-info "$NETWORK_NAME" >/dev/null 2>&1; then
-    log_info "network $NETWORK_NAME already exists"
-    return 0
-  fi
-
-  local net_xml
-  net_xml=$(mktemp)
-  cat > "$net_xml" <<EOF
-<network>
-  <name>${NETWORK_NAME}</name>
-  <bridge name="${NETWORK_BRIDGE}" stp="off" delay="0"/>
-  <ip address="${CONTROLLER_IP}" netmask="255.255.255.0">
-  </ip>
-</network>
-EOF
-
-  run_cmd sudo virsh net-define "$net_xml"
-  run_cmd sudo virsh net-start "$NETWORK_NAME"
-  run_cmd sudo virsh net-autostart "$NETWORK_NAME"
-  rm -f "$net_xml"
-  log_info "network $NETWORK_NAME created"
+  log_info "ensuring libvirt PXE network: $NETWORK_NAME"
+  ensure_libvirt_network "$NETWORK_NAME" "$NETWORK_BRIDGE" "$CONTROLLER_IP" "$NETWORK_CIDR"
 }
 
 # --- VM creation ---

@@ -26,7 +26,10 @@ DRY_RUN_FLAG=""
 if [ "$DRY_RUN" = "true" ]; then
   DRY_RUN_FLAG="--dry-run"
 fi
-PXE_INTERFACE="${PXE_INTERFACE:-virbr-pxe}"
+PXE_INTERFACE="${PXE_INTERFACE:-virbr-ochami}"
+LIBVIRT_NETWORK_NAME="${LIBVIRT_NETWORK_NAME:-ochami-pxe-net}"
+HOST_IP="${HOST_IP:-192.168.100.1}"
+PXE_CIDR="${PXE_CIDR:-24}"
 LIBVIRT_NET_STATE_FILE="${PROJECT_ROOT}/.tmp/libvirt-networks.paused"
 
 CHECK_KEA=false
@@ -81,6 +84,7 @@ case "$METHOD" in
     COMPOSE_DIR="${COMPOSE_DIR:-${PROJECT_ROOT}/ochami-docker-compose}"
     COMPOSE_FILE="${COMPOSE_DIR}/docker-compose.generated.yml"
     CONFIG_DIR="${COMPOSE_DIR}/configs"
+    ensure_libvirt_network "$LIBVIRT_NETWORK_NAME" "$PXE_INTERFACE" "$HOST_IP" "$PXE_CIDR"
     disable_conflicting_dhcp_networks "$PXE_INTERFACE" "$LIBVIRT_NET_STATE_FILE"
     ensure_bridge_carrier "$PXE_INTERFACE"
     mkdir -p "$COMPOSE_DIR"

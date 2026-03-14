@@ -107,6 +107,163 @@ _sudo_noninteractive_cmd() {
   return 1
 }
 
+cidr_to_netmask() {
+  local cidr="$1"
+  local full_octets remainder octet idx
+  local -a parts=()
+
+  if ! [[ "$cidr" =~ ^[0-9]+$ ]] || [ "$cidr" -lt 0 ] || [ "$cidr" -gt 32 ]; then
+    log_error "invalid CIDR prefix: $cidr"
+    return 1
+  fi
+
+  full_octets=$((cidr / 8))
+  remainder=$((cidr % 8))
+
+  for idx in 0 1 2 3; do
+    if [ "$idx" -lt "$full_octets" ]; then
+      parts+=(255)
+    elif [ "$idx" -eq "$full_octets" ] && [ "$remainder" -gt 0 ]; then
+      octet=$((256 - 2 ** (8 - remainder)))
+      parts+=("$octet")
+    else
+      parts+=(0)
+    fi
+  done
+
+  printf '%s.%s.%s.%s\n' "${parts[0]}" "${parts[1]}" "${parts[2]}" "${parts[3]}"
+}
+
+libvirt_network_is_active() {
+  local network_name="$1"
+  sudo -n virsh net-info "$network_name" 2>/dev/null \
+    | awk -F: '/^Active:/ {gsub(/^[[:space:]]+/, "", $2); print $2; exit}' \
+    | grep -qx 'yes'
+}
+
+ensure_libvirt_network() {
+  local network_name="$1"
+  local bridge_name="$2"
+  local gateway_ip="$3"
+  local cidr_prefix="${4:-24}"
+  local sudo_cmd netmask net_xml actual_bridge actual_ip recreate_network="false"
+  local legacy_network_name="${OPENCHAMI_LEGACY_PXE_NETWORK_NAME:-pxe-net}"
+  local legacy_bridge_name="${OPENCHAMI_LEGACY_PXE_BRIDGE_NAME:-virbr-pxe}"
+  local legacy_bridge legacy_ip
+
+  require_command virsh "libvirt management"
+
+  if [ "$DRY_RUN" = "true" ]; then
+    log_info "[dry-run] would ensure libvirt network $network_name on $bridge_name (${gateway_ip}/${cidr_prefix})"
+    return 0
+  fi
+
+  sudo_cmd="$(_sudo_noninteractive_cmd)"
+  netmask="$(cidr_to_netmask "$cidr_prefix")"
+
+  if sudo -n virsh net-info "$network_name" >/dev/null 2>&1; then
+    actual_bridge="$(sudo -n virsh net-dumpxml "$network_name" | awk -F"'" '/<bridge name=/{print $2; exit}')"
+    actual_ip="$(sudo -n virsh net-dumpxml "$network_name" | awk -F"'" '/<ip address=/{print $2; exit}')"
+
+    if [ -n "$actual_bridge" ] && [ "$actual_bridge" != "$bridge_name" ]; then
+      if libvirt_network_is_active "$network_name"; then
+        log_error "libvirt network $network_name uses bridge $actual_bridge, expected $bridge_name"
+        return 1
+      fi
+      log_info "redefining libvirt network $network_name from bridge $actual_bridge to $bridge_name"
+      # shellcheck disable=SC2086
+      $sudo_cmd virsh net-undefine "$network_name" >/dev/null || true
+      recreate_network="true"
+    fi
+
+    if [ -n "$actual_ip" ] && [ "$actual_ip" != "$gateway_ip" ]; then
+      if libvirt_network_is_active "$network_name"; then
+        log_error "libvirt network $network_name uses gateway $actual_ip, expected $gateway_ip"
+        return 1
+      fi
+      log_info "redefining libvirt network $network_name from gateway $actual_ip to $gateway_ip"
+      # shellcheck disable=SC2086
+      $sudo_cmd virsh net-undefine "$network_name" >/dev/null || true
+      recreate_network="true"
+    fi
+
+    if [ "$recreate_network" != "true" ] && ! libvirt_network_is_active "$network_name"; then
+      if [ "$network_name" != "$legacy_network_name" ] \
+        && sudo -n virsh net-info "$legacy_network_name" >/dev/null 2>&1; then
+        legacy_bridge="$(sudo -n virsh net-dumpxml "$legacy_network_name" | awk -F"'" '/<bridge name=/{print $2; exit}')"
+        legacy_ip="$(sudo -n virsh net-dumpxml "$legacy_network_name" | awk -F"'" '/<ip address=/{print $2; exit}')"
+
+        if [ "$legacy_bridge" = "$legacy_bridge_name" ] && [ "$legacy_ip" = "$gateway_ip" ]; then
+          log_info "retiring legacy libvirt network $legacy_network_name (${legacy_bridge_name}) before starting $network_name"
+          if libvirt_network_is_active "$legacy_network_name"; then
+            # shellcheck disable=SC2086
+            $sudo_cmd virsh net-destroy "$legacy_network_name" >/dev/null
+          fi
+          # shellcheck disable=SC2086
+          $sudo_cmd virsh net-undefine "$legacy_network_name" >/dev/null || true
+          if command_exists ip && ip link show "$legacy_bridge_name" >/dev/null 2>&1; then
+            # shellcheck disable=SC2086
+            $sudo_cmd ip link delete "$legacy_bridge_name" >/dev/null 2>&1 || true
+          fi
+        fi
+      fi
+      log_info "starting libvirt network $network_name"
+      # shellcheck disable=SC2086
+      $sudo_cmd virsh net-start "$network_name" >/dev/null 2>&1 || true
+      if ! libvirt_network_is_active "$network_name"; then
+        log_error "failed to start libvirt network $network_name"
+        return 1
+      fi
+    fi
+    if [ "$recreate_network" != "true" ]; then
+      # shellcheck disable=SC2086
+      $sudo_cmd virsh net-autostart "$network_name" >/dev/null || true
+      log_info "libvirt network $network_name is ready on $bridge_name"
+      return 0
+    fi
+  fi
+
+  if [ "$network_name" != "$legacy_network_name" ] \
+    && sudo -n virsh net-info "$legacy_network_name" >/dev/null 2>&1; then
+    legacy_bridge="$(sudo -n virsh net-dumpxml "$legacy_network_name" | awk -F"'" '/<bridge name=/{print $2; exit}')"
+    legacy_ip="$(sudo -n virsh net-dumpxml "$legacy_network_name" | awk -F"'" '/<ip address=/{print $2; exit}')"
+
+    if [ "$legacy_bridge" = "$legacy_bridge_name" ] && [ "$legacy_ip" = "$gateway_ip" ]; then
+      log_info "migrating legacy libvirt network $legacy_network_name (${legacy_bridge_name}) to $network_name (${bridge_name})"
+      if libvirt_network_is_active "$legacy_network_name"; then
+        # shellcheck disable=SC2086
+        $sudo_cmd virsh net-destroy "$legacy_network_name" >/dev/null
+      fi
+      # shellcheck disable=SC2086
+      $sudo_cmd virsh net-undefine "$legacy_network_name" >/dev/null || true
+      if command_exists ip && ip link show "$legacy_bridge_name" >/dev/null 2>&1; then
+        # shellcheck disable=SC2086
+        $sudo_cmd ip link delete "$legacy_bridge_name" >/dev/null 2>&1 || true
+      fi
+    fi
+  fi
+
+  net_xml="$(mktemp)"
+  cat > "$net_xml" <<EOF
+<network>
+  <name>${network_name}</name>
+  <bridge name="${bridge_name}" stp="off" delay="0"/>
+  <ip address="${gateway_ip}" netmask="${netmask}">
+  </ip>
+</network>
+EOF
+
+  log_info "creating libvirt network $network_name on bridge $bridge_name"
+  # shellcheck disable=SC2086
+  $sudo_cmd virsh net-define "$net_xml" >/dev/null
+  # shellcheck disable=SC2086
+  $sudo_cmd virsh net-start "$network_name" >/dev/null
+  # shellcheck disable=SC2086
+  $sudo_cmd virsh net-autostart "$network_name" >/dev/null
+  rm -f "$net_xml"
+  log_info "libvirt network $network_name is ready on $bridge_name"
+}
+
 ensure_bridge_carrier() {
   local bridge_name="$1"
   local dummy_iface="${2:-${OPENCHAMI_PXE_DUMMY_IFACE:-ochami-pxe0}}"
@@ -120,7 +277,7 @@ ensure_bridge_carrier() {
   fi
 
   if ! ip link show "$bridge_name" >/dev/null 2>&1; then
-    log_warn "PXE interface $bridge_name not found; skipping bridge carrier setup"
+    log_warn "PXE bridge $bridge_name not found; skipping carrier preparation"
     return 0
   fi
 

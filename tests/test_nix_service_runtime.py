@@ -73,6 +73,8 @@ class TestRuntimeImageAssets:
         assert "nobody:x:65534:65534:nobody" in content
         assert "nogroup:x:65534:" in content
         assert "mkdir -p tmp/nginx_client_body" in content
+        assert "mkdir -p tmp/nginx_proxy" in content
+        assert '"-c" "/etc/nginx/nginx.conf"' in content
         assert "etc/passwd" in content
         assert "etc/group" in content
 
@@ -86,3 +88,33 @@ class TestRuntimeImageAssets:
         content = (ROOT / "nix" / "services" / "nginx.nix").read_text()
         assert "proxy_pass https://localhost:${smdPort};" in content
         assert "proxy_ssl_verify off;" in content
+
+    def test_nginx_rewrites_bss_api_prefix_before_proxying(self):
+        content = (ROOT / "nix" / "services" / "nginx.nix").read_text()
+        assert "rewrite ^/apis/bss/(.*)$ /$1 break;" in content
+        assert "proxy_pass http://localhost:${bssPort};" in content
+
+    def test_nginx_mounts_main_config_and_includes_conf_d(self):
+        content = (ROOT / "nix" / "services" / "nginx.nix").read_text()
+        assert "nginx.conf:/etc/nginx/nginx.conf:ro" in content
+        assert '"nginx.conf" = nginxMainConf;' in content
+        assert "include /etc/nginx/conf.d/*.conf;" in content
+
+    def test_nginx_mounts_generated_boot_artifacts(self):
+        content = (ROOT / "nix" / "services" / "nginx.nix").read_text()
+        assert "/usr/share/nginx/html/artifacts:ro" in content
+        assert "bootArtifacts.package" in content
+
+    def test_nginx_boot_ipxe_uses_generated_kernel_args_without_rootfs(self):
+        content = (ROOT / "nix" / "services" / "nginx.nix").read_text()
+        assert "bootArtifacts.kernelFile" in content
+        assert "bootArtifacts.initrdFile" in content
+        assert "bootArtifacts.kernelArgs" in content
+        assert "rootfs.squashfs" not in content
+
+    def test_bss_boot_defaults_use_generated_kernel_args(self):
+        content = (ROOT / "nix" / "services" / "bss.nix").read_text()
+        assert "bootArtifacts.kernelArgs" in content
+        assert "bootArtifacts.kernelFile" in content
+        assert "bootArtifacts.initrdFile" in content
+        assert "rootfs.squashfs" not in content

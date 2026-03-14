@@ -1,6 +1,14 @@
 # OpenCHAMI From Scratch Roadmap
 
 ## In Progress
+- [x] Generate Nix-built boot artifacts for PXE/iPXE and wire them into local runtime validation
+  - [x] Export a `boot-artifacts` package and a `generate-images` Makefile target.
+  - [x] Mount the generated artifacts into nginx and use the matching kernel args for BSS defaults.
+  - [x] Verify with local tests/builds plus a live compose deploy and VM serial-boot check.
+- [x] Make libvirt PXE lab naming OpenCHAMI-specific and add a single post-deploy VM bootstrap script
+  - [x] Rename the libvirt network and bridge defaults to clearly indicate they belong to OpenCHAMI.
+  - [x] Add one script that ensures the libvirt PXE network exists, creates test VMs with stable identities, and registers them for PXE boot.
+  - [x] Verify with local tests/builds and a live compose deploy plus test-VM bootstrap run.
 - [x] Make Docker Compose Kea startup and health gating reliable
   - [x] Default the generated PXE interface to the VM lab bridge instead of `eth1`.
   - [x] Fail deployment if Kea never becomes healthy.

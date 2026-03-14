@@ -3,7 +3,7 @@
 # Declare variables to be passed into your templates.
 
 replicaCount: 1
-pxeInterface: "virbr-pxe"
+pxeInterface: "virbr-ochami"
 externalIp: "192.168.100.2"
 
 image:

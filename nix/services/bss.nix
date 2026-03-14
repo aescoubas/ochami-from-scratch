@@ -1,12 +1,12 @@
 # Boot Script Service (BSS) — init + service + boot-defaults oneshot.
-{ pkgs, defaults, hostIP }:
+{ pkgs, defaults, hostIP, bootArtifacts }:
 
 let
   pgPort = toString defaults.ports.postgres;
   httpPort = toString defaults.ports.http;
   bssPort = toString defaults.ports.bss;
   smdPort = toString defaults.ports.smd;
-  artifactsUrl = "http://${hostIP}:${httpPort}/artifacts/opensuse";
+  artifactsUrl = "http://${hostIP}:${httpPort}/${bootArtifacts.relativeDir}";
 in
 {
   init = {
@@ -71,9 +71,9 @@ in
       done
       curl -sf -X PUT -H 'Content-Type: application/json' "$BSS_URL" -d '{
         "hosts": ["Default"],
-        "kernel": "${artifactsUrl}/vmlinuz-lts",
-        "initrd": "${artifactsUrl}/initramfs-lts",
-        "params": "console=ttyS0 ip=dhcp rd.neednet=1 root=live:${artifactsUrl}/rootfs.squashfs"
+        "kernel": "${artifactsUrl}/${bootArtifacts.kernelFile}",
+        "initrd": "${artifactsUrl}/${bootArtifacts.initrdFile}",
+        "params": "${bootArtifacts.kernelArgs}"
       }'
     '';
   };

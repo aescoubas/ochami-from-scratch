@@ -39,7 +39,7 @@ let
 
   values = {
     replicaCount = 1;
-    pxeInterface = "virbr-pxe";
+    pxeInterface = "virbr-ochami";
     externalIp = hostIP;
 
     image = {

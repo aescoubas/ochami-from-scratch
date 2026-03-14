@@ -61,19 +61,29 @@
         };
 
         formatter = pkgs.nixpkgs-fmt;
-      } // lib.optionalAttrs pkgs.stdenv.isLinux {
+      } // lib.optionalAttrs pkgs.stdenv.isLinux (
+        let
+          bootArtifacts = import ./nix/boot-artifacts.nix {
+            inherit pkgs system;
+            lib = pkgs.lib;
+            nixosSystem = nixpkgs.lib.nixosSystem;
+          };
+        in
+        {
+        packages.boot-artifacts = bootArtifacts.package;
+
         packages.deploy-profile = pkgs.callPackage ./nix/deploy/profile.nix {
-          inherit lib defaults;
+          inherit lib defaults bootArtifacts;
           imageOverrides = defaults.localImageOverrides;
         };
 
         packages.docker-compose-yml = pkgs.callPackage ./nix/generators/docker-compose.nix {
-          inherit lib defaults;
+          inherit lib defaults bootArtifacts;
           imageOverrides = defaults.localImageOverrides;
         };
 
         packages.quadlet-units = pkgs.callPackage ./nix/generators/quadlets.nix {
-          inherit lib defaults;
+          inherit lib defaults bootArtifacts;
           imageOverrides = defaults.localImageOverrides;
         };
 
@@ -103,5 +113,5 @@
         };
 
         checks.lab-smoke = labSmoke;
-      }));
+      })));
 }

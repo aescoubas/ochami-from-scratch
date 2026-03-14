@@ -8,10 +8,11 @@
 , lib
 , defaults
 , hostIP ? "192.168.100.1"
-, pxeInterface ? "virbr-pxe"
+, pxeInterface ? "virbr-ochami"
 , dhcpRange ? "192.168.100.50 - 192.168.100.150"
 , pxeCidr ? "24"
 , enableStork ? false
+, bootArtifacts
 , imageOverrides ? { }
 }:
 
@@ -22,11 +23,19 @@ let
   # Import all service modules.
   postgres = import ../services/postgres.nix { inherit pkgs; defaults = effectiveDefaults; };
   smd = import ../services/smd.nix { defaults = effectiveDefaults; };
-  bss = import ../services/bss.nix { inherit pkgs; defaults = effectiveDefaults; inherit hostIP; };
+  bss = import ../services/bss.nix {
+    inherit pkgs;
+    defaults = effectiveDefaults;
+    inherit hostIP bootArtifacts;
+  };
   cloudInit = import ../services/cloud-init.nix { defaults = effectiveDefaults; };
   pcs = import ../services/pcs.nix { defaults = effectiveDefaults; };
   kea = import ../services/kea.nix { inherit pkgs; defaults = effectiveDefaults; inherit hostIP pxeInterface dhcpRange pxeCidr; };
-  nginx = import ../services/nginx.nix { inherit pkgs lib; defaults = effectiveDefaults; inherit hostIP enableStork; };
+  nginx = import ../services/nginx.nix {
+    inherit pkgs lib;
+    defaults = effectiveDefaults;
+    inherit hostIP enableStork bootArtifacts;
+  };
   tftp = import ../services/tftp.nix { defaults = effectiveDefaults; };
 
   # --- YAML helpers ---

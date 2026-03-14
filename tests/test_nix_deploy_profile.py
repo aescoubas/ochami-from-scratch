@@ -69,10 +69,17 @@ def test_flake_exports_deploy_profile():
     assert "nix/deploy/profile.nix" in flake
 
 
-def test_deploy_profile_defaults_to_virbr_pxe_interface():
+def test_flake_exports_boot_artifacts():
+    """Verify flake.nix exports the generated boot artifacts package."""
+    flake = (ROOT / "flake.nix").read_text()
+    assert "boot-artifacts" in flake
+    assert "nix/boot-artifacts.nix" in flake
+
+
+def test_deploy_profile_defaults_to_virbr_ochami_interface():
     """The deploy profile should default to the VM lab PXE bridge."""
     profile = (ROOT / "nix" / "deploy" / "profile.nix").read_text()
-    assert 'pxeInterface ? "virbr-pxe"' in profile
+    assert 'pxeInterface ? "virbr-ochami"' in profile
 
 
 def test_all_services_have_required_fields():

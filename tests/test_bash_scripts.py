@@ -14,6 +14,7 @@ class TestScriptsExist:
     EXPECTED_SCRIPTS = [
         "lib/common.sh",
         "check-deps.sh",
+        "create-test-vms.sh",
         "register-nodes.sh",
         "register-bss-defaults.sh",
         "health-check.sh",
@@ -57,6 +58,9 @@ class TestScriptStructure:
 
     def test_common_sh_has_bridge_carrier_helpers(self):
         content = self._read_script("lib/common.sh")
+        assert "ensure_libvirt_network" in content
+        assert "pxe-net" in content
+        assert "virbr-pxe" in content
         assert "ensure_bridge_carrier" in content
         assert "remove_bridge_carrier_dummy" in content
         assert "disable_conflicting_dhcp_networks" in content
@@ -69,7 +73,7 @@ class TestScriptStructure:
 
     def test_scripts_source_common(self):
         """All operational scripts should source lib/common.sh."""
-        for name in ["check-deps.sh", "health-check.sh", "teardown.sh",
+        for name in ["check-deps.sh", "create-test-vms.sh", "health-check.sh", "teardown.sh",
                       "deploy.sh", "register-nodes.sh", "register-bss-defaults.sh"]:
             content = self._read_script(name)
             assert "common.sh" in content, f"{name} should source common.sh"
@@ -111,6 +115,12 @@ class TestScriptStructure:
         content = self._read_script("deploy.sh")
         assert "SKIP_IMAGE_BUILD" in content
 
+    def test_register_nodes_uses_direct_smd_writes(self):
+        content = self._read_script("register-nodes.sh")
+        assert 'SMD_BASE_URL="https://' in content
+        assert 'curl -skf' in content or 'curl -ksf' in content
+        assert "SMD_PORT" in content
+
     def test_deploy_uses_managed_generated_compose_file(self):
         content = self._read_script("deploy.sh")
         assert "docker-compose.generated.yml" in content
@@ -123,6 +133,30 @@ class TestScriptStructure:
         assert ".tmp/openchami-secrets.env" in content
         assert "ensure_bridge_carrier" in content
         assert "disable_conflicting_dhcp_networks" in content
+
+    def test_create_test_vms_bootstraps_libvirt_and_registration(self):
+        content = self._read_script("create-test-vms.sh")
+        assert "--count" in content
+        assert "virt-install" in content
+        assert "qemu-img" in content
+        assert "register-nodes.sh" in content
+        assert "register-bss-defaults.sh" in content
+        assert "ochami-pxe-net" in content
+        assert "virbr-ochami" in content
+        assert "ensure_bridge_carrier" in content
+        assert "docker compose" in content
+        assert "--no-deps" in content
+        assert "health-check.sh" in content
+        assert "/boot/v1/bootscript" in content
+        assert "/apis/bss/boot/v1/bootscript" in content
+        assert 'arch=x86_64' in content
+        assert "kernel --name kernel" in content
+        assert "initrd --name initrd" in content
+
+    def test_lab_setup_uses_ochami_libvirt_names(self):
+        content = self._read_script("lab-setup.sh")
+        assert 'NETWORK_NAME="${NETWORK_NAME:-ochami-pxe-net}"' in content
+        assert 'NETWORK_BRIDGE="${NETWORK_BRIDGE:-virbr-ochami}"' in content
 
     def test_teardown_uses_managed_generated_compose_file(self):
         content = self._read_script("teardown.sh")
@@ -159,6 +193,15 @@ class TestScriptStructure:
         assert "ps --format json kea" in content
         assert "checking kea on UDP port" in content
         assert "ss -lun" in content
+        assert "artifacts/opensuse/vmlinuz-lts" in content
+
+    def test_register_bss_defaults_uses_generated_boot_artifacts(self):
+        content = self._read_script("register-bss-defaults.sh")
+        assert "nix build .#boot-artifacts" in content
+        assert "kernel-params" in content
+        assert "vmlinuz-lts" in content
+        assert "initramfs-lts" in content
+        assert "rootfs.squashfs" not in content
 
 
 class TestMakefileTargets:
@@ -188,3 +231,11 @@ class TestMakefileTargets:
     def test_has_build_images_target(self):
         assert "build-images:" in self.content
         assert "build-images.sh" in self.content
+
+    def test_has_create_test_vms_target(self):
+        assert "create-test-vms:" in self.content
+        assert "create-test-vms.sh" in self.content
+
+    def test_has_generate_images_target(self):
+        assert "generate-images:" in self.content
+        assert "nix build .#boot-artifacts" in self.content
