@@ -53,3 +53,4 @@ That flow uses:
 - generated boot artifacts mounted into the nginx container
 
 See `docs/architecture/compose-pxe-lab.md` for the detailed boot path.
+See `docs/architecture/README.md` for the full architecture document and ADR index.

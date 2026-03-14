@@ -16,10 +16,14 @@ For the local PXE lab, the repository also builds Nix-managed boot artifacts wit
 (ports, images, environment variables, volumes, dependencies, health checks).
 Deployment artifacts are generated from these definitions — never hand-written.
 
-Architecture notes for the current runtime are in:
+Architecture notes and ADRs live under `docs/architecture/`:
 
+- `docs/architecture/README.md`
 - `docs/architecture/overview.md`
 - `docs/architecture/compose-pxe-lab.md`
+
+Do not add new architecture documentation under a top-level `ARCHITECTURE/`
+directory.
 
 ```
 nix/
