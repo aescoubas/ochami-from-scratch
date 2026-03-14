@@ -166,7 +166,8 @@ let
     pcs.service
     kea.init
     kea.service
-    kea.sidecar
+    kea.controlAgent
+    kea.sync
     nginx.service
     tftp.service
   ];

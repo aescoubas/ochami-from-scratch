@@ -25,7 +25,7 @@
     - [x] `nix/services/defaults.nix` extended with localImages, baseImages, and repos
   - [x] Phase 2: Nix OCI image build definitions (`nix/images/*.nix`)
     - [x] Go services: smd, bss, pcs, cloud-init (fetchFromGitHub + buildGoModule + dockerTools)
-    - [x] Utilities: http-server, tftp, kea-sidecar, redfish-emulator
+    - [x] Utilities: http-server, tftp, kea-sync, redfish-emulator
     - [x] Go services now have real hashes (no longer use lib.fakeHash)
   - [x] Phase 3: Bash operational scripts (`scripts/ops/`)
     - [x] lib/common.sh (logging, wait-for-url, secret gen, dry-run support)
@@ -58,7 +58,7 @@
   - [x] Add regression tests and README usage docs for MCP workflow.
 
 - [x] Local OCI image builds for OpenCHAMI services
-  - [x] Fix kea-sidecar and redfish-emulator source paths (parameterized, no relative paths)
+  - [x] Fix kea-sync and redfish-emulator source paths (parameterized, no relative paths)
   - [x] Compute real hashes for Go services (smd, bss, pcs, cloud-init) — no more lib.fakeHash
   - [x] Add `localImageOverrides` to defaults.nix and wire as default in generators
   - [x] Add `build-images.sh` script to build + load all OCI images via Nix

@@ -32,7 +32,8 @@ let
   postgresImg = parseImage images.postgres;
   keaDhcp4Img = parseImage images.keaDhcp4;
   keaAdminImg = parseImage images.keaAdmin;
-  keaSidecarImg = parseImage images.keaSidecar;
+  keaCtrlAgentImg = parseImage images.keaCtrlAgent;
+  keaSyncImg = parseImage images.keaSync;
   nginxImg = parseImage images.nginx;
   tftpImg = parseImage images.tftp;
   storkImg = parseImage images.storkServer;
@@ -141,13 +142,13 @@ let
         pullPolicy = "IfNotPresent";
       };
       ctrlAgent.image = {
-        repository = "jonasal/kea-ctrl-agent";
-        tag = "3.1.4";
+        repository = keaCtrlAgentImg.repository;
+        tag = keaCtrlAgentImg.tag;
         pullPolicy = "IfNotPresent";
       };
-      sidecar.image = {
-        repository = keaSidecarImg.repository;
-        tag = keaSidecarImg.tag;
+      sync.image = {
+        repository = keaSyncImg.repository;
+        tag = keaSyncImg.tag;
         pullPolicy = "IfNotPresent";
       };
       db = {

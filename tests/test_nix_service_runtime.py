@@ -31,18 +31,30 @@ class TestServiceCommandPaths:
         content = (ROOT / "nix" / "services" / "bss.nix").read_text()
         assert 'HSM_URL = "https://localhost:${smdPort}";' in content
 
-    def test_kea_sidecar_uses_direct_smd_url_without_tls_verification(self):
+    def test_kea_control_agent_uses_host_cmds_hook_and_ctrl_config(self):
         content = (ROOT / "nix" / "services" / "kea.nix").read_text()
-        assert 'SMD_URL = "https://localhost:${smdPort}";' in content
-        assert 'SMD_VERIFY_TLS = "false";' in content
+        assert 'libdhcp_host_cmds.so' in content
+        assert 'name = "kea-ctrl-agent";' in content
+        assert 'kea-ctrl-agent.conf:/etc/kea/kea-ctrl-agent.conf:ro' in content
 
     def test_kea_service_uses_control_socket_healthcheck(self):
         content = (ROOT / "nix" / "services" / "kea.nix").read_text()
         assert 'healthCheck = "test -S /kea/sockets/kea4-ctrl-socket";' in content
 
-    def test_kea_sidecar_waits_for_kea_service(self):
+    def test_kea_sync_uses_http_proxy_for_smd_and_control_agent(self):
         content = (ROOT / "nix" / "services" / "kea.nix").read_text()
-        assert 'after = [ "smd" "kea-init" "kea" ];' in content
+        assert 'name = "kea-sync";' in content
+        assert 'command = "/bin/kea-sync";' in content
+        assert 'KEA_SYNC_SMD_URL = "http://localhost:${httpPort}";' in content
+        assert 'KEA_SYNC_KEA_URL = "http://localhost:${ctrlAgentPort}";' in content
+
+    def test_kea_sync_waits_for_control_agent(self):
+        content = (ROOT / "nix" / "services" / "kea.nix").read_text()
+        assert 'after = [ "smd" "kea-init" "kea" "kea-ctrl-agent" "http-server" ];' in content
+
+    def test_http_server_has_healthcheck_for_compose_dependencies(self):
+        content = (ROOT / "nix" / "services" / "nginx.nix").read_text()
+        assert "healthCheck = \"bash -ec ': >/dev/tcp/127.0.0.1/" in content
 
 
 class TestRuntimeImageAssets:

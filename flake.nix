@@ -89,6 +89,7 @@
 
         packages.helm-values = pkgs.callPackage ./nix/generators/helm-values.nix {
           inherit lib defaults;
+          imageOverrides = defaults.localImageOverrides;
         };
 
         # OCI image builds.
@@ -98,9 +99,7 @@
         packages.oci-cloud-init = pkgs.callPackage ./nix/images/cloud-init.nix { inherit lib; };
         packages.oci-http-server = pkgs.callPackage ./nix/images/http-server.nix { };
         packages.oci-tftp = pkgs.callPackage ./nix/images/tftp.nix { };
-        packages.oci-kea-sidecar = pkgs.callPackage ./nix/images/kea-sidecar.nix {
-          sidecarSrc = ./ochami-helm/kea-sidecar;
-        };
+        packages.oci-kea-sync = pkgs.callPackage ./nix/images/kea-sync.nix { };
         packages.oci-redfish-emulator = pkgs.callPackage ./nix/images/redfish-emulator.nix {
           emulatorSrc = ./ochami-helm/redfish-emulator;
         };

@@ -36,13 +36,15 @@ with libvirt VMs and validated from the guest serial console.
 
 1. A VM attached to `ochami-pxe-net` requests DHCP.
 2. Kea assigns an address on `192.168.100.0/24`.
-3. nginx serves the first-stage `/boot/v1/bootscript` iPXE entrypoint.
-4. BSS resolves the registered MAC address to the OpenCHAMI node record and serves the
+3. `kea-sync` reconciles the registered SMD node state into Kea reservations through the
+   Kea Control Agent.
+4. nginx serves the first-stage `/boot/v1/bootscript` iPXE entrypoint.
+5. BSS resolves the registered MAC address to the OpenCHAMI node record and serves the
    second-stage bootscript.
-5. nginx serves:
+6. nginx serves:
    - `/artifacts/opensuse/vmlinuz-lts`
    - `/artifacts/opensuse/initramfs-lts`
-6. The VM boots into the NixOS netboot image and exposes a serial login shell.
+7. The VM boots into the NixOS netboot image and exposes a serial login shell.
 
 ## Operational Entry Points
 
@@ -59,7 +61,7 @@ with libvirt VMs and validated from the guest serial console.
 
 ## Expected Success Signals
 
-- `docker compose ... ps` shows healthy `smd`, `bss`, `kea`, `cloud-init`, and
+- `docker compose ... ps` shows healthy `smd`, `bss`, `kea`, `kea-sync`, `cloud-init`, and
   reachable `http-server`, `pcs`, and `tftp`
 - `http://localhost/artifacts/opensuse/vmlinuz-lts` returns `200`
 - `create-test-vms.sh` registers the VM MAC and starts the domain

@@ -8,6 +8,8 @@
     http = 80;
     cloudInit = 27777;
     pcs = 28007;
+    keaCtrlAgent = 8000;
+    keaSync = 8080;
     stork = 28010;
     storkAgent = 28011;
   };
@@ -32,7 +34,8 @@
     pcs = "ghcr.io/openchami/power-control:latest";
     keaAdmin = "docker.io/jonasal/kea-admin:3.1.4";
     keaDhcp4 = "docker.io/jonasal/kea-dhcp4:3.1.4";
-    keaSidecar = "ghcr.io/openchami/kea-sidecar:latest";
+    keaCtrlAgent = "docker.io/jonasal/kea-ctrl-agent:3.1.4";
+    keaSync = "ghcr.io/openchami/kea-sync:latest";
     nginx = "docker.io/nginx:alpine";
     tftp = "ghcr.io/openchami/tftp:latest";
     storkServer = "docker.io/signalorange/stork:ubuntu24.04-1.19.0";
@@ -47,9 +50,9 @@
     cloudInit = "localhost/cloud-init:local-cloud-init";
     httpServer = "localhost/http-server:latest";
     tftp = "localhost/tftp:latest";
+    keaSync = "localhost/kea-sync:latest";
     redfishEmulator = "localhost/redfish-emulator:latest";
     storkAgent = "localhost/stork-agent:latest";
-    keaSidecar = "localhost/kea-sidecar:latest";
   };
 
   # Image overrides: map upstream image keys to locally-built refs.
@@ -59,7 +62,7 @@
     bss = "localhost/bss:local-bss";
     pcs = "localhost/pcs:local-pcs";
     cloudInit = "localhost/cloud-init:local-cloud-init";
-    keaSidecar = "localhost/kea-sidecar:latest";
+    keaSync = "localhost/kea-sync:latest";
     tftp = "localhost/tftp:latest";
     nginx = "localhost/http-server:latest";
   };
@@ -70,7 +73,6 @@
     redfishEmulator = "python:3.9.21-slim-bookworm";
     tftp = "alpine:3.18.12";
     storkAgent = "jonasal/kea-dhcp4:3.1.4";
-    keaSidecar = "python:3.9.21-slim-bookworm";
     slesBuilder = "opensuse/leap:15.6";
   };
 
@@ -80,6 +82,7 @@
     bss = "https://github.com/openchami/bss.git";
     pcs = "https://github.com/OpenCHAMI/power-control.git";
     cloudInit = "https://github.com/openchami/cloud-init.git";
+    keaSync = "https://github.com/OpenCHAMI/kea-sync.git";
   };
 
   # All secret env var names that must appear in secrets.env.

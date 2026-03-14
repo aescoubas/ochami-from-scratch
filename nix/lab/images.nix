@@ -18,7 +18,8 @@ let
     defaults.images.pcs
     defaults.images.keaAdmin
     defaults.images.keaDhcp4
-    defaults.images.keaSidecar
+    defaults.images.keaCtrlAgent
+    defaults.images.keaSync
     defaults.images.nginx
     defaults.images.tftp
   ];

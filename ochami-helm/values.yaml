@@ -1,261 +1,198 @@
-# Default values for ochami-helm.
-# This is a YAML-formatted file.
-# Declare variables to be passed into your templates.
-
-replicaCount: 1
-pxeInterface: "virbr-ochami"
-externalIp: "192.168.100.2"
-
-image:
-  smd:
-    repository: localhost/smd
-    pullPolicy: IfNotPresent
-    tag: "local-smd"
-  postgres:
-    repository: postgres
-    pullPolicy: IfNotPresent
-    tag: "11.5-alpine"
-
-imagePullSecrets: []
-nameOverride: ""
-fullnameOverride: "ochami"
-
-# Default pod shutdown grace period (seconds) for core services.
-# Keep this production-safe in base values; use profile-specific overrides for dev speed.
-terminationGracePeriodSeconds: 30
-
-service:
-  smd:
-    type: ClusterIP
-    port: 27779
-  bss:
-    type: ClusterIP
-    port: 27778
-  postgres:
-    type: ClusterIP
-    port: 5432
-  kea:
-    type: ClusterIP
-    port: 67
-  cloudInit:
-    type: ClusterIP
-    port: 27777
-  pcs:
-    type: ClusterIP
-    port: 28007
-  stork:
-    type: ClusterIP
-    port: 28010
-
-postgres:
-  user: ochami
-  password: ""
-  smd_password: ""
-  bss_password: ""
-  hydra_password: ""
-  kea_password: ""
-  pcs_password: ""
-  stork_password: ""
-
-# pcsInit job configuration
-pcsInit:
-  image:
-    repository: localhost/pcs
-    tag: "local-pcs"
-    pullPolicy: IfNotPresent
-
-pcs:
-  image:
-    repository: localhost/pcs
-    tag: "local-pcs"
-    pullPolicy: IfNotPresent
+affinity: {}
+bss:
+  advertise_address: localhost
+  bootscript:
+    notify_url: ""
+  chain:
+    proto: http
   db:
-    host: "ochami-postgres"
+    host: ochami-postgres
+    name: bssdb
+    opts: sslmode=disable
     port: 5432
-    name: "pcsdb"
-    user: "pcs-user"
-    opts: "sslmode=disable"
-
-# smdInit job configuration
-smdInit:
+    user: bss-user
   image:
-    repository: localhost/smd
-    tag: "local-smd"
     pullPolicy: IfNotPresent
-
-smd:
-  db:
-    host: "ochami-postgres"
-    port: 5432
-    name: "hmsds"
-    user: "smd-user"
-    opts: "sslmode=disable"
+    repository: localhost/bss
+    tag: local-bss
+  ipxe:
+    server: 192.168.100.1
   jwks:
     url: ""
-
-# bssInit job configuration
+  nfdUrl: ""
 bssInit:
   image:
+    pullPolicy: IfNotPresent
     repository: localhost/bss
-    tag: "local-bss"
-    pullPolicy: IfNotPresent
-
-# Kea DHCP configuration
-kea:
+    tag: local-bss
+cloudInit:
+  clusterName: ochami
+  enabled: true
   image:
-    repository: jonasal/kea-dhcp4
-    tag: "3.1.4"
     pullPolicy: IfNotPresent
-  adminImage:
-    repository: jonasal/kea-admin
-    tag: "3.1.4"
-    pullPolicy: IfNotPresent
-  ctrlAgent:
-    image:
-      repository: jonasal/kea-ctrl-agent
-      tag: "3.1.4"
-      pullPolicy: IfNotPresent
-  sidecar:
-    image:
-      repository: localhost/kea-sidecar
-      tag: "latest"
-      pullPolicy: IfNotPresent
-  db:
-    host: "ochami-postgres"
-    port: 5432
-    name: "kea"
-    user: "kea-user"
-    password: ""
-  
-bss:
+    repository: localhost/cloud-init
+    tag: local-cloud-init
+  port: 27777
+emulator:
+  enabled: false
   image:
-    repository: localhost/bss
-    tag: "local-bss"
     pullPolicy: IfNotPresent
-  db:
-    host: "ochami-postgres"
-    port: 5432
-    name: "bssdb"
-    user: "bss-user"
-    opts: "sslmode=disable"
-  jwks:
-    #url: "http://ochami-opaal:3333/keys"
-    url: ""
-  ipxe:
-    server: "192.168.100.1"
-  chain:
-    proto: "http"
-  bootscript:
-    #notify_url: "http://ochami-tpm-manager:27780/Node"
-    notify_url: ""
-  nfdUrl: ""
-  advertise_address: "localhost" # without this value, the bss microservice doesn't start
-
-serviceAccount:
-  # Specifies whether a service account should be created
-  create: true
-  # Annotations to add to the service account
-  annotations: {}
-  # The name of the service account to use.
-  # If not set and create is true, a name is generated using the fullname template
-  name: ""
-
-podAnnotations: {}
-
-podSecurityContext: {}
-  # fsGroup: 2000
-
-securityContext: {}
-  # capabilities:
-  #   drop:
-  #   - ALL
-  # readOnlyRootFilesystem: true
-  # runAsNonRoot: true
-  # runAsUser: 1000
-
-resources: {}
-  # We usually recommend not to specify default resources and to leave this as a conscious
-  # choice for the user. This also increases chances charts run on environments with little
-  # resources, such as Minikube. If you do want to specify resources, uncomment the following
-  # lines, adjust them as necessary, and remove the curly braces after 'resources:'.
-  # limits:
-  #   cpu: 100m
-  #   memory: 128Mi
-  # requests:
-  #   cpu: 100m
-  #   memory: 128Mi
-
-nodeSelector: {}
-
-tolerations: []
-
-affinity: {}
-
-# HTTP Server configuration
+    repository: localhost/redfish-emulator
+    tag: latest
+  libvirtSocket:
+    enabled: true
+    hostPath: /var/run/libvirt/libvirt-sock
+    mountPath: /var/run/libvirt/libvirt-sock
+  replicas: 0
+  vmPrefix: virtual-compute-node-
+externalIp: 192.168.100.1
+fullnameOverride: ochami
 httpServer:
   enabled: true
   hostNetwork: false
-  port: 80
   image:
+    pullPolicy: IfNotPresent
     repository: localhost/http-server
     tag: latest
-    pullPolicy: IfNotPresent
+  port: 80
   service:
-    type: NodePort
-    port: 80
     nodePort: 30080
-
-# TFTP Server configuration
-tftp:
-  enabled: true
-  hostNetwork: true
-  port: 69
-  image:
-    repository: localhost/tftp
-    tag: latest
+    port: 80
+    type: NodePort
+image:
+  postgres:
     pullPolicy: IfNotPresent
-
-# Redfish Emulator configuration
-emulator:
-  enabled: false
-  replicas: 0
-  image:
-    repository: localhost/redfish-emulator
-    tag: latest
+    repository: docker.io/postgres
+    tag: 11.5-alpine
+  smd:
     pullPolicy: IfNotPresent
-  vmPrefix: "virtual-compute-node-"
-  libvirtSocket:
-    enabled: true
-    mountPath: "/var/run/libvirt/libvirt-sock"
-    hostPath: "/var/run/libvirt/libvirt-sock"
-
-# Cloud-init configuration
-cloudInit:
-  enabled: true
-  image:
-    repository: localhost/cloud-init
-    tag: "local-cloud-init"
+    repository: localhost/smd
+    tag: local-smd
+imagePullSecrets: []
+kea:
+  adminImage:
     pullPolicy: IfNotPresent
-  port: 27777
-  clusterName: "ochami"
-
-# Stork (Kea DHCP monitoring UI) configuration
+    repository: docker.io/jonasal/kea-admin
+    tag: 3.1.4
+  ctrlAgent:
+    image:
+      pullPolicy: IfNotPresent
+      repository: docker.io/jonasal/kea-ctrl-agent
+      tag: 3.1.4
+  db:
+    host: ochami-postgres
+    name: kea
+    password: ""
+    port: 5432
+    user: kea-user
+  image:
+    pullPolicy: IfNotPresent
+    repository: docker.io/jonasal/kea-dhcp4
+    tag: 3.1.4
+  sync:
+    image:
+      pullPolicy: IfNotPresent
+      repository: localhost/kea-sync
+      tag: latest
+nameOverride: ""
+nodeSelector: {}
+pcs:
+  db:
+    host: ochami-postgres
+    name: pcsdb
+    opts: sslmode=disable
+    port: 5432
+    user: pcs-user
+  image:
+    pullPolicy: IfNotPresent
+    repository: localhost/pcs
+    tag: local-pcs
+pcsInit:
+  image:
+    pullPolicy: IfNotPresent
+    repository: localhost/pcs
+    tag: local-pcs
+podAnnotations: {}
+podSecurityContext: {}
+postgres:
+  bss_password: ""
+  hydra_password: ""
+  kea_password: ""
+  password: ""
+  pcs_password: ""
+  smd_password: ""
+  stork_password: ""
+  user: ochami
+pxeInterface: virbr-ochami
+replicaCount: 1
+resources: {}
+securityContext: {}
+service:
+  bss:
+    port: 27778
+    type: ClusterIP
+  cloudInit:
+    port: 27777
+    type: ClusterIP
+  kea:
+    port: 67
+    type: ClusterIP
+  pcs:
+    port: 28007
+    type: ClusterIP
+  postgres:
+    port: 5432
+    type: ClusterIP
+  smd:
+    port: 27779
+    type: ClusterIP
+  stork:
+    port: 28010
+    type: ClusterIP
+serviceAccount:
+  annotations: {}
+  create: true
+  name: ""
+smd:
+  db:
+    host: ochami-postgres
+    name: hmsds
+    opts: sslmode=disable
+    port: 5432
+    user: smd-user
+  jwks:
+    url: ""
+smdInit:
+  image:
+    pullPolicy: IfNotPresent
+    repository: localhost/smd
+    tag: local-smd
 stork:
+  agent:
+    image:
+      pullPolicy: IfNotPresent
+      repository: localhost/stork-agent
+      tag: latest
+    port: 28011
+  db:
+    host: ochami-postgres
+    name: stork
+    port: 5432
+    user: stork-user
   enabled: true
   server:
     image:
-      repository: signalorange/stork
-      tag: "ubuntu24.04-1.19.0"
       pullPolicy: IfNotPresent
+      repository: docker.io/signalorange/stork
+      tag: ubuntu24.04-1.19.0
     port: 28010
-  agent:
-    image:
-      repository: localhost/stork-agent
-      tag: "latest"
-      pullPolicy: IfNotPresent
-    port: 28011
-  db:
-    host: "ochami-postgres"
-    port: 5432
-    name: "stork"
-    user: "stork-user"
+terminationGracePeriodSeconds: 30
+tftp:
+  enabled: true
+  hostNetwork: true
+  image:
+    pullPolicy: IfNotPresent
+    repository: localhost/tftp
+    tag: latest
+  port: 69
+tolerations: []

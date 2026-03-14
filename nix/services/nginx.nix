@@ -138,6 +138,7 @@ in
       "boot.ipxe:/usr/share/nginx/html/boot.ipxe:ro"
     ];
     after = [ ];
+    healthCheck = "bash -ec ': >/dev/tcp/127.0.0.1/${httpPort}'";
     type = "service";
   };
 

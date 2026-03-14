@@ -146,7 +146,10 @@ class TestScriptStructure:
         assert "ensure_bridge_carrier" in content
         assert "docker compose" in content
         assert "--no-deps" in content
+        assert "kea-ctrl-agent" in content
+        assert "kea-sync" in content
         assert "health-check.sh" in content
+        assert "/v1/sync" in content
         assert "/boot/v1/bootscript" in content
         assert "/apis/bss/boot/v1/bootscript" in content
         assert 'arch=x86_64' in content
@@ -172,12 +175,15 @@ class TestScriptStructure:
     def test_build_images_builds_all_oci_images(self):
         content = self._read_script("build-images.sh")
         for img in ["oci-smd", "oci-bss", "oci-pcs", "oci-cloud-init",
-                     "oci-http-server", "oci-tftp", "oci-kea-sidecar"]:
+                     "oci-http-server", "oci-tftp", "oci-kea-sync"]:
             assert img in content, f"build-images.sh should build {img}"
+        assert "KEA_SYNC_SRC" in content
+        assert "--impure" in content
 
     def test_build_images_supports_runtime_flag(self):
         content = self._read_script("build-images.sh")
         assert "--runtime" in content
+        assert "KEA_SYNC_SRC" in content
 
     def test_scripts_support_dry_run(self):
         for name in ["check-deps.sh", "health-check.sh", "teardown.sh",
@@ -193,6 +199,7 @@ class TestScriptStructure:
         assert "ps --format json kea" in content
         assert "checking kea on UDP port" in content
         assert "ss -lun" in content
+        assert "/readiness" in content
         assert "artifacts/opensuse/vmlinuz-lts" in content
 
     def test_register_bss_defaults_uses_generated_boot_artifacts(self):

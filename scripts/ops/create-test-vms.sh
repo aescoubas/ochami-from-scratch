@@ -26,6 +26,7 @@ COMPOSE_DIR="${COMPOSE_DIR:-${PROJECT_ROOT}/ochami-docker-compose}"
 COMPOSE_FILE="${COMPOSE_DIR}/docker-compose.generated.yml"
 SECRETS_FILE="${OPENCHAMI_SECRETS:-${PROJECT_ROOT}/.tmp/openchami-secrets.env}"
 MANIFEST_FILE="${MANIFEST_FILE:-${PROJECT_ROOT}/.tmp/ochami-test-vms.csv}"
+KEA_SYNC_PORT="${KEA_SYNC_PORT:-8080}"
 
 usage() {
   cat <<EOF
@@ -368,9 +369,19 @@ wait_for_bootscript() {
 refresh_compose_kea() {
   log_info "ensuring compose Kea services are ready on ${NETWORK_BRIDGE}"
   run_cmd docker compose -f "$COMPOSE_FILE" --env-file "$SECRETS_FILE" \
-    up -d --no-deps kea kea-sidecar
+    up -d --no-deps kea kea-ctrl-agent kea-sync
   CHECK_KEA=true PXE_INTERFACE="$NETWORK_BRIDGE" COMPOSE_FILE="$COMPOSE_FILE" \
     SECRETS_FILE="$SECRETS_FILE" "$SCRIPT_DIR/health-check.sh" $DRY_RUN_FLAG
+}
+
+trigger_kea_sync() {
+  log_info "triggering kea-sync reconciliation"
+  if [ "$DRY_RUN" = "true" ]; then
+    log_info "[dry-run] would POST http://localhost:${KEA_SYNC_PORT}/v1/sync"
+    return 0
+  fi
+
+  curl -fsS -X POST "http://localhost:${KEA_SYNC_PORT}/v1/sync" >/dev/null
 }
 
 ensure_bss_defaults() {
@@ -436,6 +447,7 @@ trap 'rm -f "$registration_csv"' EXIT
 } > "$registration_csv"
 
 "$SCRIPT_DIR/register-nodes.sh" --nodes-csv "$registration_csv" $DRY_RUN_FLAG
+trigger_kea_sync
 
 for idx in "${!xnames[@]}"; do
   if [ "$DRY_RUN" != "true" ]; then

@@ -14,6 +14,7 @@ BSS_PORT="${BSS_PORT:-27778}"
 CLOUD_INIT_PORT="${CLOUD_INIT_PORT:-27777}"
 PCS_PORT="${PCS_PORT:-28007}"
 KEA_PORT="${KEA_PORT:-67}"
+KEA_SYNC_PORT="${KEA_SYNC_PORT:-8080}"
 CHECK_KEA="${CHECK_KEA:-false}"
 PXE_INTERFACE="${PXE_INTERFACE:-virbr-ochami}"
 
@@ -67,6 +68,7 @@ if [ "$CHECK_KEA" = "true" ]; then
       failed=$((failed + 1))
     fi
   fi
+  check_service "Kea sync" "http://${HOST}:${KEA_SYNC_PORT}/readiness"
 fi
 # Cloud-init and PCS don't have simple GET healthchecks; check via port
 if [ "$DRY_RUN" != "true" ]; then

@@ -16,7 +16,7 @@ class TestImageFilesExist:
         "cloud-init.nix",
         "http-server.nix",
         "tftp.nix",
-        "kea-sidecar.nix",
+        "kea-sync.nix",
         "redfish-emulator.nix",
     ]
 
@@ -59,7 +59,7 @@ class TestGoServiceImages:
 class TestUtilityImages:
     """Utility images (non-Go) should use dockerTools."""
 
-    UTILITY = ["http-server.nix", "tftp.nix", "kea-sidecar.nix", "redfish-emulator.nix"]
+    UTILITY = ["http-server.nix", "tftp.nix", "redfish-emulator.nix"]
 
     def test_uses_docker_tools(self):
         for name in self.UTILITY:
@@ -69,12 +69,15 @@ class TestUtilityImages:
 
 
 class TestParameterizedSourcePaths:
-    """kea-sidecar and redfish-emulator use parameterized source paths."""
+    """kea-sync and redfish-emulator use parameterized source paths."""
 
-    def test_kea_sidecar_uses_parameter(self):
-        content = (IMAGES_DIR / "kea-sidecar.nix").read_text()
-        assert "sidecarSrc" in content, "kea-sidecar.nix should accept sidecarSrc parameter"
-        assert "../../../" not in content, "kea-sidecar.nix should not use relative paths"
+    def test_kea_sync_uses_parameter(self):
+        content = (IMAGES_DIR / "kea-sync.nix").read_text()
+        assert "keaSyncSrc" in content, "kea-sync.nix should accept keaSyncSrc parameter"
+        assert 'builtins.getEnv "KEA_SYNC_SRC"' in content, \
+            "kea-sync.nix should allow KEA_SYNC_SRC to point at the sibling service workspace"
+        assert "buildGoModule" in content, "kea-sync.nix should build the Go service"
+        assert "vendorHash" in content, "kea-sync.nix should pin vendored dependencies"
 
     def test_redfish_emulator_uses_parameter(self):
         content = (IMAGES_DIR / "redfish-emulator.nix").read_text()
@@ -93,11 +96,11 @@ class TestFlakeExportsOciImages:
             assert name in self.flake, f"flake.nix should export {name}"
 
     def test_exports_utility_images(self):
-        for name in ["oci-http-server", "oci-tftp", "oci-kea-sidecar", "oci-redfish-emulator"]:
+        for name in ["oci-http-server", "oci-tftp", "oci-kea-sync", "oci-redfish-emulator"]:
             assert name in self.flake, f"flake.nix should export {name}"
 
     def test_passes_source_paths_to_images(self):
-        assert "sidecarSrc = ./ochami-helm/kea-sidecar" in self.flake
+        assert "packages.oci-kea-sync = pkgs.callPackage ./nix/images/kea-sync.nix" in self.flake
         assert "emulatorSrc = ./ochami-helm/redfish-emulator" in self.flake
 
     def test_passes_local_image_overrides_to_generators(self):

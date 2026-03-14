@@ -44,24 +44,23 @@ spec:
           subPath: kea-dhcp4.conf
         - name: kea-run-dir
           mountPath: /kea/sockets
-    - name: sidecar
-      image: "{{ .Values.kea.sidecar.image.repository }}:{{ .Values.kea.sidecar.image.tag }}"
-      imagePullPolicy: "{{ .Values.kea.sidecar.image.pullPolicy }}"
-      command: ["python", "-u", "/app/smd_sync.py"]
+    - name: kea-sync
+      image: "{{ .Values.kea.sync.image.repository }}:{{ .Values.kea.sync.image.tag }}"
+      imagePullPolicy: "{{ .Values.kea.sync.image.pullPolicy }}"
+      command: ["/bin/kea-sync"]
       env:
-        - name: SMD_URL
+        - name: KEA_SYNC_LISTEN_ADDR
+          value: ":8080"
+        - name: KEA_SYNC_LOG_LEVEL
+          value: "info"
+        - name: KEA_SYNC_SYNC_INTERVAL
+          value: "10s"
+        - name: KEA_SYNC_SMD_URL
           value: {{ include "ochami-helm.reverseProxyUrl" . | quote }}
-        - name: DB_NAME
-          value: "{{ .Values.kea.db.name }}"
-        - name: DB_USER
-          value: "{{ .Values.kea.db.user }}"
-        - name: DB_PASS
-          value: "{{ .Values.postgres.kea_password }}"
-        - name: DB_HOST
-          value: "{{ .Values.kea.db.host }}"
-        - name: DB_PORT
-          value: {{ .Values.kea.db.port | quote }}
-    {{- if .Values.stork.enabled }}
+        - name: KEA_SYNC_KEA_URL
+          value: "http://127.0.0.1:8000"
+        - name: KEA_SYNC_KEA_SERVICES
+          value: "dhcp4"
     - name: kea-ctrl-agent
       image: "{{ .Values.kea.ctrlAgent.image.repository }}:{{ .Values.kea.ctrlAgent.image.tag }}"
       imagePullPolicy: {{ .Values.kea.ctrlAgent.image.pullPolicy }}
@@ -72,6 +71,7 @@ spec:
           subPath: kea-ctrl-agent.conf
         - name: kea-run-dir
           mountPath: /kea/sockets
+    {{- if .Values.stork.enabled }}
     - name: stork-agent
       image: "{{ .Values.stork.agent.image.repository }}:{{ .Values.stork.agent.image.tag }}"
       imagePullPolicy: {{ .Values.stork.agent.image.pullPolicy }}

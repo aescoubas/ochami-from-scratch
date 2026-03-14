@@ -52,7 +52,8 @@ let
     pcs.service
     kea.init
     kea.service
-    kea.sidecar
+    kea.controlAgent
+    kea.sync
     nginx.service
     tftp.service
   ];
@@ -173,9 +174,7 @@ let
   '';
 
   # --- Config files that need envsubst for secrets ---
-  configFiles = {
-    "kea-dhcp4.conf" = kea.configFile;
-  } // nginx.configFiles;
+  configFiles = kea.configFiles // nginx.configFiles;
 
   # --- Secrets template ---
   secretsTemplate = pkgs.writeText "secrets.env.template" (

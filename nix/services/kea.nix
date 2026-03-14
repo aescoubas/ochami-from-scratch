@@ -1,11 +1,12 @@
-# Kea DHCP4 — db-init oneshot + long-running service + sidecar.
+# Kea DHCP4 - db-init oneshot + DHCP service + control agent + kea-sync.
 # Config file has $KEA_DB_PASSWORD placeholder for envsubst at activation.
 { pkgs, defaults, hostIP, pxeInterface, dhcpRange, pxeCidr }:
 
 let
   pgPort = toString defaults.ports.postgres;
   httpPort = toString defaults.ports.http;
-  smdPort = toString defaults.ports.smd;
+  ctrlAgentPort = toString defaults.ports.keaCtrlAgent;
+  syncPort = toString defaults.ports.keaSync;
 
   keaConfig = builtins.toJSON {
     Dhcp4 = {
@@ -16,6 +17,7 @@ let
       };
       hooks-libraries = [
         { library = "/usr/local/lib/kea/hooks/libdhcp_pgsql.so"; }
+        { library = "/usr/local/lib/kea/hooks/libdhcp_host_cmds.so"; }
       ];
       lease-database = {
         type = "postgresql";
@@ -69,6 +71,18 @@ let
   };
 
   keaConfigFile = pkgs.writeText "kea-dhcp4.conf" keaConfig;
+  ctrlAgentConfigFile = pkgs.writeText "kea-ctrl-agent.conf" (builtins.toJSON {
+    "Control-agent" = {
+      http-host = "127.0.0.1";
+      http-port = defaults.ports.keaCtrlAgent;
+      control-sockets = {
+        dhcp4 = {
+          socket-type = "unix";
+          socket-name = "/kea/sockets/kea4-ctrl-socket";
+        };
+      };
+    };
+  });
 in
 {
   init = {
@@ -94,23 +108,38 @@ in
     type = "service";
   };
 
-  sidecar = {
-    name = "kea-sidecar";
-    image = defaults.images.keaSidecar;
-    command = "python -u /app/smd_sync.py";
-    environment = {
-      SMD_URL = "https://localhost:${smdPort}";
-      SMD_VERIFY_TLS = "false";
-      DB_NAME = "kea";
-      DB_USER = "kea-user";
-      DB_HOST = "localhost";
-      DB_PORT = pgPort;
-    };
-    secretEnvKeys = [ "KEA_DB_PASSWORD" ];
-    envMapping = { DB_PASS = "KEA_DB_PASSWORD"; };
-    after = [ "smd" "kea-init" "kea" ];
+  controlAgent = {
+    name = "kea-ctrl-agent";
+    image = defaults.images.keaCtrlAgent;
+    command = "-c /etc/kea/kea-ctrl-agent.conf";
+    volumes = [
+      "kea-ctrl-agent.conf:/etc/kea/kea-ctrl-agent.conf:ro"
+      "ochami-kea-sockets:/kea/sockets"
+    ];
+    after = [ "kea" ];
+    healthCheck = "test -S /kea/sockets/kea4-ctrl-socket";
     type = "service";
   };
 
-  configFile = keaConfigFile;
+  sync = {
+    name = "kea-sync";
+    image = defaults.images.keaSync;
+    command = "/bin/kea-sync";
+    environment = {
+      KEA_SYNC_LISTEN_ADDR = ":${syncPort}";
+      KEA_SYNC_LOG_LEVEL = "info";
+      KEA_SYNC_SYNC_INTERVAL = "10s";
+      KEA_SYNC_SMD_URL = "http://localhost:${httpPort}";
+      KEA_SYNC_KEA_URL = "http://localhost:${ctrlAgentPort}";
+      KEA_SYNC_KEA_SERVICES = "dhcp4";
+    };
+    after = [ "smd" "kea-init" "kea" "kea-ctrl-agent" "http-server" ];
+    healthCheck = "curl -fsS http://localhost:${syncPort}/readiness";
+    type = "service";
+  };
+
+  configFiles = {
+    "kea-dhcp4.conf" = keaConfigFile;
+    "kea-ctrl-agent.conf" = ctrlAgentConfigFile;
+  };
 }
