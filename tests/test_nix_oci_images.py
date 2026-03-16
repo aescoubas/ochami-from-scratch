@@ -78,7 +78,8 @@ class TestParameterizedSourcePaths:
             "kea-sync.nix should allow KEA_SYNC_SRC to point at the sibling service workspace"
         assert "buildGoModule" in content, "kea-sync.nix should build the Go service"
         assert "vendorHash" in content, "kea-sync.nix should pin vendored dependencies"
-
+        assert "local-src/kea-sync" not in content, \
+            "kea-sync.nix should not vendor private source inside this repository"
     def test_redfish_emulator_uses_parameter(self):
         content = (IMAGES_DIR / "redfish-emulator.nix").read_text()
         assert "emulatorSrc" in content, "redfish-emulator.nix should accept emulatorSrc parameter"
@@ -132,3 +133,4 @@ class TestLabFiles:
     def test_smoke_test_checks_podman(self):
         content = (ROOT / "nix" / "tests" / "lab-smoke.nix").read_text()
         assert "podman" in content
+

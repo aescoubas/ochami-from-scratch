@@ -179,6 +179,8 @@ class TestScriptStructure:
             assert img in content, f"build-images.sh should build {img}"
         assert "KEA_SYNC_SRC" in content
         assert "--impure" in content
+        assert "git@github.com:OpenCHAMI/kea-sync.git" in content
+        assert "git clone --depth 1" in content
 
     def test_build_images_supports_runtime_flag(self):
         content = self._read_script("build-images.sh")
@@ -194,6 +196,7 @@ class TestScriptStructure:
 
     def test_health_check_can_fail_when_kea_is_down(self):
         content = self._read_script("health-check.sh")
+        assert 'KEA_SYNC_PORT="${KEA_SYNC_PORT:-28080}"' in content
         assert "CHECK_KEA" in content
         assert "checking kea container health via docker compose" in content
         assert "ps --format json kea" in content
@@ -209,6 +212,10 @@ class TestScriptStructure:
         assert "vmlinuz-lts" in content
         assert "initramfs-lts" in content
         assert "rootfs.squashfs" not in content
+
+    def test_create_test_vms_uses_default_kea_sync_port(self):
+        content = self._read_script("create-test-vms.sh")
+        assert 'KEA_SYNC_PORT="${KEA_SYNC_PORT:-28080}"' in content
 
 
 class TestMakefileTargets:

@@ -16,9 +16,12 @@
 ## Architecture
 *   `nix/services/defaults.nix` is the shared constants file (ports, images, databases, secrets).
 *   All deployment artifacts (docker-compose.yml, .container files, values.yaml) are **generated** from `nix/services/*.nix` via `nix/generators/*.nix`.
+*   Generated runtime configs still require secret interpolation at deploy/activation time via `envsubst`; do not assume the Nix-built configs are the final rendered runtime files.
 *   PXE/iPXE boot payloads are built by `nix/boot-artifacts.nix` and consumed by the local runtime.
 *   Runtime operations (deploy, teardown, health checks, node registration) are handled by bash scripts in `scripts/ops/`.
 *   The local Docker Compose PXE lab uses libvirt network `ochami-pxe-net`, bridge `virbr-ochami`, and `scripts/ops/create-test-vms.sh` for test VM bootstrap.
+*   Local OCI image builds are orchestrated by `scripts/ops/build-images.sh`; the `kea-sync` image is built from an external checkout and may be cloned from `git@github.com:OpenCHAMI/kea-sync.git` when needed.
+*   `make teardown METHOD=compose` removes compose containers and volumes and restores paused libvirt DHCP networks, but it does **not** delete libvirt test VMs or their qcow2 disks.
 *   Architecture overviews and ADRs belong under `docs/architecture/`, not a top-level `ARCHITECTURE/` directory.
 *   The MCP server (`ochami/mcp/`) is self-contained with zero external dependencies (stdlib only).
 *   There is no Python CLI — the old `ochamifs` was removed. The only Python entry point is `ochami-mcp`.
@@ -32,6 +35,7 @@
 6.  **Operational Safety:**
     *   **Non-Interactive:** Use flags to suppress prompts (e.g., `apt-get -y`).
     *   **No Watch Modes:** Never run commands that block forever unless explicitly requested as a background daemon.
+    *   **Compose PXE Host Assumptions:** The compose PXE path expects host tools such as Docker, libvirt, `envsubst`, and passwordless `sudo` for bridge/libvirt network preparation.
 7.  **Git:**
     *   **Commit Message Standard:** Use Conventional Commits (`type(scope): description`).
         *   Types: `feat`, `fix`, `docs`, `style`, `refactor`, `test`, `chore`.

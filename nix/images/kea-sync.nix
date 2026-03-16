@@ -1,4 +1,5 @@
-# Build kea-sync OCI image from the sibling service workspace.
+# Build kea-sync OCI image from an external checkout, with the source path
+# supplied via KEA_SYNC_SRC.
 #
 # Usage:
 #   KEA_SYNC_SRC=/path/to/ochami-dev/services/kea-sync nix build --impure .#oci-kea-sync
@@ -28,7 +29,7 @@
         )
 
         func main() {
-          fmt.Fprintln(os.Stderr, "KEA_SYNC_SRC must point to services/kea-sync when building oci-kea-sync")
+          fmt.Fprintln(os.Stderr, "KEA_SYNC_SRC must point to a checked-out kea-sync repository")
           os.Exit(1)
         }
         EOF
@@ -40,9 +41,12 @@ let
     pname = "kea-sync";
     version = "unstable";
     src = keaSyncSrc;
-    vendorHash = "sha256-ycI8Gp4eXoU79kDXaSNWQJPRqZckt5qx+5WafeEfwJ4=";
+    vendorHash = null;
     subPackages = [ "cmd/kea-sync" ];
     doCheck = false;
+    prePatch = ''
+      sed -i '/^replace github.com\/openchami\/tokensmith\/middleware => \.\.\/\.\.\/shared\/ochami-tokensmith\/middleware$/d' go.mod
+    '';
   };
 in
 pkgs.dockerTools.buildLayeredImage {

@@ -29,6 +29,7 @@ done
 
 require_command nix "Nix is required to build OCI images"
 require_command "$RUNTIME" "$RUNTIME is required to load OCI images"
+require_command git "git is required to check out private OCI image sources"
 
 IMAGES=(
   oci-smd
@@ -40,9 +41,31 @@ IMAGES=(
   oci-kea-sync
 )
 
-if [ -z "${KEA_SYNC_SRC:-}" ] && [ -d "${WORKSPACE_ROOT}/services/kea-sync" ]; then
-  KEA_SYNC_SRC="${WORKSPACE_ROOT}/services/kea-sync"
-fi
+KEA_SYNC_REPO="${KEA_SYNC_REPO:-git@github.com:OpenCHAMI/kea-sync.git}"
+KEA_SYNC_CHECKOUT="${KEA_SYNC_CHECKOUT:-${WORKSPACE_ROOT}/services/kea-sync}"
+
+ensure_kea_sync_src() {
+  if [ -n "${KEA_SYNC_SRC:-}" ]; then
+    return 0
+  fi
+
+  if [ -d "${KEA_SYNC_CHECKOUT}/.git" ]; then
+    KEA_SYNC_SRC="${KEA_SYNC_CHECKOUT}"
+    return 0
+  fi
+
+  if [ -e "${KEA_SYNC_CHECKOUT}" ] && [ ! -d "${KEA_SYNC_CHECKOUT}/.git" ]; then
+    log_error "kea-sync checkout path exists but is not a git checkout: ${KEA_SYNC_CHECKOUT}"
+    return 1
+  fi
+
+  mkdir -p "$(dirname "${KEA_SYNC_CHECKOUT}")"
+  log_info "cloning kea-sync source from ${KEA_SYNC_REPO} into ${KEA_SYNC_CHECKOUT}"
+  git clone --depth 1 "${KEA_SYNC_REPO}" "${KEA_SYNC_CHECKOUT}"
+  KEA_SYNC_SRC="${KEA_SYNC_CHECKOUT}"
+}
+
+ensure_kea_sync_src || exit 1
 
 FAILED=0
 

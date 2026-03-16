@@ -26,7 +26,7 @@ COMPOSE_DIR="${COMPOSE_DIR:-${PROJECT_ROOT}/ochami-docker-compose}"
 COMPOSE_FILE="${COMPOSE_DIR}/docker-compose.generated.yml"
 SECRETS_FILE="${OPENCHAMI_SECRETS:-${PROJECT_ROOT}/.tmp/openchami-secrets.env}"
 MANIFEST_FILE="${MANIFEST_FILE:-${PROJECT_ROOT}/.tmp/ochami-test-vms.csv}"
-KEA_SYNC_PORT="${KEA_SYNC_PORT:-8080}"
+KEA_SYNC_PORT="${KEA_SYNC_PORT:-28080}"
 
 usage() {
   cat <<EOF

@@ -35,10 +35,11 @@ def test_defaults_nix_matches_python_defaults():
     # Check critical port values are present.
     assert "smd = 27779" in defaults_nix
     assert "bss = 27778" in defaults_nix
-    assert "postgres = 5432" in defaults_nix
+    assert "postgres = 15432" in defaults_nix
     assert "http = 80" in defaults_nix
     assert "cloudInit = 27777" in defaults_nix
     assert "pcs = 28007" in defaults_nix
+    assert "keaSync = 28080" in defaults_nix
 
 
 def test_defaults_nix_has_all_databases():
@@ -60,6 +61,12 @@ def test_defaults_nix_has_all_secret_keys():
         "STORK_DB_PASSWORD",
     ]:
         assert key in defaults_nix, f"missing secret key {key}"
+
+
+def test_defaults_nix_uses_private_kea_sync_checkout_url():
+    """The kea-sync source metadata should use the private SSH checkout URL."""
+    defaults_nix = (ROOT / "nix" / "services" / "defaults.nix").read_text()
+    assert 'keaSync = "git@github.com:OpenCHAMI/kea-sync.git"' in defaults_nix
 
 
 def test_flake_exports_deploy_profile():
