@@ -180,7 +180,7 @@ class TestScriptStructure:
             assert img in content, f"build-images.sh should build {img}"
         assert "KEA_SYNC_SRC" in content
         assert "--impure" in content
-        assert "git@github.com:OpenCHAMI/kea-sync.git" in content
+        assert "https://github.com/aescoubas/kea-sync.git" in content
         assert "git clone --depth 1" in content
 
     def test_build_images_supports_runtime_flag(self):

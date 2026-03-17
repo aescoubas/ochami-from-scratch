@@ -84,7 +84,7 @@
     bss = "https://github.com/openchami/bss.git";
     pcs = "https://github.com/OpenCHAMI/power-control.git";
     cloudInit = "https://github.com/openchami/cloud-init.git";
-    keaSync = "git@github.com:OpenCHAMI/kea-sync.git";
+    keaSync = "https://github.com/aescoubas/kea-sync.git";
   };
 
   # All secret env var names that must appear in secrets.env.

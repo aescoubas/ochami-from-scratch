@@ -47,7 +47,7 @@ For the validated Docker Compose PXE path, the host needs:
 - `nix`
 - `docker` plus `docker compose`
 - `virsh`, `virt-install`, and `qemu-img`
-- `curl`, `jq`, `envsubst`, `ss`, and `ip`
+- `curl`, `jq`, `envsubst`, `ss`, `ip`, and `timeout`
 - passwordless `sudo` for libvirt network and bridge preparation
 
 Check the compose prerequisites with:
@@ -60,6 +60,37 @@ sudo -n true
 `nix develop` is useful for Python/package work, but it does not replace the host
 requirements above. In particular, Docker, libvirt, and `envsubst` are expected to
 exist on the host.
+
+### macOS bootstrap
+
+macOS can cover the local development and generation workflow, but the validated
+PXE/libvirt deployment path above is still Linux-only. If you want to work from
+macOS anyway, install the toolchain with:
+
+```bash
+sh <(curl --proto '=https' --tlsv1.2 -L https://nixos.org/nix/install) --daemon
+brew install jq gettext coreutils iproute2mac qemu libvirt virt-manager
+brew install --cask docker-desktop
+```
+
+`envsubst` comes from Homebrew `gettext`, and `timeout` comes from Homebrew
+`coreutils`. Add both to your shell `PATH`:
+
+```bash
+echo 'export PATH="$(brew --prefix gettext)/bin:$(brew --prefix coreutils)/libexec/gnubin:$PATH"' >> ~/.zprofile
+source ~/.zprofile
+```
+
+After Docker Desktop finishes installing, start it once so `docker` and
+`docker compose` are available in your shell.
+
+On macOS, the most reliable split is:
+
+- use `nix build`, `nix develop`, and `make test` natively
+- use a Linux VM for the Docker Compose + libvirt PXE workflow
+
+Even with Homebrew `iproute2mac`, the operational scripts still rely on Linux
+bridge and libvirt network behavior that macOS does not provide directly.
 
 ## Quick Start
 
@@ -190,7 +221,7 @@ The `kea-sync` image is built from an external checkout. The build script will:
 
 - use `KEA_SYNC_SRC` if you set it
 - otherwise reuse `../services/kea-sync` if it is already a git checkout
-- otherwise clone `git@github.com:OpenCHAMI/kea-sync.git` into that location
+- otherwise clone `https://github.com/aescoubas/kea-sync.git` into that location
 
 Relevant overrides:
 

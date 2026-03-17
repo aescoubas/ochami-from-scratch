@@ -42,7 +42,7 @@ IMAGES=(
   oci-kea-sync
 )
 
-KEA_SYNC_REPO="${KEA_SYNC_REPO:-git@github.com:OpenCHAMI/kea-sync.git}"
+KEA_SYNC_REPO="${KEA_SYNC_REPO:-https://github.com/aescoubas/kea-sync.git}"
 KEA_SYNC_CHECKOUT="${KEA_SYNC_CHECKOUT:-${WORKSPACE_ROOT}/services/kea-sync}"
 
 ensure_kea_sync_src() {

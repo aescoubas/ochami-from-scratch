@@ -20,7 +20,7 @@
 *   PXE/iPXE boot payloads are built by `nix/boot-artifacts.nix` and consumed by the local runtime.
 *   Runtime operations (deploy, teardown, health checks, node registration) are handled by bash scripts in `scripts/ops/`.
 *   The local Docker Compose PXE lab uses libvirt network `ochami-pxe-net`, bridge `virbr-ochami`, and `scripts/ops/create-test-vms.sh` for test VM bootstrap.
-*   Local OCI image builds are orchestrated by `scripts/ops/build-images.sh`; the `kea-sync` image is built from an external checkout and may be cloned from `git@github.com:OpenCHAMI/kea-sync.git` when needed.
+*   Local OCI image builds are orchestrated by `scripts/ops/build-images.sh`; the `kea-sync` image is built from an external checkout and may be cloned from `https://github.com/aescoubas/kea-sync.git` when needed.
 *   `make teardown METHOD=compose` removes compose containers and volumes and restores paused libvirt DHCP networks, but it does **not** delete libvirt test VMs or their qcow2 disks.
 *   Architecture overviews and ADRs belong under `docs/architecture/`, not a top-level `ARCHITECTURE/` directory.
 *   The MCP server (`ochami/mcp/`) is self-contained with zero external dependencies (stdlib only).

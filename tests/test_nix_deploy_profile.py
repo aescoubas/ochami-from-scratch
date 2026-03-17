@@ -63,10 +63,10 @@ def test_defaults_nix_has_all_secret_keys():
         assert key in defaults_nix, f"missing secret key {key}"
 
 
-def test_defaults_nix_uses_private_kea_sync_checkout_url():
-    """The kea-sync source metadata should use the private SSH checkout URL."""
+def test_defaults_nix_uses_aescoubas_kea_sync_checkout_url():
+    """The kea-sync source metadata should use the aescoubas checkout URL."""
     defaults_nix = (ROOT / "nix" / "services" / "defaults.nix").read_text()
-    assert 'keaSync = "git@github.com:OpenCHAMI/kea-sync.git"' in defaults_nix
+    assert 'keaSync = "https://github.com/aescoubas/kea-sync.git"' in defaults_nix
 
 
 def test_flake_exports_deploy_profile():
