@@ -52,7 +52,6 @@ let
     pcs.service
     kea.init
     kea.service
-    kea.controlAgent
     kea.sync
     nginx.service
     tftp.service

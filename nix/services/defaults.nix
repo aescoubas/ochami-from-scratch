@@ -34,7 +34,6 @@
     pcs = "ghcr.io/openchami/power-control:latest";
     keaAdmin = "docker.io/jonasal/kea-admin:3.1.4";
     keaDhcp4 = "docker.io/jonasal/kea-dhcp4:3.1.4";
-    keaCtrlAgent = "docker.io/jonasal/kea-ctrl-agent:3.1.4";
     keaSync = "ghcr.io/openchami/kea-sync:latest";
     nginx = "docker.io/nginx:alpine";
     tftp = "ghcr.io/openchami/tftp:latest";
@@ -48,6 +47,7 @@
     bss = "localhost/bss:local-bss";
     pcs = "localhost/pcs:local-pcs";
     cloudInit = "localhost/cloud-init:local-cloud-init";
+    kea = "localhost/kea:latest";
     httpServer = "localhost/http-server:latest";
     tftp = "localhost/tftp:latest";
     keaSync = "localhost/kea-sync:latest";
@@ -56,12 +56,14 @@
   };
 
   # Image overrides: map upstream image keys to locally-built refs.
-  # Third-party images (postgres, keaAdmin, keaDhcp4, storkServer) stay upstream.
+  # Third-party images (postgres and storkServer) stay upstream.
   localImageOverrides = {
     smd = "localhost/smd:local-smd";
     bss = "localhost/bss:local-bss";
     pcs = "localhost/pcs:local-pcs";
     cloudInit = "localhost/cloud-init:local-cloud-init";
+    keaAdmin = "localhost/kea:latest";
+    keaDhcp4 = "localhost/kea:latest";
     keaSync = "localhost/kea-sync:latest";
     tftp = "localhost/tftp:latest";
     nginx = "localhost/http-server:latest";

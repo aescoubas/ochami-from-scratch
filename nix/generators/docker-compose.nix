@@ -166,7 +166,6 @@ let
     pcs.service
     kea.init
     kea.service
-    kea.controlAgent
     kea.sync
     nginx.service
     tftp.service
@@ -181,8 +180,7 @@ let
       allVols = lib.concatMap (s: s.volumes or [ ]) allServiceDefs;
       isNamed = v: lib.hasPrefix "ochami-" v;
       extractName = v: builtins.head (lib.splitString ":" v);
-      # Kea uses "kea-sockets" which gets ochami- prefix from the services but
-      # in compose it's just a named volume. Collect all named volumes.
+      # Keep named volumes centralized from the service definitions.
       names = lib.unique (map extractName (lib.filter isNamed allVols));
     in
     names;

@@ -10,7 +10,7 @@ The system needs to maintain consistency between the authoritative hardware inve
 We synchronize state with the dedicated `kea-sync` Go service.
 
 - **Mechanism:** `kea-sync` periodically polls the SMD API for registered interfaces and components.
-- **Action:** It reconciles desired reservations into Kea through the Kea Control Agent and host commands instead of writing PostgreSQL tables directly.
+- **Action:** It reconciles desired reservations into Kea through Kea's native HTTP control sockets and host commands instead of writing PostgreSQL tables directly.
 - **Replacement:** This replaces both the legacy `coresmd` plugin approach and the earlier ad hoc Python sidecar.
 
 ## Consequences
@@ -21,4 +21,4 @@ We synchronize state with the dedicated `kea-sync` Go service.
 
 ### Negative
 - **Latency:** There is a delay (polling interval) between a change in SMD and its reflection in DHCP.
-- **Extra runtime dependency:** The Kea Control Agent and host command hooks must be enabled for reconciliation to work.
+- **Extra runtime dependency:** Kea's HTTP control sockets and host command hooks must be enabled for reconciliation to work.

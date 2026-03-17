@@ -31,26 +31,35 @@ class TestServiceCommandPaths:
         content = (ROOT / "nix" / "services" / "bss.nix").read_text()
         assert 'HSM_URL = "https://localhost:${smdPort}";' in content
 
-    def test_kea_control_agent_uses_host_cmds_hook_and_ctrl_config(self):
+    def test_kea_uses_host_cmds_hook_and_http_control_socket(self):
         content = (ROOT / "nix" / "services" / "kea.nix").read_text()
         assert 'libdhcp_host_cmds.so' in content
-        assert 'name = "kea-ctrl-agent";' in content
-        assert 'kea-ctrl-agent.conf:/etc/kea/kea-ctrl-agent.conf:ro' in content
+        assert 'control-sockets = [' in content
+        assert 'socket-type = "http";' in content
+        assert 'socket-address = "127.0.0.1";' in content
+        assert "socket-port = defaults.ports.keaCtrlAgent;" in content
+        assert 'name = "kea-ctrl-agent";' not in content
+        assert 'kea-ctrl-agent.conf:/etc/kea/kea-ctrl-agent.conf:ro' not in content
 
-    def test_kea_service_uses_control_socket_healthcheck(self):
+    def test_kea_service_and_init_use_local_image_binary_paths(self):
         content = (ROOT / "nix" / "services" / "kea.nix").read_text()
-        assert 'healthCheck = "test -S /kea/sockets/kea4-ctrl-socket";' in content
+        assert 'command = "/bin/kea-admin db-init pgsql -h localhost -P ${pgPort} -u kea-user -p $KEA_DB_PASSWORD -n kea";' in content
+        assert 'command = "/bin/kea-dhcp4 -c /etc/kea/kea-dhcp4.conf";' in content
 
-    def test_kea_sync_uses_http_proxy_for_smd_and_control_agent(self):
+    def test_kea_service_uses_http_control_socket_healthcheck(self):
+        content = (ROOT / "nix" / "services" / "kea.nix").read_text()
+        assert "bash -ec ': >/dev/tcp/127.0.0.1/" in content
+
+    def test_kea_sync_uses_http_proxy_for_smd_and_kea(self):
         content = (ROOT / "nix" / "services" / "kea.nix").read_text()
         assert 'name = "kea-sync";' in content
         assert 'command = "/bin/kea-sync";' in content
         assert 'KEA_SYNC_SMD_URL = "http://localhost:${httpPort}";' in content
         assert 'KEA_SYNC_KEA_URL = "http://localhost:${ctrlAgentPort}";' in content
 
-    def test_kea_sync_waits_for_control_agent(self):
+    def test_kea_sync_waits_for_kea_http_control_socket(self):
         content = (ROOT / "nix" / "services" / "kea.nix").read_text()
-        assert 'after = [ "smd" "kea-init" "kea" "kea-ctrl-agent" "http-server" ];' in content
+        assert 'after = [ "smd" "kea-init" "kea" "http-server" ];' in content
 
     def test_http_server_has_healthcheck_for_compose_dependencies(self):
         content = (ROOT / "nix" / "services" / "nginx.nix").read_text()
@@ -76,9 +85,16 @@ class TestRuntimeImageAssets:
         assert "cp -r ${bssSrc}/migrations/. migrations/" in content
 
     def test_go_service_images_include_shell_for_compose_healthchecks(self):
-        for name in ["smd.nix", "bss.nix", "pcs.nix", "cloud-init.nix"]:
+        for name in ["smd.nix", "bss.nix", "pcs.nix", "cloud-init.nix", "kea.nix"]:
             content = (ROOT / "nix" / "images" / name).read_text()
             assert "pkgs.bash" in content
+
+    def test_kea_image_packages_hook_libraries_and_binaries(self):
+        content = (ROOT / "nix" / "images" / "kea.nix").read_text()
+        assert "pkgs.kea" in content
+        assert "lib/kea/hooks" in content
+        assert 'name = "localhost/kea";' in content
+        assert '"/bin/kea-dhcp4"' in content
 
     def test_http_server_image_defines_nobody_user(self):
         content = (ROOT / "nix" / "images" / "http-server.nix").read_text()

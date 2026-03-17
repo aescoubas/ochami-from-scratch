@@ -29,8 +29,9 @@ by the local Docker Compose and Quadlet runtime.
 
 ## Runtime Layers
 
-- `nix/images/*.nix` builds the local OCI images used for OpenCHAMI-owned services.
-- the Docker Compose and Quadlet generators default OpenCHAMI-owned services to those
+- `nix/images/*.nix` builds the local OCI images used for OpenCHAMI-owned services and the
+  bundled Kea runtime.
+- the Docker Compose and Quadlet generators default those services to the
   locally built `localhost/*` images
 - `scripts/ops/` contains the operational entry points for deploy, teardown, health
   checks, boot parameter registration, node registration, and libvirt test VM setup.

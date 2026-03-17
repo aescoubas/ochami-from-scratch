@@ -97,6 +97,7 @@
         packages.oci-bss = pkgs.callPackage ./nix/images/bss.nix { inherit lib; };
         packages.oci-pcs = pkgs.callPackage ./nix/images/pcs.nix { inherit lib; };
         packages.oci-cloud-init = pkgs.callPackage ./nix/images/cloud-init.nix { inherit lib; };
+        packages.oci-kea = pkgs.callPackage ./nix/images/kea.nix { };
         packages.oci-http-server = pkgs.callPackage ./nix/images/http-server.nix { };
         packages.oci-tftp = pkgs.callPackage ./nix/images/tftp.nix { };
         packages.oci-kea-sync = pkgs.callPackage ./nix/images/kea-sync.nix { };

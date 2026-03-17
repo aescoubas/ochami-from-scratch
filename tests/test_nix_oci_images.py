@@ -14,6 +14,7 @@ class TestImageFilesExist:
         "bss.nix",
         "pcs.nix",
         "cloud-init.nix",
+        "kea.nix",
         "http-server.nix",
         "tftp.nix",
         "kea-sync.nix",
@@ -59,7 +60,7 @@ class TestGoServiceImages:
 class TestUtilityImages:
     """Utility images (non-Go) should use dockerTools."""
 
-    UTILITY = ["http-server.nix", "tftp.nix", "redfish-emulator.nix"]
+    UTILITY = ["kea.nix", "http-server.nix", "tftp.nix", "redfish-emulator.nix"]
 
     def test_uses_docker_tools(self):
         for name in self.UTILITY:
@@ -97,15 +98,27 @@ class TestFlakeExportsOciImages:
             assert name in self.flake, f"flake.nix should export {name}"
 
     def test_exports_utility_images(self):
-        for name in ["oci-http-server", "oci-tftp", "oci-kea-sync", "oci-redfish-emulator"]:
+        for name in ["oci-http-server", "oci-tftp", "oci-kea", "oci-kea-sync", "oci-redfish-emulator"]:
             assert name in self.flake, f"flake.nix should export {name}"
 
     def test_passes_source_paths_to_images(self):
         assert "packages.oci-kea-sync = pkgs.callPackage ./nix/images/kea-sync.nix" in self.flake
+        assert "packages.oci-kea = pkgs.callPackage ./nix/images/kea.nix" in self.flake
         assert "emulatorSrc = ./ochami-helm/redfish-emulator" in self.flake
 
     def test_passes_local_image_overrides_to_generators(self):
         assert "localImageOverrides" in self.flake
+
+
+class TestKeaImage:
+    """Verify the custom Kea image structure."""
+
+    def test_kea_image_uses_nixpkgs_kea_and_http_tools(self):
+        content = (IMAGES_DIR / "kea.nix").read_text()
+        assert "pkgs.kea" in content
+        assert "dockerTools.buildLayeredImage" in content
+        assert "pkgs.curl" in content
+        assert "var/lib/kea" in content
 
 
 class TestLabFiles:
@@ -133,4 +146,3 @@ class TestLabFiles:
     def test_smoke_test_checks_podman(self):
         content = (ROOT / "nix" / "tests" / "lab-smoke.nix").read_text()
         assert "podman" in content
-

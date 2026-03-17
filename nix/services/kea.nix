@@ -1,4 +1,4 @@
-# Kea DHCP4 - db-init oneshot + DHCP service + control agent + kea-sync.
+# Kea DHCP4 - db-init oneshot + DHCP service + kea-sync.
 # Config file has $KEA_DB_PASSWORD placeholder for envsubst at activation.
 { pkgs, defaults, hostIP, pxeInterface, dhcpRange, pxeCidr }:
 
@@ -11,13 +11,16 @@ let
   keaConfig = builtins.toJSON {
     Dhcp4 = {
       interfaces-config.interfaces = [ pxeInterface ];
-      control-socket = {
-        socket-type = "unix";
-        socket-name = "/kea/sockets/kea4-ctrl-socket";
-      };
+      control-sockets = [
+        {
+          socket-type = "http";
+          socket-address = "127.0.0.1";
+          socket-port = defaults.ports.keaCtrlAgent;
+        }
+      ];
       hooks-libraries = [
-        { library = "/usr/local/lib/kea/hooks/libdhcp_pgsql.so"; }
-        { library = "/usr/local/lib/kea/hooks/libdhcp_host_cmds.so"; }
+        { library = "${pkgs.kea}/lib/kea/hooks/libdhcp_pgsql.so"; }
+        { library = "${pkgs.kea}/lib/kea/hooks/libdhcp_host_cmds.so"; }
       ];
       lease-database = {
         type = "postgresql";
@@ -71,24 +74,12 @@ let
   };
 
   keaConfigFile = pkgs.writeText "kea-dhcp4.conf" keaConfig;
-  ctrlAgentConfigFile = pkgs.writeText "kea-ctrl-agent.conf" (builtins.toJSON {
-    "Control-agent" = {
-      http-host = "127.0.0.1";
-      http-port = defaults.ports.keaCtrlAgent;
-      control-sockets = {
-        dhcp4 = {
-          socket-type = "unix";
-          socket-name = "/kea/sockets/kea4-ctrl-socket";
-        };
-      };
-    };
-  });
 in
 {
   init = {
     name = "kea-init";
     image = defaults.images.keaAdmin;
-    command = "db-init pgsql -h localhost -P ${pgPort} -u kea-user -p $KEA_DB_PASSWORD -n kea";
+    command = "/bin/kea-admin db-init pgsql -h localhost -P ${pgPort} -u kea-user -p $KEA_DB_PASSWORD -n kea";
     after = [ "postgres" ];
     type = "oneshot";
     needsSecretInterpolation = true;
@@ -97,27 +88,13 @@ in
   service = {
     name = "kea";
     image = defaults.images.keaDhcp4;
-    command = "-c /etc/kea/kea-dhcp4.conf";
+    command = "/bin/kea-dhcp4 -c /etc/kea/kea-dhcp4.conf";
     volumes = [
       "kea-dhcp4.conf:/etc/kea/kea-dhcp4.conf:ro"
-      "ochami-kea-sockets:/kea/sockets"
     ];
     capabilities = [ "NET_RAW" "NET_ADMIN" ];
     after = [ "kea-init" ];
-    healthCheck = "test -S /kea/sockets/kea4-ctrl-socket";
-    type = "service";
-  };
-
-  controlAgent = {
-    name = "kea-ctrl-agent";
-    image = defaults.images.keaCtrlAgent;
-    command = "-c /etc/kea/kea-ctrl-agent.conf";
-    volumes = [
-      "kea-ctrl-agent.conf:/etc/kea/kea-ctrl-agent.conf:ro"
-      "ochami-kea-sockets:/kea/sockets"
-    ];
-    after = [ "kea" ];
-    healthCheck = "test -S /kea/sockets/kea4-ctrl-socket";
+    healthCheck = "bash -ec ': >/dev/tcp/127.0.0.1/${ctrlAgentPort}'";
     type = "service";
   };
 
@@ -133,13 +110,12 @@ in
       KEA_SYNC_KEA_URL = "http://localhost:${ctrlAgentPort}";
       KEA_SYNC_KEA_SERVICES = "dhcp4";
     };
-    after = [ "smd" "kea-init" "kea" "kea-ctrl-agent" "http-server" ];
+    after = [ "smd" "kea-init" "kea" "http-server" ];
     healthCheck = "curl -fsS http://localhost:${syncPort}/readiness";
     type = "service";
   };
 
   configFiles = {
     "kea-dhcp4.conf" = keaConfigFile;
-    "kea-ctrl-agent.conf" = ctrlAgentConfigFile;
   };
 }

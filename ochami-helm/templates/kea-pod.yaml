@@ -22,12 +22,6 @@ spec:
         - name: KEA_DB_PASSWORD
           value: "{{ .Values.postgres.kea_password }}"
       command: ["/bin/bash", "-c", "kea-admin db-init pgsql -u {{ .Values.kea.db.user }} -p $KEA_DB_PASSWORD -n {{ .Values.kea.db.name }} -h {{ .Values.kea.db.host }} || echo 'Database already initialized'"]
-    - name: fix-socket-dir
-      image: alpine:3.18
-      command: ["sh", "-c", "chmod 750 /kea/sockets"]
-      volumeMounts:
-        - name: kea-run-dir
-          mountPath: /kea/sockets
   containers:
     - name: kea-dhcp4
       image: "{{ .Values.kea.image.repository }}:{{ .Values.kea.image.tag }}"
@@ -37,13 +31,12 @@ spec:
           add:
             - NET_RAW
             - NET_ADMIN
+      command: ["/bin/kea-dhcp4"]
       args: ["-c", "/etc/kea/kea-dhcp4.conf"]
       volumeMounts:
         - name: kea-config
           mountPath: /etc/kea/kea-dhcp4.conf
           subPath: kea-dhcp4.conf
-        - name: kea-run-dir
-          mountPath: /kea/sockets
     - name: kea-sync
       image: "{{ .Values.kea.sync.image.repository }}:{{ .Values.kea.sync.image.tag }}"
       imagePullPolicy: "{{ .Values.kea.sync.image.pullPolicy }}"
@@ -58,19 +51,9 @@ spec:
         - name: KEA_SYNC_SMD_URL
           value: {{ include "ochami-helm.reverseProxyUrl" . | quote }}
         - name: KEA_SYNC_KEA_URL
-          value: "http://127.0.0.1:8000"
+          value: "http://127.0.0.1:{{ .Values.kea.controlPort }}"
         - name: KEA_SYNC_KEA_SERVICES
           value: "dhcp4"
-    - name: kea-ctrl-agent
-      image: "{{ .Values.kea.ctrlAgent.image.repository }}:{{ .Values.kea.ctrlAgent.image.tag }}"
-      imagePullPolicy: {{ .Values.kea.ctrlAgent.image.pullPolicy }}
-      args: ["-c", "/etc/kea/kea-ctrl-agent.conf"]
-      volumeMounts:
-        - name: kea-config
-          mountPath: /etc/kea/kea-ctrl-agent.conf
-          subPath: kea-ctrl-agent.conf
-        - name: kea-run-dir
-          mountPath: /kea/sockets
     {{- if .Values.stork.enabled }}
     - name: stork-agent
       image: "{{ .Values.stork.agent.image.repository }}:{{ .Values.stork.agent.image.tag }}"
@@ -90,15 +73,8 @@ spec:
         - name: kea-config
           mountPath: /etc/kea/kea-dhcp4.conf
           subPath: kea-dhcp4.conf
-        - name: kea-config
-          mountPath: /etc/kea/kea-ctrl-agent.conf
-          subPath: kea-ctrl-agent.conf
-        - name: kea-run-dir
-          mountPath: /kea/sockets
     {{- end }}
   volumes:
     - name: kea-config
       configMap:
         name: {{ include "ochami-helm.fullname" . }}-kea-config
-    - name: kea-run-dir
-      emptyDir: {}

@@ -91,7 +91,7 @@ make deploy METHOD=compose
 This compose path:
 
 - ensures the secrets file exists at `.tmp/openchami-secrets.env`
-- builds and loads local OCI images for OpenCHAMI-owned services
+- builds and loads local OCI images for OpenCHAMI services plus the bundled Kea runtime
 - generates `ochami-docker-compose/docker-compose.generated.yml`
 - builds `.#deploy-profile` and renders runtime configs into `ochami-docker-compose/configs/`
 - ensures the libvirt PXE network `ochami-pxe-net` exists on bridge `virbr-ochami`
@@ -185,6 +185,7 @@ scripts/ops/build-images.sh
 scripts/ops/build-images.sh --runtime podman
 ```
 
+The Docker Compose and quadlet paths now build a local Kea image from Nixpkgs.
 The `kea-sync` image is built from an external checkout. The build script will:
 
 - use `KEA_SYNC_SRC` if you set it

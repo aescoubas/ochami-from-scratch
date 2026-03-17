@@ -32,7 +32,6 @@ let
   postgresImg = parseImage images.postgres;
   keaDhcp4Img = parseImage images.keaDhcp4;
   keaAdminImg = parseImage images.keaAdmin;
-  keaCtrlAgentImg = parseImage images.keaCtrlAgent;
   keaSyncImg = parseImage images.keaSync;
   nginxImg = parseImage images.nginx;
   tftpImg = parseImage images.tftp;
@@ -131,6 +130,8 @@ let
     };
 
     kea = {
+      controlPort = defaults.ports.keaCtrlAgent;
+      hookLibraryDir = "${pkgs.kea}/lib/kea/hooks";
       image = {
         repository = keaDhcp4Img.repository;
         tag = keaDhcp4Img.tag;
@@ -139,11 +140,6 @@ let
       adminImage = {
         repository = keaAdminImg.repository;
         tag = keaAdminImg.tag;
-        pullPolicy = "IfNotPresent";
-      };
-      ctrlAgent.image = {
-        repository = keaCtrlAgentImg.repository;
-        tag = keaCtrlAgentImg.tag;
         pullPolicy = "IfNotPresent";
       };
       sync.image = {

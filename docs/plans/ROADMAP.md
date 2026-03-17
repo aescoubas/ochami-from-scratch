@@ -1,6 +1,10 @@
 # OpenCHAMI From Scratch Roadmap
 
 ## In Progress
+- [x] Replace the separate Kea Control Agent with direct Kea HTTP control sockets and a locally built Kea image
+  - [x] Expose Kea's native HTTP control API directly from the DHCP service and remove the `kea-ctrl-agent` runtime.
+  - [x] Add a Nix-built local Kea OCI image and wire it into generated compose, quadlet, and Helm artifacts.
+  - [x] Verify with `make test`, `nix build .#docker-compose-yml`, `nix build .#quadlet-units`, `nix build .#deploy-profile`, `make deploy METHOD=compose`, and a libvirt VM serial-boot check.
 - [x] Generate Nix-built boot artifacts for PXE/iPXE and wire them into local runtime validation
   - [x] Export a `boot-artifacts` package and a `generate-images` Makefile target.
   - [x] Mount the generated artifacts into nginx and use the matching kernel args for BSS defaults.

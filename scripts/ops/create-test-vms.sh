@@ -369,7 +369,7 @@ wait_for_bootscript() {
 refresh_compose_kea() {
   log_info "ensuring compose Kea services are ready on ${NETWORK_BRIDGE}"
   run_cmd docker compose -f "$COMPOSE_FILE" --env-file "$SECRETS_FILE" \
-    up -d --no-deps kea kea-ctrl-agent kea-sync
+    up -d --no-deps kea kea-sync
   CHECK_KEA=true PXE_INTERFACE="$NETWORK_BRIDGE" COMPOSE_FILE="$COMPOSE_FILE" \
     SECRETS_FILE="$SECRETS_FILE" "$SCRIPT_DIR/health-check.sh" $DRY_RUN_FLAG
 }

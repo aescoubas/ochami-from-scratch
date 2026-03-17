@@ -146,7 +146,8 @@ class TestScriptStructure:
         assert "ensure_bridge_carrier" in content
         assert "docker compose" in content
         assert "--no-deps" in content
-        assert "kea-ctrl-agent" in content
+        assert "kea kea-sync" in content
+        assert "kea-ctrl-agent" not in content
         assert "kea-sync" in content
         assert "health-check.sh" in content
         assert "/v1/sync" in content
@@ -175,7 +176,7 @@ class TestScriptStructure:
     def test_build_images_builds_all_oci_images(self):
         content = self._read_script("build-images.sh")
         for img in ["oci-smd", "oci-bss", "oci-pcs", "oci-cloud-init",
-                     "oci-http-server", "oci-tftp", "oci-kea-sync"]:
+                     "oci-http-server", "oci-tftp", "oci-kea", "oci-kea-sync"]:
             assert img in content, f"build-images.sh should build {img}"
         assert "KEA_SYNC_SRC" in content
         assert "--impure" in content

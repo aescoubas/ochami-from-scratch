@@ -36,6 +36,7 @@ IMAGES=(
   oci-bss
   oci-pcs
   oci-cloud-init
+  oci-kea
   oci-http-server
   oci-tftp
   oci-kea-sync

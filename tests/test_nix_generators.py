@@ -63,7 +63,7 @@ class TestDockerComposeGenerator:
         assert "cloudInit.service" in self.content
         assert "kea.init" in self.content
         assert "kea.service" in self.content
-        assert "kea.controlAgent" in self.content
+        assert "kea.controlAgent" not in self.content
         assert "kea.sync" in self.content
         assert "nginx.service" in self.content
         assert "tftp.service" in self.content
@@ -157,7 +157,7 @@ class TestDefaultsNixLocalImages:
         assert "localImages" in self.content
 
     def test_local_images_has_all_services(self):
-        for svc in ["smd", "bss", "pcs", "cloudInit", "httpServer", "tftp",
+        for svc in ["smd", "bss", "pcs", "cloudInit", "kea", "httpServer", "tftp",
                      "redfishEmulator", "storkAgent", "keaSync"]:
             assert svc in self.content, f"defaults.nix should have localImages.{svc}"
 
@@ -165,7 +165,8 @@ class TestDefaultsNixLocalImages:
         assert "localImageOverrides" in self.content
 
     def test_local_image_overrides_maps_core_services(self):
-        for svc in ["smd", "bss", "pcs", "cloudInit", "keaSync", "tftp", "nginx"]:
+        for svc in ["smd", "bss", "pcs", "cloudInit", "keaAdmin", "keaDhcp4",
+                    "keaSync", "tftp", "nginx"]:
             assert svc in self.content, \
                 f"defaults.nix localImageOverrides should map {svc}"
 

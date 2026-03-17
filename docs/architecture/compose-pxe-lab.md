@@ -36,8 +36,8 @@ with libvirt VMs and validated from the guest serial console.
 
 1. A VM attached to `ochami-pxe-net` requests DHCP.
 2. Kea assigns an address on `192.168.100.0/24`.
-3. `kea-sync` reconciles the registered SMD node state into Kea reservations through the
-   Kea Control Agent.
+3. `kea-sync` reconciles the registered SMD node state into Kea reservations through
+   Kea's native HTTP control API.
 4. nginx serves the first-stage `/boot/v1/bootscript` iPXE entrypoint.
 5. BSS resolves the registered MAC address to the OpenCHAMI node record and serves the
    second-stage bootscript.
