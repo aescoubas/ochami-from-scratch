@@ -7,12 +7,13 @@
 { pkgs
 , lib
 , defaults
+, profile
 , hostIP ? "192.168.100.1"
-, imageOverrides ? { }
 }:
 
 let
-  images = defaults.images // imageOverrides;
+  imageOverrides = profile.imageOverrides;
+  images = profile.runtimeImages;
 
   # Parse image string "registry/repo:tag" into { repository, tag }.
   parseImage = img:
@@ -194,7 +195,7 @@ let
     affinity = { };
 
     httpServer = {
-      enabled = true;
+      enabled = profile.enableStork or false;
       hostNetwork = false;
       port = defaults.ports.http;
       image = {

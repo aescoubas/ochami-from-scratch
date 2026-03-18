@@ -34,12 +34,14 @@
         }
         EOF
       ''
+, imageName ? "localhost/kea-sync"
+, imageTag ? "latest"
 }:
 
 let
   keaSync = pkgs.buildGoModule {
     pname = "kea-sync";
-    version = "unstable";
+    version = imageTag;
     src = keaSyncSrc;
     vendorHash = null;
     subPackages = [ "cmd/kea-sync" ];
@@ -50,8 +52,8 @@ let
   };
 in
 pkgs.dockerTools.buildLayeredImage {
-  name = "localhost/kea-sync";
-  tag = "latest";
+  name = imageName;
+  tag = imageTag;
   contents = [
     keaSync
     pkgs.bash

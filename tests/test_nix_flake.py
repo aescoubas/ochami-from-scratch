@@ -31,15 +31,21 @@ def test_flake_exports_generators_and_images() -> None:
     flake = (PROJECT_ROOT / "flake.nix").read_text(encoding="utf-8")
 
     assert "docker-compose-yml" in flake
+    assert "docker-compose-yml-dev" in flake
     assert "quadlet-units" in flake
+    assert "quadlet-units-dev" in flake
     assert "helm-values" in flake
+    assert "helm-values-dev" in flake
     assert "deploy-profile" in flake
+    assert "deploy-profile-dev" in flake
     assert "lab-controller-system" in flake
     assert "lab-boot-node-system" in flake
     assert "lab-controller-vm" in flake
     assert "lab-boot-node-vm" in flake
     assert "oci-smd" in flake
     assert "oci-bss" in flake
+    assert "oci-images" in flake
+    assert "oci-images-dev" in flake
 
 
 def test_readme_documents_nix_workflow() -> None:

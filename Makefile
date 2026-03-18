@@ -4,6 +4,8 @@
 
 METHOD ?= compose
 COUNT ?= 1
+PROFILE ?= official
+PROFILE_SUFFIX = $(if $(filter official,$(PROFILE)),,-$(PROFILE))
 NIX ?= env NIX_CONFIG='experimental-features = nix-command flakes' nix
 NIX_FLAKE_REF ?= path:.
 
@@ -22,27 +24,27 @@ test-vm-destroy:
 	bash libvirt/scripts/vm_tests.sh --destroy-all
 
 deploy:
-	scripts/ops/deploy.sh --method $(METHOD)
+	OPENCHAMI_PROFILE=$(PROFILE) scripts/ops/deploy.sh --method $(METHOD)
 
 teardown:
-	scripts/ops/teardown.sh --method $(METHOD)
+	OPENCHAMI_PROFILE=$(PROFILE) scripts/ops/teardown.sh --method $(METHOD)
 
 check:
 	scripts/ops/check-deps.sh --method $(METHOD)
 
 generate:
 	@echo "Building docker-compose.yml..."
-	$(NIX) build $(NIX_FLAKE_REF)#docker-compose-yml --no-link --print-out-paths
+	$(NIX) build $(NIX_FLAKE_REF)#docker-compose-yml$(PROFILE_SUFFIX) --no-link --print-out-paths
 	@echo "Building quadlet units..."
-	$(NIX) build $(NIX_FLAKE_REF)#quadlet-units --no-link --print-out-paths
+	$(NIX) build $(NIX_FLAKE_REF)#quadlet-units$(PROFILE_SUFFIX) --no-link --print-out-paths
 	@echo "Building helm values..."
-	$(NIX) build $(NIX_FLAKE_REF)#helm-values --no-link --print-out-paths
+	$(NIX) build $(NIX_FLAKE_REF)#helm-values$(PROFILE_SUFFIX) --no-link --print-out-paths
 
 generate-images:
 	$(NIX) build $(NIX_FLAKE_REF)#boot-artifacts --no-link --print-out-paths
 
 build-images:
-	scripts/ops/build-images.sh
+	OPENCHAMI_PROFILE=$(PROFILE) scripts/ops/build-images.sh
 
 create-test-vms:
 	scripts/ops/create-test-vms.sh --method $(METHOD) --count $(COUNT)

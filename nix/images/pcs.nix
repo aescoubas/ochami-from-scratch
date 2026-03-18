@@ -6,27 +6,33 @@
 #
 { pkgs
 , lib
-, pcsSrc ? pkgs.fetchFromGitHub {
+, sourceSpec ? {
     owner = "OpenCHAMI";
     repo = "power-control";
     rev = "main";
     hash = "sha256-CmTGafEqDZg2rpjLdo32qpy5mMHS567OSM0ITco34Sk=";
+    vendorHash = "sha256-hiCp1uHyJx75sFQGW7L+x6YtYsH9y5ZkL54I6dQdQu0=";
   }
+, imageName ? "localhost/pcs"
+, imageTag ? sourceSpec.rev
 }:
 
 let
+  pcsSrc = pkgs.fetchFromGitHub {
+    inherit (sourceSpec) owner repo rev hash;
+  };
   pcs = pkgs.buildGoModule {
     pname = "power-control";
-    version = "unstable";
+    version = sourceSpec.rev;
     src = pcsSrc;
-    vendorHash = "sha256-hiCp1uHyJx75sFQGW7L+x6YtYsH9y5ZkL54I6dQdQu0=";
+    vendorHash = sourceSpec.vendorHash;
     subPackages = [ "cmd/power-control" ];
     doCheck = false;
   };
 in
 pkgs.dockerTools.buildLayeredImage {
-  name = "localhost/pcs";
-  tag = "local-pcs";
+  name = imageName;
+  tag = imageTag;
   contents = [
     pcs
     pkgs.bash

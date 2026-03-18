@@ -9,7 +9,7 @@ METHOD=""
 parse_common_args "$@"
 
 if [ -z "$METHOD" ]; then
-  log_error "usage: $0 --method compose|lab-vm|quadlets|minikube [--dry-run]"
+  log_error "usage: $0 --method compose|lab-vm|quadlets|minikube [--profile official|dev] [--dry-run]"
   exit 1
 fi
 
@@ -78,4 +78,4 @@ case "$METHOD" in
     ;;
 esac
 
-log_info "teardown complete for method=$METHOD"
+log_info "teardown complete for method=$METHOD profile=$PROFILE"

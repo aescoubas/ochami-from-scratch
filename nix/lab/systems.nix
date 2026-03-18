@@ -1,6 +1,7 @@
 { nixpkgs
 , guestSystem
 , hostPkgs
+, rawOfficialProfile
 , package ? null
 }:
 
@@ -9,41 +10,60 @@ let
     system = guestSystem;
   };
   defaults = import ../services/defaults.nix;
+  resolvedOfficialProfile = guestPkgs.callPackage ../profiles/resolve.nix {
+    lib = guestPkgs.lib;
+    inherit defaults;
+    profile = rawOfficialProfile;
+  };
+  labProfile = resolvedOfficialProfile // {
+    containerServiceIds = builtins.filter (id: id != "kea-sync") resolvedOfficialProfile.containerServiceIds;
+  };
   labBootArtifacts = import ../boot-artifacts.nix {
     pkgs = guestPkgs;
     lib = guestPkgs.lib;
     nixosSystem = nixpkgs.lib.nixosSystem;
     system = guestSystem;
   };
-  labImageOverrides = {
-    smd = defaults.localImageOverrides.smd;
-    bss = defaults.localImageOverrides.bss;
-    pcs = defaults.localImageOverrides.pcs;
-    cloudInit = defaults.localImageOverrides.cloudInit;
-    keaAdmin = defaults.localImageOverrides.keaAdmin;
-    keaDhcp4 = defaults.localImageOverrides.keaDhcp4;
-    nginx = defaults.localImageOverrides.nginx;
-    tftp = defaults.localImageOverrides.tftp;
-  };
   labLocalImageArchives = {
-    smd = guestPkgs.callPackage ../images/smd.nix { lib = guestPkgs.lib; };
-    bss = guestPkgs.callPackage ../images/bss.nix { lib = guestPkgs.lib; };
-    pcs = guestPkgs.callPackage ../images/pcs.nix { lib = guestPkgs.lib; };
-    cloudInit = guestPkgs.callPackage ../images/cloud-init.nix { lib = guestPkgs.lib; };
-    kea = guestPkgs.callPackage ../images/kea.nix { };
-    httpServer = guestPkgs.callPackage ../images/http-server.nix { };
-    tftp = guestPkgs.callPackage ../images/tftp.nix { };
+    smd = guestPkgs.callPackage ../images/smd.nix {
+      lib = guestPkgs.lib;
+      sourceSpec = labProfile.sources.smd;
+      imageTag = labProfile.refs.smd;
+    };
+    bss = guestPkgs.callPackage ../images/bss.nix {
+      lib = guestPkgs.lib;
+      sourceSpec = labProfile.sources.bss;
+      imageTag = labProfile.refs.bss;
+    };
+    pcs = guestPkgs.callPackage ../images/pcs.nix {
+      lib = guestPkgs.lib;
+      sourceSpec = labProfile.sources.pcs;
+      imageTag = labProfile.refs.pcs;
+    };
+    cloudInit = guestPkgs.callPackage ../images/cloud-init.nix {
+      lib = guestPkgs.lib;
+      sourceSpec = labProfile.sources.cloudInit;
+      imageTag = labProfile.refs.cloudInit;
+    };
+    kea = guestPkgs.callPackage ../images/kea.nix {
+      imageTag = labProfile.refs.kea;
+    };
+    httpServer = guestPkgs.callPackage ../images/http-server.nix {
+      imageTag = labProfile.refs.httpServer;
+    };
+    tftp = guestPkgs.callPackage ../images/tftp.nix {
+      imageTag = labProfile.refs.tftp;
+    };
   };
   labDeployProfile = guestPkgs.callPackage ../deploy/profile.nix {
     lib = guestPkgs.lib;
     inherit defaults;
+    profile = labProfile;
     hostIP = "192.168.100.1";
     pxeInterface = "eth1";
     dhcpRange = "192.168.100.50 - 192.168.100.150";
     pxeCidr = "24";
     bootArtifacts = labBootArtifacts;
-    enableKeaSync = false;
-    imageOverrides = labImageOverrides;
     containerTool = "${guestPkgs.podman}/bin/podman";
   };
   labSecrets = import ./secrets.nix {
@@ -51,7 +71,7 @@ let
   };
   labKea = import ../services/kea.nix {
     pkgs = guestPkgs;
-    inherit defaults;
+    defaults = defaults // { images = labProfile.runtimeImages; };
     hostIP = "192.168.100.1";
     pxeInterface = "eth1";
     dhcpRange = "192.168.100.50 - 192.168.100.150";
@@ -60,7 +80,7 @@ let
   labNginx = import ../services/nginx.nix {
     pkgs = guestPkgs;
     lib = guestPkgs.lib;
-    inherit defaults;
+    defaults = defaults // { images = labProfile.runtimeImages; };
     hostIP = "192.168.100.1";
     enableStork = false;
     bootArtifacts = labBootArtifacts;
@@ -99,13 +119,13 @@ in
       bootArtifacts = labBootArtifacts;
       inherit labDeployProfile labSecrets labRenderedConfigFiles labLocalImageArchives;
       labImageRefs = {
-        smd = labImageOverrides.smd;
-        bss = labImageOverrides.bss;
-        pcs = labImageOverrides.pcs;
-        cloudInit = labImageOverrides.cloudInit;
-        keaDhcp4 = labImageOverrides.keaDhcp4;
-        nginx = labImageOverrides.nginx;
-        tftp = labImageOverrides.tftp;
+        smd = labProfile.imageOverrides.smd;
+        bss = labProfile.imageOverrides.bss;
+        pcs = labProfile.imageOverrides.pcs;
+        cloudInit = labProfile.imageOverrides.cloudInit;
+        keaDhcp4 = labProfile.imageOverrides.keaDhcp4;
+        nginx = labProfile.imageOverrides.nginx;
+        tftp = labProfile.imageOverrides.tftp;
       };
     })
   ];

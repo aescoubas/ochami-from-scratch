@@ -4,11 +4,14 @@
 #   nix build .#oci-kea
 #   podman load < result
 #
-{ pkgs }:
+{ pkgs
+, imageName ? "localhost/kea"
+, imageTag ? builtins.replaceStrings [ "+" "/" ":" "@" " " ] [ "-" "-" "-" "-" "-" ] pkgs.kea.version
+}:
 
 pkgs.dockerTools.buildLayeredImage {
-  name = "localhost/kea";
-  tag = "latest";
+  name = imageName;
+  tag = imageTag;
   contents = [
     pkgs.kea
     pkgs.bash

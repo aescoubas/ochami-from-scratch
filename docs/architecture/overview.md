@@ -19,9 +19,13 @@ hand-written.
 The repository currently exports these Nix-built artifacts:
 
 - `docker-compose-yml` from `nix/generators/docker-compose.nix`
+- `docker-compose-yml-dev` for the cutting-edge profile
 - `quadlet-units` from `nix/generators/quadlets.nix`
+- `quadlet-units-dev` for the cutting-edge profile
 - `helm-values` from `nix/generators/helm-values.nix`
+- `helm-values-dev` for the cutting-edge profile
 - `deploy-profile` from `nix/deploy/profile.nix`
+- `deploy-profile-dev` for the cutting-edge profile
 - `boot-artifacts` from `nix/boot-artifacts.nix`
 - `lab-controller-vm` from the `nix/lab/controller.nix` module
 - `lab-boot-node-vm` from the `nix/lab/boot-node.nix` module
@@ -32,6 +36,10 @@ The lab VM outputs turn the existing NixOS smoke-lab modules into explicit VM
 artifacts that can be reused as the portable Linux lab boundary.
 
 ## Runtime Layers
+
+The unqualified flake outputs default to the `official` profile. Profile selection
+changes both the enabled stack definition and the tags applied to locally built
+OCI images, so generated artifacts and runtime image names stay aligned.
 
 - `nix/images/*.nix` builds the local OCI images used for OpenCHAMI-owned services and the
   bundled Kea runtime.

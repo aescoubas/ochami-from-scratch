@@ -1,6 +1,11 @@
 # OpenCHAMI From Scratch Roadmap
 
 ## In Progress
+- [x] Add first-class `official` and `dev` stack profiles with ref-tagged local OCI images
+  - [x] Model profile-specific service refs and enabled services in Nix so generated compose, quadlet, Helm, and deploy-profile outputs stay in sync.
+  - [x] Make the unqualified flake outputs and operator workflow default to the `official` profile.
+  - [x] Tag locally built images with the exact selected upstream ref instead of ad hoc `local-*` tags.
+  - [x] Verify with `make test`, `nix build .#docker-compose-yml`, `nix build .#docker-compose-yml-dev`, `nix build .#quadlet-units`, `nix build .#quadlet-units-dev`, `nix build .#deploy-profile`, `nix build .#deploy-profile-dev`, and a live `make deploy METHOD=compose` plus test-VM console boot check.
 - [x] Verify macOS compute VMs boot correctly from the controller VM lab.
   - [x] Keep the Linux `lab-vm` libvirt path unchanged.
   - [x] Route the macOS `lab-vm` controller and compute nodes through libvirt session domains, while still using controller-generated boot artifacts over user networking.

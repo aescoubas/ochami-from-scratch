@@ -155,6 +155,7 @@ class TestScriptStructure:
     def test_deploy_supports_skip_image_build(self):
         content = self._read_script("deploy.sh")
         assert "SKIP_IMAGE_BUILD" in content
+        assert "PROFILE" in content
 
     def test_register_nodes_uses_direct_smd_writes(self):
         content = self._read_script("register-nodes.sh")
@@ -244,9 +245,8 @@ class TestScriptStructure:
 
     def test_build_images_builds_all_oci_images(self):
         content = self._read_script("build-images.sh")
-        for img in ["oci-smd", "oci-bss", "oci-pcs", "oci-cloud-init",
-                     "oci-http-server", "oci-tftp", "oci-kea", "oci-kea-sync"]:
-            assert img in content, f"build-images.sh should build {img}"
+        assert "oci-images" in content
+        assert "PROFILE" in content
         assert "KEA_SYNC_SRC" in content
         assert "--impure" in content
         assert "https://github.com/aescoubas/kea-sync.git" in content

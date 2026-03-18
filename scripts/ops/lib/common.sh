@@ -581,6 +581,7 @@ restore_conflicting_dhcp_networks() {
 # --- Dry-run support ---
 
 DRY_RUN="${DRY_RUN:-false}"
+PROFILE="${OPENCHAMI_PROFILE:-official}"
 
 run_cmd() {
   if [ "$DRY_RUN" = "true" ]; then
@@ -607,9 +608,29 @@ parse_common_args() {
         METHOD="${1#--method=}"
         shift
         ;;
+      --profile)
+        PROFILE="${2:-official}"
+        shift 2
+        ;;
+      --profile=*)
+        PROFILE="${1#--profile=}"
+        shift
+        ;;
       *)
         shift
         ;;
     esac
   done
+}
+
+flake_output_for_profile() {
+  local base="$1"
+  local profile_name="${2:-${PROFILE:-official}}"
+
+  if [ "$profile_name" = "official" ]; then
+    printf '%s\n' "$base"
+    return 0
+  fi
+
+  printf '%s-%s\n' "$base" "$profile_name"
 }

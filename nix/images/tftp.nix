@@ -4,11 +4,14 @@
 #   nix build .#oci-tftp
 #   podman load < result
 #
-{ pkgs }:
+{ pkgs
+, imageName ? "localhost/tftp"
+, imageTag ? "latest"
+}:
 
 pkgs.dockerTools.buildLayeredImage {
-  name = "localhost/tftp";
-  tag = "latest";
+  name = imageName;
+  tag = imageTag;
   contents = [
     pkgs.tftp-hpa
     pkgs.coreutils

@@ -19,7 +19,7 @@ METHOD=""
 parse_common_args "$@"
 
 if [ -z "$METHOD" ]; then
-  log_error "usage: $0 --method compose|lab-vm|quadlets|minikube [--dry-run]"
+  log_error "usage: $0 --method compose|lab-vm|quadlets|minikube [--profile official|dev] [--dry-run]"
   exit 1
 fi
 
@@ -73,7 +73,7 @@ case "$METHOD" in
       if [ "$METHOD" = "quadlets" ]; then
         RUNTIME_FLAG="--runtime podman"
       fi
-      "$SCRIPT_DIR/build-images.sh" $RUNTIME_FLAG
+      OPENCHAMI_PROFILE="$PROFILE" "$SCRIPT_DIR/build-images.sh" $RUNTIME_FLAG
     else
       log_info "step 3/6: skipping image build (SKIP_IMAGE_BUILD=true)"
     fi
@@ -96,18 +96,21 @@ case "$METHOD" in
     mkdir -p "$COMPOSE_DIR"
     mkdir -p "$CONFIG_DIR"
     log_info "generating docker-compose.yml via nix..."
-    GENERATED=$(nix build "${NIX_FLAKE_REF}#docker-compose-yml" --no-link --print-out-paths 2>/dev/null)
+    COMPOSE_OUTPUT="$(flake_output_for_profile "docker-compose-yml" "$PROFILE")"
+    GENERATED=$(nix build "${NIX_FLAKE_REF}#${COMPOSE_OUTPUT}" --no-link --print-out-paths 2>/dev/null)
     if [ -z "$GENERATED" ] || [ ! -f "$GENERATED" ]; then
-      log_error "failed to generate docker-compose.yml"
+      log_error "failed to generate ${COMPOSE_OUTPUT}"
       exit 1
     fi
     cp "$GENERATED" "$COMPOSE_FILE"
     chmod 644 "$COMPOSE_FILE"
     log_info "docker-compose.yml generated at $COMPOSE_FILE"
     log_info "rendering compose config files via nix deploy profile..."
-    PROFILE_DIR=$(nix build "${NIX_FLAKE_REF}#deploy-profile" --no-link --print-out-paths 2>/dev/null)
+    # Resolve .#deploy-profile or .#deploy-profile-<profile> through flake_output_for_profile.
+    DEPLOY_PROFILE_OUTPUT="$(flake_output_for_profile "deploy-profile" "$PROFILE")"
+    PROFILE_DIR=$(nix build "${NIX_FLAKE_REF}#${DEPLOY_PROFILE_OUTPUT}" --no-link --print-out-paths 2>/dev/null)
     if [ -z "$PROFILE_DIR" ] || [ ! -d "$PROFILE_DIR" ]; then
-      log_error "failed to build deploy profile for compose configs"
+      log_error "failed to build ${DEPLOY_PROFILE_OUTPUT} for compose configs"
       exit 1
     fi
     # shellcheck disable=SC1090
@@ -129,10 +132,11 @@ case "$METHOD" in
     PROFILE_DIR="${PROFILE_DIR:-}"
     if [ -z "$PROFILE_DIR" ]; then
       log_info "building deploy profile with nix..."
-      PROFILE_DIR=$(nix build "${NIX_FLAKE_REF}#deploy-profile" --no-link --print-out-paths 2>/dev/null)
+      DEPLOY_PROFILE_OUTPUT="$(flake_output_for_profile "deploy-profile" "$PROFILE")"
+      PROFILE_DIR=$(nix build "${NIX_FLAKE_REF}#${DEPLOY_PROFILE_OUTPUT}" --no-link --print-out-paths 2>/dev/null)
     fi
     if [ -z "$PROFILE_DIR" ] || [ ! -d "$PROFILE_DIR" ]; then
-      log_error "deploy profile not found. Run: nix build .#deploy-profile"
+      log_error "deploy profile not found. Run: nix build .#$(flake_output_for_profile "deploy-profile" "$PROFILE")"
       exit 1
     fi
     run_cmd sudo "$PROFILE_DIR/bin/activate"
@@ -182,4 +186,4 @@ case "$METHOD" in
     ;;
 esac
 
-log_info "deployment complete (method=$METHOD)"
+log_info "deployment complete (method=$METHOD profile=$PROFILE)"

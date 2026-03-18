@@ -50,23 +50,12 @@ class TestDockerComposeGenerator:
         self.content = (ROOT / "nix" / "generators" / "docker-compose.nix").read_text()
 
     def test_imports_all_service_modules(self):
-        for svc in ["postgres", "smd", "bss", "cloudInit", "pcs", "kea", "nginx", "tftp"]:
-            assert f"{svc} = import" in self.content or f"{svc} =" in self.content, \
-                f"docker-compose.nix should import {svc}"
+        assert "../services/catalog.nix" in self.content
+        assert "profile" in self.content
 
     def test_collects_all_services(self):
-        assert "postgres.service" in self.content
-        assert "smd.init" in self.content
-        assert "smd.service" in self.content
-        assert "bss.init" in self.content
-        assert "bss.service" in self.content
-        assert "cloudInit.service" in self.content
-        assert "kea.init" in self.content
-        assert "kea.service" in self.content
+        assert "stack.allContainerServices" in self.content
         assert "kea.controlAgent" not in self.content
-        assert "kea.sync" in self.content
-        assert "nginx.service" in self.content
-        assert "tftp.service" in self.content
 
     def test_generates_depends_on(self):
         assert "depends_on" in self.content
@@ -97,8 +86,8 @@ class TestQuadletsGenerator:
         self.content = (ROOT / "nix" / "generators" / "quadlets.nix").read_text()
 
     def test_imports_all_service_modules(self):
-        for svc in ["postgres", "smd", "bss", "cloudInit", "pcs", "kea", "nginx", "tftp"]:
-            assert f"{svc} = import" in self.content or f"{svc} =" in self.content
+        assert "../services/catalog.nix" in self.content
+        assert "profile" in self.content
 
     def test_generates_container_section(self):
         assert "[Container]" in self.content
@@ -148,27 +137,17 @@ class TestHelmValuesGenerator:
 
 
 class TestDefaultsNixLocalImages:
-    """Verify defaults.nix has locally-built image definitions."""
+    """Verify defaults.nix keeps shared constants only."""
 
     def setup_method(self):
         self.content = (ROOT / "nix" / "services" / "defaults.nix").read_text()
 
-    def test_has_local_images(self):
-        assert "localImages" in self.content
+    def test_keeps_upstream_images(self):
+        assert "images" in self.content
 
-    def test_local_images_has_all_services(self):
-        for svc in ["smd", "bss", "pcs", "cloudInit", "kea", "httpServer", "tftp",
-                     "redfishEmulator", "storkAgent", "keaSync"]:
-            assert svc in self.content, f"defaults.nix should have localImages.{svc}"
-
-    def test_has_local_image_overrides(self):
-        assert "localImageOverrides" in self.content
-
-    def test_local_image_overrides_maps_core_services(self):
-        for svc in ["smd", "bss", "pcs", "cloudInit", "keaAdmin", "keaDhcp4",
-                    "keaSync", "tftp", "nginx"]:
-            assert svc in self.content, \
-                f"defaults.nix localImageOverrides should map {svc}"
+    def test_does_not_embed_local_image_overrides(self):
+        assert "localImages" not in self.content
+        assert "localImageOverrides" not in self.content
 
     def test_has_base_images(self):
         assert "baseImages" in self.content

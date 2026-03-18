@@ -94,7 +94,7 @@ class TestRuntimeImageAssets:
         content = (ROOT / "nix" / "images" / "kea.nix").read_text()
         assert "pkgs.kea" in content
         assert "lib/kea/hooks" in content
-        assert 'name = "localhost/kea";' in content
+        assert 'imageName ? "localhost/kea"' in content
         assert '"/bin/kea-dhcp4"' in content
 
     def test_http_server_image_defines_nobody_user(self):

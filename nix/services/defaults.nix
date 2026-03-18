@@ -40,35 +40,6 @@
     storkServer = "docker.io/signalorange/stork:ubuntu24.04-1.19.0";
   };
 
-  # Locally-built images (used by docker-compose and quadlets).
-  # These mirror the definitions in ochami/build.py.
-  localImages = {
-    smd = "localhost/smd:local-smd";
-    bss = "localhost/bss:local-bss";
-    pcs = "localhost/pcs:local-pcs";
-    cloudInit = "localhost/cloud-init:local-cloud-init";
-    kea = "localhost/kea:latest";
-    httpServer = "localhost/http-server:latest";
-    tftp = "localhost/tftp:latest";
-    keaSync = "localhost/kea-sync:latest";
-    redfishEmulator = "localhost/redfish-emulator:latest";
-    storkAgent = "localhost/stork-agent:latest";
-  };
-
-  # Image overrides: map upstream image keys to locally-built refs.
-  # Third-party images (postgres and storkServer) stay upstream.
-  localImageOverrides = {
-    smd = "localhost/smd:local-smd";
-    bss = "localhost/bss:local-bss";
-    pcs = "localhost/pcs:local-pcs";
-    cloudInit = "localhost/cloud-init:local-cloud-init";
-    keaAdmin = "localhost/kea:latest";
-    keaDhcp4 = "localhost/kea:latest";
-    keaSync = "localhost/kea-sync:latest";
-    tftp = "localhost/tftp:latest";
-    nginx = "localhost/http-server:latest";
-  };
-
   # Base images used to build local images.
   baseImages = {
     httpServer = "nginx:1.27.5-alpine";

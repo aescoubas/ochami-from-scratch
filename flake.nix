@@ -19,6 +19,15 @@
         };
 
         defaults = import ./nix/services/defaults.nix;
+        rawProfiles = {
+          official = import ./nix/profiles/official.nix;
+          dev = import ./nix/profiles/dev.nix;
+        };
+        resolveProfile = rawProfile: pkgs.callPackage ./nix/profiles/resolve.nix {
+          inherit lib defaults;
+          profile = rawProfile;
+        };
+        profiles = lib.mapAttrs (_: rawProfile: resolveProfile rawProfile) rawProfiles;
 
         mcpPackage = pkgs.callPackage ./nix/package.nix { };
         labGuestMcpPackage = labGuestPkgs.callPackage ./nix/package.nix { };
@@ -30,6 +39,7 @@
           inherit nixpkgs hostPkgs;
           guestSystem = labGuestSystem;
           package = null;
+          rawOfficialProfile = rawProfiles.official;
         };
         labControllerSystem = labSystems.controller.config.system.build.toplevel;
         labBootNodeSystem = labSystems.bootnode.config.system.build.toplevel;
@@ -63,6 +73,74 @@
             exePath = "/bin/ochami-mcp";
           };
         };
+        profilePackages =
+          if pkgs.stdenv.isLinux then
+            lib.mapAttrs (profileName: profile:
+              let
+                ociImageArchives = {
+                  smd = pkgs.callPackage ./nix/images/smd.nix {
+                    inherit lib;
+                    sourceSpec = profile.sources.smd;
+                    imageTag = profile.refs.smd;
+                  };
+                  bss = pkgs.callPackage ./nix/images/bss.nix {
+                    inherit lib;
+                    sourceSpec = profile.sources.bss;
+                    imageTag = profile.refs.bss;
+                  };
+                  pcs = pkgs.callPackage ./nix/images/pcs.nix {
+                    inherit lib;
+                    sourceSpec = profile.sources.pcs;
+                    imageTag = profile.refs.pcs;
+                  };
+                  cloudInit = pkgs.callPackage ./nix/images/cloud-init.nix {
+                    inherit lib;
+                    sourceSpec = profile.sources.cloudInit;
+                    imageTag = profile.refs.cloudInit;
+                  };
+                  kea = pkgs.callPackage ./nix/images/kea.nix {
+                    imageTag = profile.refs.kea;
+                  };
+                  httpServer = pkgs.callPackage ./nix/images/http-server.nix {
+                    imageTag = profile.refs.httpServer;
+                  };
+                  tftp = pkgs.callPackage ./nix/images/tftp.nix {
+                    imageTag = profile.refs.tftp;
+                  };
+                  keaSync = pkgs.callPackage ./nix/images/kea-sync.nix {
+                    imageTag = profile.refs.keaSync;
+                  };
+                };
+              in
+              {
+                "boot-artifacts" = bootArtifacts.package;
+                "deploy-profile" = pkgs.callPackage ./nix/deploy/profile.nix {
+                  inherit lib defaults bootArtifacts profile;
+                };
+                "docker-compose-yml" = pkgs.callPackage ./nix/generators/docker-compose.nix {
+                  inherit lib defaults bootArtifacts profile;
+                };
+                "quadlet-units" = pkgs.callPackage ./nix/generators/quadlets.nix {
+                  inherit lib defaults bootArtifacts profile;
+                };
+                "helm-values" = pkgs.callPackage ./nix/generators/helm-values.nix {
+                  inherit lib defaults profile;
+                };
+                "oci-smd" = ociImageArchives.smd;
+                "oci-bss" = ociImageArchives.bss;
+                "oci-pcs" = ociImageArchives.pcs;
+                "oci-cloud-init" = ociImageArchives.cloudInit;
+                "oci-kea" = ociImageArchives.kea;
+                "oci-http-server" = ociImageArchives.httpServer;
+                "oci-tftp" = ociImageArchives.tftp;
+                "oci-kea-sync" = ociImageArchives.keaSync;
+                "oci-images" = pkgs.callPackage ./nix/images/bundle.nix {
+                  inherit lib profileName;
+                  images = ociImageArchives;
+                };
+              }) profiles
+          else
+            { };
       in
       {
         packages = {
@@ -73,31 +151,48 @@
           "lab-controller-vm" = labControllerVm;
           "lab-boot-node-vm" = labBootNodeVm;
         } // lib.optionalAttrs pkgs.stdenv.isLinux {
-          "boot-artifacts" = bootArtifacts.package;
-          "deploy-profile" = pkgs.callPackage ./nix/deploy/profile.nix {
-            inherit lib defaults bootArtifacts;
-            imageOverrides = defaults.localImageOverrides;
-          };
-          "docker-compose-yml" = pkgs.callPackage ./nix/generators/docker-compose.nix {
-            inherit lib defaults bootArtifacts;
-            imageOverrides = defaults.localImageOverrides;
-          };
-          "quadlet-units" = pkgs.callPackage ./nix/generators/quadlets.nix {
-            inherit lib defaults bootArtifacts;
-            imageOverrides = defaults.localImageOverrides;
-          };
-          "helm-values" = pkgs.callPackage ./nix/generators/helm-values.nix {
-            inherit lib defaults;
-            imageOverrides = defaults.localImageOverrides;
-          };
-          "oci-smd" = pkgs.callPackage ./nix/images/smd.nix { inherit lib; };
-          "oci-bss" = pkgs.callPackage ./nix/images/bss.nix { inherit lib; };
-          "oci-pcs" = pkgs.callPackage ./nix/images/pcs.nix { inherit lib; };
-          "oci-cloud-init" = pkgs.callPackage ./nix/images/cloud-init.nix { inherit lib; };
-          "oci-kea" = pkgs.callPackage ./nix/images/kea.nix { };
-          "oci-http-server" = pkgs.callPackage ./nix/images/http-server.nix { };
-          "oci-tftp" = pkgs.callPackage ./nix/images/tftp.nix { };
-          "oci-kea-sync" = pkgs.callPackage ./nix/images/kea-sync.nix { };
+          "boot-artifacts" = profilePackages.official."boot-artifacts";
+          "boot-artifacts-official" = profilePackages.official."boot-artifacts";
+          "boot-artifacts-dev" = profilePackages.dev."boot-artifacts";
+          "deploy-profile" = profilePackages.official."deploy-profile";
+          "deploy-profile-official" = profilePackages.official."deploy-profile";
+          "deploy-profile-dev" = profilePackages.dev."deploy-profile";
+          "docker-compose-yml" = profilePackages.official."docker-compose-yml";
+          "docker-compose-yml-official" = profilePackages.official."docker-compose-yml";
+          "docker-compose-yml-dev" = profilePackages.dev."docker-compose-yml";
+          "quadlet-units" = profilePackages.official."quadlet-units";
+          "quadlet-units-official" = profilePackages.official."quadlet-units";
+          "quadlet-units-dev" = profilePackages.dev."quadlet-units";
+          "helm-values" = profilePackages.official."helm-values";
+          "helm-values-official" = profilePackages.official."helm-values";
+          "helm-values-dev" = profilePackages.dev."helm-values";
+          "oci-smd" = profilePackages.official."oci-smd";
+          "oci-smd-official" = profilePackages.official."oci-smd";
+          "oci-smd-dev" = profilePackages.dev."oci-smd";
+          "oci-bss" = profilePackages.official."oci-bss";
+          "oci-bss-official" = profilePackages.official."oci-bss";
+          "oci-bss-dev" = profilePackages.dev."oci-bss";
+          "oci-pcs" = profilePackages.official."oci-pcs";
+          "oci-pcs-official" = profilePackages.official."oci-pcs";
+          "oci-pcs-dev" = profilePackages.dev."oci-pcs";
+          "oci-cloud-init" = profilePackages.official."oci-cloud-init";
+          "oci-cloud-init-official" = profilePackages.official."oci-cloud-init";
+          "oci-cloud-init-dev" = profilePackages.dev."oci-cloud-init";
+          "oci-kea" = profilePackages.official."oci-kea";
+          "oci-kea-official" = profilePackages.official."oci-kea";
+          "oci-kea-dev" = profilePackages.dev."oci-kea";
+          "oci-http-server" = profilePackages.official."oci-http-server";
+          "oci-http-server-official" = profilePackages.official."oci-http-server";
+          "oci-http-server-dev" = profilePackages.dev."oci-http-server";
+          "oci-tftp" = profilePackages.official."oci-tftp";
+          "oci-tftp-official" = profilePackages.official."oci-tftp";
+          "oci-tftp-dev" = profilePackages.dev."oci-tftp";
+          "oci-kea-sync" = profilePackages.official."oci-kea-sync";
+          "oci-kea-sync-official" = profilePackages.official."oci-kea-sync";
+          "oci-kea-sync-dev" = profilePackages.dev."oci-kea-sync";
+          "oci-images" = profilePackages.official."oci-images";
+          "oci-images-official" = profilePackages.official."oci-images";
+          "oci-images-dev" = profilePackages.dev."oci-images";
           "oci-redfish-emulator" = pkgs.callPackage ./nix/images/redfish-emulator.nix {
             emulatorSrc = ./ochami-helm/redfish-emulator;
           };

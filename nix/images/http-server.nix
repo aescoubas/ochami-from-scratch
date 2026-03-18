@@ -4,11 +4,14 @@
 #   nix build .#oci-http-server
 #   podman load < result
 #
-{ pkgs }:
+{ pkgs
+, imageName ? "localhost/http-server"
+, imageTag ? "latest"
+}:
 
 pkgs.dockerTools.buildLayeredImage {
-  name = "localhost/http-server";
-  tag = "latest";
+  name = imageName;
+  tag = imageTag;
   contents = [
     pkgs.nginx
     pkgs.coreutils

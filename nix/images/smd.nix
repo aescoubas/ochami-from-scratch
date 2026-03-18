@@ -6,27 +6,33 @@
 #
 { pkgs
 , lib
-, smdSrc ? pkgs.fetchFromGitHub {
+, sourceSpec ? {
     owner = "openchami";
     repo = "smd";
     rev = "main";
     hash = "sha256-SKAao/ib26e2I0QKprxQjUcxD9gFKdFHUwJpGfLTLkc=";
+    vendorHash = "sha256-Gqvn+GMctybEOhLsXo1/2TewpGiO7c0IO/YFC2TPWKQ=";
   }
+, imageName ? "localhost/smd"
+, imageTag ? sourceSpec.rev
 }:
 
 let
+  smdSrc = pkgs.fetchFromGitHub {
+    inherit (sourceSpec) owner repo rev hash;
+  };
   smd = pkgs.buildGoModule {
     pname = "smd";
-    version = "unstable";
+    version = sourceSpec.rev;
     src = smdSrc;
-    vendorHash = "sha256-Gqvn+GMctybEOhLsXo1/2TewpGiO7c0IO/YFC2TPWKQ=";
+    vendorHash = sourceSpec.vendorHash;
     subPackages = [ "cmd/smd" "cmd/smd-init" ];
     doCheck = false;
   };
 in
 pkgs.dockerTools.buildLayeredImage {
-  name = "localhost/smd";
-  tag = "local-smd";
+  name = imageName;
+  tag = imageTag;
   contents = [
     smd
     pkgs.bash

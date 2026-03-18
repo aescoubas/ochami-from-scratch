@@ -7,52 +7,23 @@
 { pkgs
 , lib
 , defaults
+, profile
 , hostIP ? "192.168.100.1"
 , pxeInterface ? "virbr-ochami"
 , dhcpRange ? "192.168.100.50 - 192.168.100.150"
 , pxeCidr ? "24"
 , enableStork ? false
 , bootArtifacts
-, imageOverrides ? { }
 }:
 
 let
-  images = defaults.images // imageOverrides;
-  effectiveDefaults = defaults // { inherit images; };
-
-  # Import all service modules.
-  postgres = import ../services/postgres.nix { inherit pkgs; defaults = effectiveDefaults; };
-  smd = import ../services/smd.nix { defaults = effectiveDefaults; };
-  bss = import ../services/bss.nix {
-    inherit pkgs;
-    defaults = effectiveDefaults;
-    inherit hostIP bootArtifacts;
-  };
-  cloudInit = import ../services/cloud-init.nix { defaults = effectiveDefaults; };
-  pcs = import ../services/pcs.nix { defaults = effectiveDefaults; };
-  kea = import ../services/kea.nix { inherit pkgs; defaults = effectiveDefaults; inherit hostIP pxeInterface dhcpRange pxeCidr; };
-  nginx = import ../services/nginx.nix {
+  imageOverrides = profile.imageOverrides;
+  stack = import ../services/catalog.nix {
     inherit pkgs lib;
-    defaults = effectiveDefaults;
-    inherit hostIP enableStork bootArtifacts;
+    inherit defaults profile hostIP pxeInterface dhcpRange pxeCidr enableStork bootArtifacts;
   };
-  tftp = import ../services/tftp.nix { defaults = effectiveDefaults; };
 
-  allServices = [
-    postgres.service
-    smd.init
-    smd.service
-    bss.init
-    bss.service
-    cloudInit.service
-    pcs.init
-    pcs.service
-    kea.init
-    kea.service
-    kea.sync
-    nginx.service
-    tftp.service
-  ];
+  allServices = stack.allContainerServices;
 
   # Map a volume spec to quadlet Volume= line.
   # Named volumes (ochami-*) → short name (podman manages)

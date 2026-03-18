@@ -153,6 +153,23 @@ Deploy the stack:
 make deploy METHOD=compose
 ```
 
+The default stack profile is `official`. That profile pins locally built images to
+the upstream refs:
+
+- `smd:v2.19.2`
+- `bss:v1.32.2`
+- `cloud-init:v1.4.0`
+- `pcs:main`
+- `kea-sync:main`
+- `http-server:latest`
+- `tftp:latest`
+
+To opt into the moving `dev` profile instead:
+
+```bash
+make deploy METHOD=compose PROFILE=dev
+```
+
 This compose path:
 
 - ensures the secrets file exists at `.tmp/openchami-secrets.env`
@@ -352,6 +369,13 @@ Build the local OCI images explicitly with:
 make build-images
 ```
 
+Use `PROFILE=dev` if you want the cutting-edge stack instead of the default
+`official` profile:
+
+```bash
+make build-images PROFILE=dev
+```
+
 Or call the script directly:
 
 ```bash
@@ -371,6 +395,7 @@ Relevant overrides:
 - `KEA_SYNC_SRC`
 - `KEA_SYNC_CHECKOUT`
 - `KEA_SYNC_REPO`
+- `OPENCHAMI_PROFILE`
 
 ## Other Workflows
 

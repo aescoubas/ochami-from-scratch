@@ -64,8 +64,8 @@ def test_controller_vm_activates_in_guest_openchami_profile() -> None:
 def test_lab_systems_use_local_image_overrides_for_controller_services() -> None:
     systems = (PROJECT_ROOT / "nix" / "lab" / "systems.nix").read_text(encoding="utf-8")
 
-    assert "labImageOverrides" in systems
-    assert "localImageOverrides" in systems
-    assert "imageOverrides = labImageOverrides;" in systems
+    assert "resolvedOfficialProfile" in systems
+    assert "labProfile.imageOverrides" in systems
+    assert "profile = labProfile;" in systems
     assert "labLocalImageArchives" in systems
-    assert "enableKeaSync = false;" in systems
+    assert 'id != "kea-sync"' in systems

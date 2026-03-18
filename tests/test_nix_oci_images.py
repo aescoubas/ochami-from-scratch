@@ -35,6 +35,8 @@ class TestGoServiceImages:
         for name in self.GO_SERVICES:
             content = (IMAGES_DIR / name).read_text()
             assert "fetchFromGitHub" in content, f"{name} should use fetchFromGitHub"
+            assert "sourceSpec" in content, f"{name} should accept a sourceSpec parameter"
+            assert "imageTag" in content, f"{name} should accept an imageTag parameter"
 
     def test_uses_build_go_module(self):
         for name in self.GO_SERVICES:
@@ -75,6 +77,7 @@ class TestParameterizedSourcePaths:
     def test_kea_sync_uses_parameter(self):
         content = (IMAGES_DIR / "kea-sync.nix").read_text()
         assert "keaSyncSrc" in content, "kea-sync.nix should accept keaSyncSrc parameter"
+        assert "imageTag" in content, "kea-sync.nix should accept an imageTag parameter"
         assert 'builtins.getEnv "KEA_SYNC_SRC"' in content, \
             "kea-sync.nix should allow KEA_SYNC_SRC to point at the sibling service workspace"
         assert "buildGoModule" in content, "kea-sync.nix should build the Go service"
@@ -102,12 +105,13 @@ class TestFlakeExportsOciImages:
             assert name in self.flake, f"flake.nix should export {name}"
 
     def test_passes_source_paths_to_images(self):
-        assert '"oci-kea-sync" = pkgs.callPackage ./nix/images/kea-sync.nix' in self.flake
-        assert '"oci-kea" = pkgs.callPackage ./nix/images/kea.nix' in self.flake
+        assert "./nix/images/kea-sync.nix" in self.flake
+        assert "./nix/images/kea.nix" in self.flake
         assert "emulatorSrc = ./ochami-helm/redfish-emulator" in self.flake
 
     def test_passes_local_image_overrides_to_generators(self):
-        assert "localImageOverrides" in self.flake
+        assert "./nix/profiles/resolve.nix" in self.flake
+        assert "profilePackages" in self.flake
 
 
 class TestKeaImage:
