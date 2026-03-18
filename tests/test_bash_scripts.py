@@ -315,6 +315,15 @@ class TestScriptStructure:
         assert "stop)" in content
         assert "health)" in content
 
+    def test_lab_vm_raises_darwin_controller_defaults(self):
+        content = self._read_script("lab-vm.sh")
+        assert 'DEFAULT_LAB_VM_CONTROLLER_MEMORY_MIB="2048"' in content
+        assert 'DEFAULT_LAB_VM_CONTROLLER_VCPUS="1"' in content
+        assert 'DEFAULT_LAB_VM_CONTROLLER_MEMORY_MIB="4096"' in content
+        assert 'DEFAULT_LAB_VM_CONTROLLER_VCPUS="4"' in content
+        assert 'LAB_VM_CONTROLLER_MEMORY_MIB="${LAB_VM_CONTROLLER_MEMORY_MIB:-${DEFAULT_LAB_VM_CONTROLLER_MEMORY_MIB}}"' in content
+        assert 'LAB_VM_CONTROLLER_VCPUS="${LAB_VM_CONTROLLER_VCPUS:-${DEFAULT_LAB_VM_CONTROLLER_VCPUS}}"' in content
+
     def test_scripts_support_dry_run(self):
         for name in ["check-deps.sh", "health-check.sh", "lab-vm.sh", "teardown.sh",
                       "deploy.sh", "register-bss-defaults.sh"]:

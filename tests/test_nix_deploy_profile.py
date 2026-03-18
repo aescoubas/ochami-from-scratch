@@ -90,6 +90,7 @@ def test_deploy_profile_uses_runner_scripts_for_systemd_exec():
     assert ". /etc/openchami/secrets.env" in profile
     assert "wait_for_tcp" in profile
     assert 'lib.elem "postgres"' in profile
+    assert "wait_for_tcp 127.0.0.1 ${toString defaults.ports.postgres} 120" in profile
     assert "${pkgs.coreutils}/bin/sleep" in profile
     assert "successExitCodes" in profile
     assert 'args+=(' in profile

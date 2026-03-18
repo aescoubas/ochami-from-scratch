@@ -146,7 +146,7 @@ let
       ${lib.concatStringsSep "\n      " volumeLines}
       ${lib.concatStringsSep "\n      " capabilityLines}
       ${lib.concatStringsSep "\n      " healthLines}
-      ${lib.optionalString needsPostgresWait "wait_for_tcp 127.0.0.1 ${toString defaults.ports.postgres} 30"}
+      ${lib.optionalString needsPostgresWait "wait_for_tcp 127.0.0.1 ${toString defaults.ports.postgres} 120"}
       ${lib.optionalString (isOneshot && successExitCodes != [ ]) ''
       set +e
       ${containerTool} "''${args[@]}" ${lib.escapeShellArg svc.image}${commandSuffix}
