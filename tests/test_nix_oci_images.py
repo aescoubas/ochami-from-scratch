@@ -102,8 +102,8 @@ class TestFlakeExportsOciImages:
             assert name in self.flake, f"flake.nix should export {name}"
 
     def test_passes_source_paths_to_images(self):
-        assert "packages.oci-kea-sync = pkgs.callPackage ./nix/images/kea-sync.nix" in self.flake
-        assert "packages.oci-kea = pkgs.callPackage ./nix/images/kea.nix" in self.flake
+        assert '"oci-kea-sync" = pkgs.callPackage ./nix/images/kea-sync.nix' in self.flake
+        assert '"oci-kea" = pkgs.callPackage ./nix/images/kea.nix' in self.flake
         assert "emulatorSrc = ./ochami-helm/redfish-emulator" in self.flake
 
     def test_passes_local_image_overrides_to_generators(self):
@@ -137,6 +137,10 @@ class TestLabFiles:
     def test_controller_has_increased_memory(self):
         content = (ROOT / "nix" / "lab" / "controller.nix").read_text()
         assert "2048" in content
+
+    def test_controller_exposes_ssh_for_host_orchestration(self):
+        content = (ROOT / "nix" / "lab" / "controller.nix").read_text()
+        assert "services.openssh" in content
 
     def test_secrets_has_deterministic_passwords(self):
         content = (ROOT / "nix" / "lab" / "secrets.nix").read_text()

@@ -13,16 +13,40 @@
           inherit system;
         };
         lib = pkgs.lib;
+        labGuestSystem = "x86_64-linux";
+        labGuestPkgs = import nixpkgs {
+          system = labGuestSystem;
+        };
 
         defaults = import ./nix/services/defaults.nix;
 
         mcpPackage = pkgs.callPackage ./nix/package.nix { };
+        labGuestMcpPackage = labGuestPkgs.callPackage ./nix/package.nix { };
         checkPackage = pkgs.callPackage ./nix/package.nix {
           runTests = true;
         };
-        labSmoke = pkgs.callPackage ./nix/tests/lab-smoke.nix {
-          package = mcpPackage;
+        hostPkgs = pkgs;
+        labSystems = import ./nix/lab/systems.nix {
+          inherit nixpkgs hostPkgs;
+          guestSystem = labGuestSystem;
+          package = null;
         };
+        labControllerSystem = labSystems.controller.config.system.build.toplevel;
+        labBootNodeSystem = labSystems.bootnode.config.system.build.toplevel;
+        labControllerVm = labSystems.controller.config.system.build.vm;
+        labBootNodeVm = labSystems.bootnode.config.system.build.vm;
+        labSmoke = labGuestPkgs.callPackage ./nix/tests/lab-smoke.nix {
+          package = labGuestMcpPackage;
+        };
+        bootArtifacts =
+          if pkgs.stdenv.isLinux then
+            import ./nix/boot-artifacts.nix {
+              inherit pkgs system;
+              lib = pkgs.lib;
+              nixosSystem = nixpkgs.lib.nixosSystem;
+            }
+          else
+            null;
         devPython = pkgs.python3.withPackages (ps: [
           ps.build
           ps.pip
@@ -40,13 +64,57 @@
           };
         };
       in
-      ({
-        packages.default = mcpPackage;
-        packages.mcp = mcpPackage;
+      {
+        packages = {
+          default = mcpPackage;
+          mcp = mcpPackage;
+          "lab-controller-system" = labControllerSystem;
+          "lab-boot-node-system" = labBootNodeSystem;
+          "lab-controller-vm" = labControllerVm;
+          "lab-boot-node-vm" = labBootNodeVm;
+        } // lib.optionalAttrs pkgs.stdenv.isLinux {
+          "boot-artifacts" = bootArtifacts.package;
+          "deploy-profile" = pkgs.callPackage ./nix/deploy/profile.nix {
+            inherit lib defaults bootArtifacts;
+            imageOverrides = defaults.localImageOverrides;
+          };
+          "docker-compose-yml" = pkgs.callPackage ./nix/generators/docker-compose.nix {
+            inherit lib defaults bootArtifacts;
+            imageOverrides = defaults.localImageOverrides;
+          };
+          "quadlet-units" = pkgs.callPackage ./nix/generators/quadlets.nix {
+            inherit lib defaults bootArtifacts;
+            imageOverrides = defaults.localImageOverrides;
+          };
+          "helm-values" = pkgs.callPackage ./nix/generators/helm-values.nix {
+            inherit lib defaults;
+            imageOverrides = defaults.localImageOverrides;
+          };
+          "oci-smd" = pkgs.callPackage ./nix/images/smd.nix { inherit lib; };
+          "oci-bss" = pkgs.callPackage ./nix/images/bss.nix { inherit lib; };
+          "oci-pcs" = pkgs.callPackage ./nix/images/pcs.nix { inherit lib; };
+          "oci-cloud-init" = pkgs.callPackage ./nix/images/cloud-init.nix { inherit lib; };
+          "oci-kea" = pkgs.callPackage ./nix/images/kea.nix { };
+          "oci-http-server" = pkgs.callPackage ./nix/images/http-server.nix { };
+          "oci-tftp" = pkgs.callPackage ./nix/images/tftp.nix { };
+          "oci-kea-sync" = pkgs.callPackage ./nix/images/kea-sync.nix { };
+          "oci-redfish-emulator" = pkgs.callPackage ./nix/images/redfish-emulator.nix {
+            emulatorSrc = ./ochami-helm/redfish-emulator;
+          };
+        };
 
-        inherit apps;
+        apps = apps // lib.optionalAttrs pkgs.stdenv.isLinux {
+          "lab-driver" = flake-utils.lib.mkApp {
+            drv = labSmoke.driverInteractive;
+            exePath = "/bin/nixos-test-driver";
+          };
+        };
 
-        checks.default = checkPackage;
+        checks = {
+          default = checkPackage;
+        } // lib.optionalAttrs pkgs.stdenv.isLinux {
+          "lab-smoke" = labSmoke;
+        };
 
         devShells.default = pkgs.mkShell {
           packages = [
@@ -61,57 +129,6 @@
         };
 
         formatter = pkgs.nixpkgs-fmt;
-      } // lib.optionalAttrs pkgs.stdenv.isLinux (
-        let
-          bootArtifacts = import ./nix/boot-artifacts.nix {
-            inherit pkgs system;
-            lib = pkgs.lib;
-            nixosSystem = nixpkgs.lib.nixosSystem;
-          };
-        in
-        {
-        packages.boot-artifacts = bootArtifacts.package;
-
-        packages.deploy-profile = pkgs.callPackage ./nix/deploy/profile.nix {
-          inherit lib defaults bootArtifacts;
-          imageOverrides = defaults.localImageOverrides;
-        };
-
-        packages.docker-compose-yml = pkgs.callPackage ./nix/generators/docker-compose.nix {
-          inherit lib defaults bootArtifacts;
-          imageOverrides = defaults.localImageOverrides;
-        };
-
-        packages.quadlet-units = pkgs.callPackage ./nix/generators/quadlets.nix {
-          inherit lib defaults bootArtifacts;
-          imageOverrides = defaults.localImageOverrides;
-        };
-
-        packages.helm-values = pkgs.callPackage ./nix/generators/helm-values.nix {
-          inherit lib defaults;
-          imageOverrides = defaults.localImageOverrides;
-        };
-
-        # OCI image builds.
-        packages.oci-smd = pkgs.callPackage ./nix/images/smd.nix { inherit lib; };
-        packages.oci-bss = pkgs.callPackage ./nix/images/bss.nix { inherit lib; };
-        packages.oci-pcs = pkgs.callPackage ./nix/images/pcs.nix { inherit lib; };
-        packages.oci-cloud-init = pkgs.callPackage ./nix/images/cloud-init.nix { inherit lib; };
-        packages.oci-kea = pkgs.callPackage ./nix/images/kea.nix { };
-        packages.oci-http-server = pkgs.callPackage ./nix/images/http-server.nix { };
-        packages.oci-tftp = pkgs.callPackage ./nix/images/tftp.nix { };
-        packages.oci-kea-sync = pkgs.callPackage ./nix/images/kea-sync.nix { };
-        packages.oci-redfish-emulator = pkgs.callPackage ./nix/images/redfish-emulator.nix {
-          emulatorSrc = ./ochami-helm/redfish-emulator;
-        };
-
-        apps = apps // {
-          lab-driver = flake-utils.lib.mkApp {
-            drv = labSmoke.driverInteractive;
-            exePath = "/bin/nixos-test-driver";
-          };
-        };
-
-        checks.lab-smoke = labSmoke;
-      })));
+      }
+      );
 }

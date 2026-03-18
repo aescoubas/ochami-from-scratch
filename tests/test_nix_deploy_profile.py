@@ -83,6 +83,20 @@ def test_flake_exports_boot_artifacts():
     assert "nix/boot-artifacts.nix" in flake
 
 
+def test_deploy_profile_uses_runner_scripts_for_systemd_exec():
+    """The deploy profile should avoid shell-unsafe ExecStart strings."""
+    profile = (ROOT / "nix" / "deploy" / "profile.nix").read_text()
+    assert "makeContainerRunner" in profile
+    assert ". /etc/openchami/secrets.env" in profile
+    assert "wait_for_tcp" in profile
+    assert 'lib.elem "postgres"' in profile
+    assert "${pkgs.coreutils}/bin/sleep" in profile
+    assert "successExitCodes" in profile
+    assert 'args+=(' in profile
+    assert "exec ${containerTool}" in profile
+    assert 'args[@]' in profile
+
+
 def test_deploy_profile_defaults_to_virbr_ochami_interface():
     """The deploy profile should default to the VM lab PXE bridge."""
     profile = (ROOT / "nix" / "deploy" / "profile.nix").read_text()

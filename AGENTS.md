@@ -20,6 +20,9 @@
 *   PXE/iPXE boot payloads are built by `nix/boot-artifacts.nix` and consumed by the local runtime.
 *   Runtime operations (deploy, teardown, health checks, node registration) are handled by bash scripts in `scripts/ops/`.
 *   The local Docker Compose PXE lab uses libvirt network `ochami-pxe-net`, bridge `virbr-ochami`, and `scripts/ops/create-test-vms.sh` for test VM bootstrap.
+*   The portable `lab-vm` path runs the controller VM through libvirt: `qemu:///system` on Linux and `qemu:///session` on macOS.
+*   On macOS, `make create-test-vms METHOD=lab-vm` still uses controller-generated boot artifacts over user networking, but the controller and compute nodes are both real libvirt session domains.
+*   macOS `lab-vm` deploys may need `OPENCHAMI_LAB_VM_BUILD_HOST` (or another `x86_64-linux` builder) so the Linux guest closure can be built or warmed from a Linux machine before the local libvirt session domains start.
 *   Local OCI image builds are orchestrated by `scripts/ops/build-images.sh`; the `kea-sync` image is built from an external checkout and may be cloned from `https://github.com/aescoubas/kea-sync.git` when needed.
 *   `make teardown METHOD=compose` removes compose containers and volumes and restores paused libvirt DHCP networks, but it does **not** delete libvirt test VMs or their qcow2 disks.
 *   Architecture overviews and ADRs belong under `docs/architecture/`, not a top-level `ARCHITECTURE/` directory.
@@ -36,6 +39,7 @@
     *   **Non-Interactive:** Use flags to suppress prompts (e.g., `apt-get -y`).
     *   **No Watch Modes:** Never run commands that block forever unless explicitly requested as a background daemon.
     *   **Compose PXE Host Assumptions:** The compose PXE path expects host tools such as Docker, libvirt, `envsubst`, and passwordless `sudo` for bridge/libvirt network preparation.
+    *   **libvirt URI Split:** Linux `lab-vm` defaults to `qemu:///system`; macOS `lab-vm` defaults to `qemu:///session`. Do not assume `virsh list` on macOS uses the system daemon.
 7.  **Git:**
     *   **Commit Message Standard:** Use Conventional Commits (`type(scope): description`).
         *   Types: `feat`, `fix`, `docs`, `style`, `refactor`, `test`, `chore`.

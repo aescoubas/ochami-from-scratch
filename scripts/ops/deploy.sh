@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # deploy.sh — Top-level deployment orchestrator for OpenCHAMI.
-# Usage: ./deploy.sh --method compose|quadlets|minikube [--dry-run]
+# Usage: ./deploy.sh --method compose|lab-vm|quadlets|minikube [--dry-run]
 #
 # Steps:
 #   1. Check dependencies
@@ -13,12 +13,13 @@
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$(dirname "$SCRIPT_DIR")")"
 . "$SCRIPT_DIR/lib/common.sh"
+NIX_FLAKE_REF="${OPENCHAMI_NIX_FLAKE_REF:-$(nix_flake_ref "$PROJECT_ROOT")}"
 
 METHOD=""
 parse_common_args "$@"
 
 if [ -z "$METHOD" ]; then
-  log_error "usage: $0 --method compose|quadlets|minikube [--dry-run]"
+  log_error "usage: $0 --method compose|lab-vm|quadlets|minikube [--dry-run]"
   exit 1
 fi
 
@@ -48,13 +49,18 @@ case "$METHOD" in
   compose|docker-compose)
     DEFAULT_SECRETS_FILE="${PROJECT_ROOT}/.tmp/openchami-secrets.env"
     ;;
+  lab-vm)
+    DEFAULT_SECRETS_FILE=""
+    ;;
   *)
     DEFAULT_SECRETS_FILE="/etc/openchami/secrets.env"
     ;;
 esac
 SECRETS_FILE="${OPENCHAMI_SECRETS:-$DEFAULT_SECRETS_FILE}"
-log_info "step 2/6: ensuring secrets at $SECRETS_FILE..."
-if [ "$DRY_RUN" != "true" ]; then
+if [ "$METHOD" = "lab-vm" ]; then
+  log_info "step 2/6: skipping secrets (not applicable for lab-vm)"
+elif [ "$DRY_RUN" != "true" ]; then
+  log_info "step 2/6: ensuring secrets at $SECRETS_FILE..."
   ensure_secrets_file "$SECRETS_FILE"
 fi
 
@@ -90,7 +96,7 @@ case "$METHOD" in
     mkdir -p "$COMPOSE_DIR"
     mkdir -p "$CONFIG_DIR"
     log_info "generating docker-compose.yml via nix..."
-    GENERATED=$(nix build .#docker-compose-yml --no-link --print-out-paths 2>/dev/null)
+    GENERATED=$(nix build "${NIX_FLAKE_REF}#docker-compose-yml" --no-link --print-out-paths 2>/dev/null)
     if [ -z "$GENERATED" ] || [ ! -f "$GENERATED" ]; then
       log_error "failed to generate docker-compose.yml"
       exit 1
@@ -99,7 +105,7 @@ case "$METHOD" in
     chmod 644 "$COMPOSE_FILE"
     log_info "docker-compose.yml generated at $COMPOSE_FILE"
     log_info "rendering compose config files via nix deploy profile..."
-    PROFILE_DIR=$(nix build .#deploy-profile --no-link --print-out-paths 2>/dev/null)
+    PROFILE_DIR=$(nix build "${NIX_FLAKE_REF}#deploy-profile" --no-link --print-out-paths 2>/dev/null)
     if [ -z "$PROFILE_DIR" ] || [ ! -d "$PROFILE_DIR" ]; then
       log_error "failed to build deploy profile for compose configs"
       exit 1
@@ -112,14 +118,18 @@ case "$METHOD" in
       envsubst "$envsubst_vars" < "$f" > "$CONFIG_DIR/$(basename "$f")"
       chmod 644 "$CONFIG_DIR/$(basename "$f")"
     done
-    run_cmd docker compose -f "$COMPOSE_FILE" --env-file "$SECRETS_FILE" up -d --wait --wait-timeout "${COMPOSE_WAIT_TIMEOUT:-120}"
+    docker_compose -f "$COMPOSE_FILE" --env-file "$SECRETS_FILE" up -d --wait --wait-timeout "${COMPOSE_WAIT_TIMEOUT:-120}"
+    ;;
+
+  lab-vm)
+    "$SCRIPT_DIR/lab-vm.sh" start $DRY_RUN_FLAG
     ;;
 
   quadlets)
     PROFILE_DIR="${PROFILE_DIR:-}"
     if [ -z "$PROFILE_DIR" ]; then
       log_info "building deploy profile with nix..."
-      PROFILE_DIR=$(nix build .#deploy-profile --no-link --print-out-paths 2>/dev/null)
+      PROFILE_DIR=$(nix build "${NIX_FLAKE_REF}#deploy-profile" --no-link --print-out-paths 2>/dev/null)
     fi
     if [ -z "$PROFILE_DIR" ] || [ ! -d "$PROFILE_DIR" ]; then
       log_error "deploy profile not found. Run: nix build .#deploy-profile"
@@ -152,10 +162,24 @@ esac
 
 # Step 5: Health check
 log_info "step 5/6: running health checks..."
-CHECK_KEA="$CHECK_KEA" PXE_INTERFACE="$PXE_INTERFACE" COMPOSE_FILE="${COMPOSE_FILE:-}" SECRETS_FILE="$SECRETS_FILE" "$SCRIPT_DIR/health-check.sh" $DRY_RUN_FLAG
+case "$METHOD" in
+  lab-vm)
+    "$SCRIPT_DIR/lab-vm.sh" health $DRY_RUN_FLAG
+    ;;
+  *)
+    CHECK_KEA="$CHECK_KEA" PXE_INTERFACE="$PXE_INTERFACE" COMPOSE_FILE="${COMPOSE_FILE:-}" SECRETS_FILE="$SECRETS_FILE" "$SCRIPT_DIR/health-check.sh" $DRY_RUN_FLAG
+    ;;
+esac
 
 # Step 6: Register BSS defaults
 log_info "step 6/6: registering BSS defaults..."
-"$SCRIPT_DIR/register-bss-defaults.sh" $DRY_RUN_FLAG
+case "$METHOD" in
+  lab-vm)
+    log_info "skipping BSS default registration (not applicable for lab-vm)"
+    ;;
+  *)
+    "$SCRIPT_DIR/register-bss-defaults.sh" $DRY_RUN_FLAG
+    ;;
+esac
 
 log_info "deployment complete (method=$METHOD)"

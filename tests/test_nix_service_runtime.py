@@ -44,6 +44,7 @@ class TestServiceCommandPaths:
     def test_kea_service_and_init_use_local_image_binary_paths(self):
         content = (ROOT / "nix" / "services" / "kea.nix").read_text()
         assert 'command = "/bin/kea-admin db-init pgsql -h localhost -P ${pgPort} -u kea-user -p $KEA_DB_PASSWORD -n kea";' in content
+        assert "successExitCodes = [ 2 ];" in content
         assert 'command = "/bin/kea-dhcp4 -c /etc/kea/kea-dhcp4.conf";' in content
 
     def test_kea_service_uses_http_control_socket_healthcheck(self):
@@ -146,3 +147,6 @@ class TestRuntimeImageAssets:
         assert "bootArtifacts.kernelFile" in content
         assert "bootArtifacts.initrdFile" in content
         assert "rootfs.squashfs" not in content
+        assert "${pkgs.coreutils}/bin/seq" in content
+        assert "${pkgs.coreutils}/bin/sleep" in content
+        assert "${pkgs.curl}/bin/curl" in content

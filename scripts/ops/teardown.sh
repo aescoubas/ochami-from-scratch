@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # teardown.sh — Tear down OpenCHAMI services by deployment method.
-# Usage: ./teardown.sh --method compose|quadlets|minikube [--dry-run]
+# Usage: ./teardown.sh --method compose|lab-vm|quadlets|minikube [--dry-run]
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$SCRIPT_DIR/lib/common.sh"
@@ -9,8 +9,13 @@ METHOD=""
 parse_common_args "$@"
 
 if [ -z "$METHOD" ]; then
-  log_error "usage: $0 --method compose|quadlets|minikube [--dry-run]"
+  log_error "usage: $0 --method compose|lab-vm|quadlets|minikube [--dry-run]"
   exit 1
+fi
+
+DRY_RUN_FLAG=""
+if [ "$DRY_RUN" = "true" ]; then
+  DRY_RUN_FLAG="--dry-run"
 fi
 
 case "$METHOD" in
@@ -20,13 +25,18 @@ case "$METHOD" in
     COMPOSE_FILE="${COMPOSE_DIR}/docker-compose.generated.yml"
     LIBVIRT_NET_STATE_FILE="$(dirname "$(dirname "$SCRIPT_DIR")")/.tmp/libvirt-networks.paused"
     if [ -f "$COMPOSE_FILE" ]; then
-      run_cmd docker compose -f "$COMPOSE_FILE" down -v --remove-orphans
+      docker_compose -f "$COMPOSE_FILE" down -v --remove-orphans
     else
       # Try generated compose file
-      run_cmd docker compose down -v --remove-orphans
+      docker_compose down -v --remove-orphans
     fi
     remove_bridge_carrier_dummy
     restore_conflicting_dhcp_networks "$LIBVIRT_NET_STATE_FILE"
+    ;;
+
+  lab-vm)
+    log_info "tearing down lab-vm deployment..."
+    "$SCRIPT_DIR/lab-vm.sh" stop $DRY_RUN_FLAG
     ;;
 
   quadlets)

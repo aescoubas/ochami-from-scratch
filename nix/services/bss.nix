@@ -60,16 +60,16 @@ in
     type = "oneshot";
     after = [ "bss" ];
     script = pkgs.writeScript "bss-boot-defaults.sh" ''
-      #!/bin/bash
+      #!${pkgs.bash}/bin/bash
       set -euo pipefail
       BSS_URL="http://localhost:${bssPort}/boot/v1/bootparameters"
-      for i in $(seq 1 30); do
-        if curl -sf "$BSS_URL" >/dev/null 2>&1; then
+      for i in $(${pkgs.coreutils}/bin/seq 1 30); do
+        if ${pkgs.curl}/bin/curl -sf "$BSS_URL" >/dev/null 2>&1; then
           break
         fi
-        sleep 2
+        ${pkgs.coreutils}/bin/sleep 2
       done
-      curl -sf -X PUT -H 'Content-Type: application/json' "$BSS_URL" -d '{
+      ${pkgs.curl}/bin/curl -sf -X PUT -H 'Content-Type: application/json' "$BSS_URL" -d '{
         "hosts": ["Default"],
         "kernel": "${artifactsUrl}/${bootArtifacts.kernelFile}",
         "initrd": "${artifactsUrl}/${bootArtifacts.initrdFile}",

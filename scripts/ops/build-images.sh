@@ -7,6 +7,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$(dirname "$SCRIPT_DIR")")"
 WORKSPACE_ROOT="$(dirname "$(dirname "$PROJECT_ROOT")")"
 . "$SCRIPT_DIR/lib/common.sh"
+NIX_FLAKE_REF="${OPENCHAMI_NIX_FLAKE_REF:-$(nix_flake_ref "$PROJECT_ROOT")}"
 
 RUNTIME="${CONTAINER_RUNTIME:-docker}"
 
@@ -74,9 +75,9 @@ for img in "${IMAGES[@]}"; do
   log_info "building $img..."
   if [ "$img" = "oci-kea-sync" ] && [ -n "${KEA_SYNC_SRC:-}" ]; then
     log_info "using kea-sync source from ${KEA_SYNC_SRC}"
-    path=$(KEA_SYNC_SRC="${KEA_SYNC_SRC}" nix build --impure ".#$img" --no-link --print-out-paths 2>/dev/null)
+    path=$(KEA_SYNC_SRC="${KEA_SYNC_SRC}" nix build --impure "${NIX_FLAKE_REF}#$img" --no-link --print-out-paths 2>/dev/null)
   else
-    path=$(nix build ".#$img" --no-link --print-out-paths 2>/dev/null)
+    path=$(nix build "${NIX_FLAKE_REF}#$img" --no-link --print-out-paths 2>/dev/null)
   fi
   if [ -z "$path" ] || [ ! -f "$path" ]; then
     log_error "failed to build $img"

@@ -50,7 +50,7 @@ if [ "$CHECK_KEA" = "true" ]; then
     log_info "checking kea container health via docker compose"
     if [ "$DRY_RUN" = "true" ]; then
       log_info "[dry-run] would check kea health via docker compose"
-    elif docker compose -f "$COMPOSE_FILE" --env-file "${SECRETS_FILE}" ps --format json kea \
+    elif docker_compose -f "$COMPOSE_FILE" --env-file "${SECRETS_FILE}" ps --format json kea \
       | jq -s -e 'length == 1 and .[0].Service == "kea" and .[0].State == "running" and .[0].Health == "healthy"' >/dev/null; then
       log_info "kea is healthy"
     else

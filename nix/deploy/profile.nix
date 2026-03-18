@@ -12,6 +12,7 @@
 , dhcpRange ? "192.168.100.50 - 192.168.100.150"
 , pxeCidr ? "24"
 , enableStork ? false
+, enableKeaSync ? true
 , bootArtifacts
 , imageOverrides ? { }
 , containerTool ? "podman"
@@ -52,7 +53,7 @@ let
     pcs.service
     kea.init
     kea.service
-    kea.sync
+  ] ++ lib.optional enableKeaSync kea.sync ++ [
     nginx.service
     tftp.service
   ];
@@ -62,12 +63,7 @@ let
 
   # --- Systemd unit generation ---
 
-  envToFlags = env:
-    lib.concatStringsSep " \\\n    " (
-      lib.mapAttrsToList (k: v: "--env ${k}=${lib.escapeShellArg v}") env
-    );
-
-  volumeToFlag = v:
+  volumeToSpec = v:
     let
       parts = lib.splitString ":" v;
       src = builtins.head parts;
@@ -78,22 +74,93 @@ let
       isAbsolute = lib.hasPrefix "/" src;
     in
     if isNamed || isAbsolute then
-      "--volume ${v}"
+      v
     else
-      "--volume /etc/openchami/configs/${src}:${rest}";
+      "/etc/openchami/configs/${src}:${rest}";
 
-  capsToFlags = svc:
-    lib.concatStringsSep " " (
-      map (c: "--cap-add=${c}") (svc.capabilities or [ ])
-    );
+  makeContainerRunner = svc:
+    let
+      unitName = "ochami-${svc.name}";
+      isOneshot = svc.type == "oneshot";
+      env = svc.environment or { };
+      volumes = svc.volumes or [ ];
+      command = svc.command or "";
+      needsPostgresWait = isOneshot && lib.elem "postgres" (svc.after or [ ]);
+      successExitCodes = svc.successExitCodes or [ ];
+      successExitCodesStr = lib.concatMapStringsSep " " toString successExitCodes;
+      staticEnvLines = lib.mapAttrsToList (k: v:
+        "args+=( --env ${lib.escapeShellArg "${k}=${v}"} )"
+      ) env;
+      mappedEnvLines = lib.mapAttrsToList (containerVar: secretVar:
+        ''args+=( --env "${containerVar}=''${${secretVar}:?${secretVar} is required}" )''
+      ) (svc.envMapping or { });
+      volumeLines = map (v:
+        "args+=( --volume ${lib.escapeShellArg (volumeToSpec v)} )"
+      ) volumes;
+      capabilityLines = map (c:
+        "args+=( --cap-add=${lib.escapeShellArg c} )"
+      ) (svc.capabilities or [ ]);
+      healthLines =
+        if svc ? healthCheck then
+          [
+            "args+=( --health-cmd ${lib.escapeShellArg svc.healthCheck} )"
+            "args+=( --health-interval 5s )"
+          ]
+        else
+          [ ];
+      commandSuffix = lib.optionalString (command != "") " ${command}";
+    in
+    pkgs.writeScript "ochami-${svc.name}-run" ''
+      #!${pkgs.bash}/bin/bash
+      set -euo pipefail
 
-  envMappingToFlags = svc:
-    let mapping = svc.envMapping or { };
-    in lib.concatStringsSep " \\\n    " (
-      lib.mapAttrsToList (containerVar: secretVar:
-        "--env ${containerVar}=$(grep '^${secretVar}=' /etc/openchami/secrets.env | cut -d= -f2-)"
-      ) mapping
-    );
+      . /etc/openchami/secrets.env
+
+      wait_for_tcp() {
+        local host="$1"
+        local port="$2"
+        local attempts="$3"
+        local try=0
+
+        until ( : >"/dev/tcp/$host/$port" ) >/dev/null 2>&1; do
+          try=$((try + 1))
+          if [ "$try" -ge "$attempts" ]; then
+            echo "Timed out waiting for $host:$port" >&2
+            return 1
+          fi
+          ${pkgs.coreutils}/bin/sleep 2
+        done
+      }
+
+      args=(
+        run
+        --rm
+        --name
+        ${unitName}
+        --network=host
+        --env-file
+        /etc/openchami/secrets.env
+      )
+      ${lib.concatStringsSep "\n      " staticEnvLines}
+      ${lib.concatStringsSep "\n      " mappedEnvLines}
+      ${lib.concatStringsSep "\n      " volumeLines}
+      ${lib.concatStringsSep "\n      " capabilityLines}
+      ${lib.concatStringsSep "\n      " healthLines}
+      ${lib.optionalString needsPostgresWait "wait_for_tcp 127.0.0.1 ${toString defaults.ports.postgres} 30"}
+      ${lib.optionalString (isOneshot && successExitCodes != [ ]) ''
+      set +e
+      ${containerTool} "''${args[@]}" ${lib.escapeShellArg svc.image}${commandSuffix}
+      status=$?
+      set -e
+      case " ${successExitCodesStr} " in
+        *" $status "*) exit 0 ;;
+      esac
+      exit "$status"
+      ''}
+      ${lib.optionalString (!(isOneshot && successExitCodes != [ ])) ''
+      exec ${containerTool} "''${args[@]}" ${lib.escapeShellArg svc.image}${commandSuffix}
+      ''}
+    '';
 
   makeContainerUnit = svc:
     let
@@ -101,27 +168,6 @@ let
       afterUnits = map (d: "ochami-${d}.service") svc.after;
       afterStr = lib.concatStringsSep " " afterUnits;
       isOneshot = svc.type == "oneshot";
-      env = svc.environment or { };
-      volumes = svc.volumes or [ ];
-      command = svc.command or "";
-
-      # Build the podman run arguments as a list, then join.
-      runArgs = [
-        "--rm"
-        "--name ${unitName}"
-        "--network=host"
-        "--env-file /etc/openchami/secrets.env"
-      ]
-      ++ lib.mapAttrsToList (k: v: "--env ${k}=${lib.escapeShellArg v}") env
-      ++ lib.mapAttrsToList (containerVar: secretVar:
-        "--env ${containerVar}=$(grep '^${secretVar}=' /etc/openchami/secrets.env | cut -d= -f2-)"
-      ) (svc.envMapping or { })
-      ++ map volumeToFlag volumes
-      ++ map (c: "--cap-add=${c}") (svc.capabilities or [ ])
-      ++ lib.optional (svc ? healthCheck)
-        "--health-cmd='${svc.healthCheck}' --health-interval=5s";
-
-      execStart = "${containerTool} run ${lib.concatStringsSep " \\\n    " runArgs} \\\n    ${svc.image} ${command}";
 
       unitSections = lib.concatStringsSep "\n" (lib.filter (s: s != "") [
         "[Unit]"
@@ -135,7 +181,7 @@ let
         "Restart=${if isOneshot then "no" else "on-failure"}"
         "TimeoutStartSec=300"
         "ExecStartPre=-${containerTool} rm -f ${unitName}"
-        "ExecStart=${execStart}"
+        "ExecStart=${makeContainerRunner svc}"
         (lib.optionalString (!isOneshot) "ExecStop=${containerTool} stop ${unitName}")
         ""
         "[Install]"
@@ -183,7 +229,7 @@ let
 
   # --- Activate script ---
   activateScript = pkgs.writeScript "activate" ''
-    #!/usr/bin/env bash
+    #!${pkgs.bash}/bin/bash
     set -euo pipefail
     PROFILE="$(cd "$(dirname "$0")/.." && pwd)"
     SECRETS="''${OPENCHAMI_SECRETS:-/etc/openchami/secrets.env}"
@@ -214,7 +260,7 @@ let
 
   # --- Deactivate script ---
   deactivateScript = pkgs.writeScript "deactivate" ''
-    #!/usr/bin/env bash
+    #!${pkgs.bash}/bin/bash
     set -euo pipefail
     systemctl stop ochami.target 2>/dev/null || true
     rm -f /etc/systemd/system/ochami-*.service /etc/systemd/system/ochami.target
@@ -224,14 +270,19 @@ let
 
 in
 pkgs.runCommand "ochami-deploy-profile" { } ''
-  mkdir -p $out/{bin,etc/openchami/{systemd,configs}}
+  mkdir -p $out/{bin,etc/openchami/{systemd,configs},lib/systemd/system}
 
   # Systemd units
   ${lib.concatStringsSep "\n" (map (svc:
-    "cp ${makeContainerUnit svc} $out/etc/openchami/systemd/ochami-${svc.name}.service"
+    ''
+      cp ${makeContainerUnit svc} $out/etc/openchami/systemd/ochami-${svc.name}.service
+      cp ${makeContainerUnit svc} $out/lib/systemd/system/ochami-${svc.name}.service
+    ''
   ) allServices)}
   cp ${bssBootDefaultsUnit} $out/etc/openchami/systemd/ochami-bss-boot-defaults.service
+  cp ${bssBootDefaultsUnit} $out/lib/systemd/system/ochami-bss-boot-defaults.service
   cp ${ochamiTarget} $out/etc/openchami/systemd/ochami.target
+  cp ${ochamiTarget} $out/lib/systemd/system/ochami.target
 
   # Config files (with secret placeholders for envsubst)
   ${lib.concatStringsSep "\n" (lib.mapAttrsToList (name: path:

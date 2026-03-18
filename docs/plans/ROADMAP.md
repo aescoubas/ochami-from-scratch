@@ -1,6 +1,11 @@
 # OpenCHAMI From Scratch Roadmap
 
 ## In Progress
+- [x] Verify macOS compute VMs boot correctly from the controller VM lab.
+  - [x] Keep the Linux `lab-vm` libvirt path unchanged.
+  - [x] Route the macOS `lab-vm` controller and compute nodes through libvirt session domains, while still using controller-generated boot artifacts over user networking.
+  - [x] Confirm the macOS compute-node console reaches `ochami-netboot` after booting with controller-generated kernel, initrd, and kernel arguments.
+  - [x] Verify with `make test`, `nix build .#docker-compose-yml`, `nix build .#quadlet-units`, `nix build .#deploy-profile`, plus a live `make deploy METHOD=lab-vm` and `make create-test-vms METHOD=lab-vm COUNT=1` run on the MacBook.
 - [x] Replace the separate Kea Control Agent with direct Kea HTTP control sockets and a locally built Kea image
   - [x] Expose Kea's native HTTP control API directly from the DHCP service and remove the `kea-ctrl-agent` runtime.
   - [x] Add a Nix-built local Kea OCI image and wire it into generated compose, quadlet, and Helm artifacts.
@@ -71,6 +76,20 @@
   - [x] Update tests to verify local image infrastructure
 
 ## Completed
+- [x] Support Linux compute VMs that PXE/iPXE boot from the libvirt-backed controller VM lab.
+  - [x] Expose the controller guest's BSS, Kea control, and SMD ports on localhost and include them in `lab-vm` health checks.
+  - [x] Make the controller guest's `kea-init` startup idempotent across controller restarts.
+  - [x] Extend `create-test-vms.sh` and `make create-test-vms` to support `METHOD=lab-vm` without the compose-only Kea sync flow.
+  - [x] Verify with local tests/builds plus a live `make deploy METHOD=lab-vm` and `make create-test-vms METHOD=lab-vm COUNT=1` run.
+- [x] Establish a controller VM lab as the cross-platform portability boundary for Ubuntu and macOS.
+  - [x] Write a detailed controller VM lab portability plan under `docs/plans/`.
+  - [x] Export explicit flake and Makefile targets for the existing controller and boot-node VM lab artifacts.
+  - [x] Document the controller VM workflow and support matrix in the README.
+  - [x] Add a `lab-vm` deploy/teardown path that boots the standalone controller VM locally.
+  - [x] Run the Linux `lab-vm` controller through libvirt so it is visible and managed as a real domain.
+  - [x] Support macOS `lab-vm` deploys via a Linux build host fallback when a native `x86_64-linux` builder is unavailable.
+  - [x] Verify the controller VM deploy path on Ubuntu and on macOS with a Linux build host.
+  - [x] Verify with `make test`, `nix build .#docker-compose-yml`, `nix build .#quadlet-units`, `nix build .#deploy-profile`, `nix build .#lab-controller-vm`, and `nix build .#lab-boot-node-vm`.
 - [x] Add a first NixOS VM lab smoke target via the NixOS test driver.
   - [x] Define controller and boot-node NixOS modules that share an isolated PXE/test network.
   - [x] Export a Linux-only `checks.lab-smoke` derivation and interactive `apps.lab-driver` entrypoint from the flake.

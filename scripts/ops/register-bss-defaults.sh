@@ -5,6 +5,7 @@
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$(dirname "$SCRIPT_DIR")")"
 . "$SCRIPT_DIR/lib/common.sh"
+NIX_FLAKE_REF="${OPENCHAMI_NIX_FLAKE_REF:-$(nix_flake_ref "$PROJECT_ROOT")}"
 
 parse_common_args "$@"
 
@@ -25,7 +26,7 @@ else
   BOOT_ARTIFACTS_PATH="${BOOT_ARTIFACTS_PATH:-}"
   if [ -z "$BOOT_ARTIFACTS_PATH" ]; then
     log_info "building boot artifacts with nix..."
-    BOOT_ARTIFACTS_PATH="$(cd "$PROJECT_ROOT" && nix build .#boot-artifacts --no-link --print-out-paths)"
+    BOOT_ARTIFACTS_PATH="$(cd "$PROJECT_ROOT" && nix build "${NIX_FLAKE_REF}#boot-artifacts" --no-link --print-out-paths)"
   fi
   KERNEL_PARAMS_FILE="${BOOT_ARTIFACTS_PATH}/${ARTIFACT_SUBDIR}/kernel-params"
   if [ ! -f "$KERNEL_PARAMS_FILE" ]; then

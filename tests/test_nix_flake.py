@@ -12,8 +12,9 @@ def test_flake_exports_mcp_package() -> None:
 
     assert "./nix/package.nix" in flake
     assert "buildPythonApplication" in package_nix
-    assert "packages.default" in flake
-    assert "checks.default" in flake
+    assert "packages = {" in flake
+    assert "default = mcpPackage" in flake
+    assert "checks = {" in flake
     assert "devShells.default" in flake
     assert "/bin/ochami-mcp" in flake
 
@@ -23,7 +24,7 @@ def test_flake_has_mcp_and_lab_driver_apps() -> None:
 
     assert "apps = {" in flake
     assert "mcp = flake-utils.lib.mkApp" in flake
-    assert "lab-driver = flake-utils.lib.mkApp" in flake
+    assert '"lab-driver" = flake-utils.lib.mkApp' in flake
 
 
 def test_flake_exports_generators_and_images() -> None:
@@ -33,6 +34,10 @@ def test_flake_exports_generators_and_images() -> None:
     assert "quadlet-units" in flake
     assert "helm-values" in flake
     assert "deploy-profile" in flake
+    assert "lab-controller-system" in flake
+    assert "lab-boot-node-system" in flake
+    assert "lab-controller-vm" in flake
+    assert "lab-boot-node-vm" in flake
     assert "oci-smd" in flake
     assert "oci-bss" in flake
 

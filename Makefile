@@ -1,11 +1,14 @@
 .PHONY: test test-vm test-vm-ubuntu test-vm-fedora test-vm-destroy
 .PHONY: deploy teardown check generate generate-images build-images create-test-vms
+.PHONY: build-lab-controller-vm build-lab-boot-node-vm
 
 METHOD ?= compose
 COUNT ?= 1
+NIX ?= env NIX_CONFIG='experimental-features = nix-command flakes' nix
+NIX_FLAKE_REF ?= path:.
 
 test:
-	nix develop -c python -m pytest
+	$(NIX) develop $(NIX_FLAKE_REF) -c python -m pytest
 
 test-vm: test-vm-ubuntu test-vm-fedora
 
@@ -29,17 +32,23 @@ check:
 
 generate:
 	@echo "Building docker-compose.yml..."
-	nix build .#docker-compose-yml --no-link --print-out-paths
+	$(NIX) build $(NIX_FLAKE_REF)#docker-compose-yml --no-link --print-out-paths
 	@echo "Building quadlet units..."
-	nix build .#quadlet-units --no-link --print-out-paths
+	$(NIX) build $(NIX_FLAKE_REF)#quadlet-units --no-link --print-out-paths
 	@echo "Building helm values..."
-	nix build .#helm-values --no-link --print-out-paths
+	$(NIX) build $(NIX_FLAKE_REF)#helm-values --no-link --print-out-paths
 
 generate-images:
-	nix build .#boot-artifacts --no-link --print-out-paths
+	$(NIX) build $(NIX_FLAKE_REF)#boot-artifacts --no-link --print-out-paths
 
 build-images:
 	scripts/ops/build-images.sh
 
 create-test-vms:
-	scripts/ops/create-test-vms.sh --count $(COUNT)
+	scripts/ops/create-test-vms.sh --method $(METHOD) --count $(COUNT)
+
+build-lab-controller-vm:
+	$(NIX) build $(NIX_FLAKE_REF)#lab-controller-vm
+
+build-lab-boot-node-vm:
+	$(NIX) build $(NIX_FLAKE_REF)#lab-boot-node-vm

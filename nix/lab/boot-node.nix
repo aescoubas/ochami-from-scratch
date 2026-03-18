@@ -6,6 +6,7 @@
 {
   networking = {
     firewall.enable = false;
+    hostName = "openchami-bootnode";
     useDHCP = false;
     useNetworkd = true;
     usePredictableInterfaceNames = false;
@@ -21,10 +22,18 @@
     pkgs.iproute2
   ];
 
+  systemd.network.networks."10-eth0" = {
+    name = "eth0";
+    networkConfig.DHCP = "ipv4";
+    linkConfig.RequiredForOnline = "degraded";
+  };
+
   systemd.network.networks."10-eth1" = {
     name = "eth1";
     address = [ "192.168.100.2/24" ];
     linkConfig.RequiredForOnline = "routable";
     networkConfig.ConfigureWithoutCarrier = true;
   };
+
+  system.stateVersion = "25.11";
 }

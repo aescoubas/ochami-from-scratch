@@ -23,9 +23,13 @@ The repository currently exports these Nix-built artifacts:
 - `helm-values` from `nix/generators/helm-values.nix`
 - `deploy-profile` from `nix/deploy/profile.nix`
 - `boot-artifacts` from `nix/boot-artifacts.nix`
+- `lab-controller-vm` from the `nix/lab/controller.nix` module
+- `lab-boot-node-vm` from the `nix/lab/boot-node.nix` module
 
 `boot-artifacts` packages the PXE/iPXE kernel, initramfs, and kernel parameters used
 by the local Docker Compose and Quadlet runtime.
+The lab VM outputs turn the existing NixOS smoke-lab modules into explicit VM
+artifacts that can be reused as the portable Linux lab boundary.
 
 ## Runtime Layers
 
