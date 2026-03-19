@@ -64,6 +64,7 @@ LAB_VM_COMPUTE_BOOT_ATTEMPTS="${LAB_VM_COMPUTE_BOOT_ATTEMPTS:-90}"
 LAB_VM_COMPUTE_BOOT_INTERVAL="${LAB_VM_COMPUTE_BOOT_INTERVAL:-2}"
 LAB_VM_DIRECT_QEMU_MACHINE="${LAB_VM_DIRECT_QEMU_MACHINE:-q35,accel=tcg}"
 LAB_VM_DIRECT_GUEST_HOST="${LAB_VM_DIRECT_GUEST_HOST:-10.0.2.2}"
+NETBOOT_CONSOLE_READY_PATTERN="${NETBOOT_CONSOLE_READY_PATTERN:-Welcome to NixOS kexec|login:|nixos@}"
 NETWORK_NAME="${NETWORK_NAME:-}"
 NETWORK_BRIDGE="${NETWORK_BRIDGE:-}"
 HOST_IP="${HOST_IP:-}"
@@ -300,6 +301,14 @@ bmc_xname_for_index() {
 xname_for_index() {
   local idx="$1"
   printf '%sn0\n' "$(bmc_xname_for_index "$idx")"
+}
+
+domain_name_for_index() {
+  local idx="$1"
+  local xname
+
+  xname="$(xname_for_index "$idx")"
+  printf '%s-%s-%s\n' "$NAME_PREFIX" "$idx" "$xname"
 }
 
 init_xname_layout
@@ -632,13 +641,13 @@ wait_for_direct_qemu_console() {
 
   log_info "waiting for direct-QEMU console output from $domain_name"
   while [ "$attempt" -le "$LAB_VM_COMPUTE_BOOT_ATTEMPTS" ]; do
-    if [ -f "$serial_log" ] && grep -Eq 'Welcome to NixOS kexec|ochami-netboot login|nixos@ochami-netboot' "$serial_log"; then
-      log_info "direct-QEMU console output confirms $domain_name reached ochami-netboot"
+    if [ -f "$serial_log" ] && grep -Eq "$NETBOOT_CONSOLE_READY_PATTERN" "$serial_log"; then
+      log_info "direct-QEMU console output confirms $domain_name reached the netboot login or prompt"
       return 0
     fi
 
     if ! direct_qemu_domain_is_running "$domain_name"; then
-      log_error "direct-QEMU domain $domain_name exited before reaching ochami-netboot"
+      log_error "direct-QEMU domain $domain_name exited before reaching the netboot login or prompt"
       [ -f "$serial_log" ] && tail -n 60 "$serial_log" >&2
       return 1
     fi
@@ -647,7 +656,7 @@ wait_for_direct_qemu_console() {
     attempt=$((attempt + 1))
   done
 
-  log_error "direct-QEMU console output never confirmed ochami-netboot for $domain_name"
+  log_error "direct-QEMU console output never confirmed the netboot login or prompt for $domain_name"
   [ -f "$serial_log" ] && tail -n 60 "$serial_log" >&2
   return 1
 }
@@ -794,25 +803,25 @@ wait_for_darwin_libvirt_console() {
 
   log_info "waiting for libvirt session console output from $domain_name"
   while [ "$attempt" -le "$LAB_VM_COMPUTE_BOOT_ATTEMPTS" ]; do
-    if [ -f "$serial_log" ] && grep -Eq 'Welcome to NixOS kexec|ochami-netboot login|nixos@ochami-netboot|systemd-ssh-generator' "$serial_log"; then
+    if [ -f "$serial_log" ] && grep -Eq "${NETBOOT_CONSOLE_READY_PATTERN}|systemd-ssh-generator" "$serial_log"; then
       [ -n "$probe_log" ] && rm -f "$probe_log"
-      log_info "libvirt session console output confirms $domain_name reached ochami-netboot"
+      log_info "libvirt session console output confirms $domain_name reached the netboot login or prompt"
       return 0
     fi
 
     if [ -n "$probe_log" ] && [ $((attempt % 5)) -eq 1 ]; then
       darwin_libvirt_console_probe "$domain_name" "$probe_log"
-      if [ -f "$probe_log" ] && grep -Eq 'Welcome to NixOS kexec|ochami-netboot login|nixos@ochami-netboot' "$probe_log"; then
+      if [ -f "$probe_log" ] && grep -Eq "$NETBOOT_CONSOLE_READY_PATTERN" "$probe_log"; then
         cat "$probe_log" >>"$serial_log" 2>/dev/null || true
         rm -f "$probe_log"
-        log_info "libvirt session console probe confirms $domain_name reached ochami-netboot"
+        log_info "libvirt session console probe confirms $domain_name reached the netboot login or prompt"
         return 0
       fi
     fi
 
     if [ "$(domain_state "$domain_name" 2>/dev/null || true)" != "running" ]; then
       [ -n "$probe_log" ] && rm -f "$probe_log"
-      log_error "libvirt session domain $domain_name exited before reaching ochami-netboot"
+      log_error "libvirt session domain $domain_name exited before reaching the netboot login or prompt"
       [ -f "$serial_log" ] && tail -n 60 "$serial_log" >&2
       return 1
     fi
@@ -822,7 +831,7 @@ wait_for_darwin_libvirt_console() {
   done
 
   [ -n "$probe_log" ] && rm -f "$probe_log"
-  log_error "libvirt session console output never confirmed ochami-netboot for $domain_name"
+  log_error "libvirt session console output never confirmed the netboot login or prompt for $domain_name"
   [ -f "$serial_log" ] && tail -n 60 "$serial_log" >&2
   return 1
 }
@@ -842,8 +851,8 @@ run_darwin_libvirt_lab_vms() {
 
   for offset in $(seq 0 $((COUNT - 1))); do
     idx=$((START_INDEX + offset))
-    domain_name="${NAME_PREFIX}-${idx}"
     xname="$(xname_for_index "$idx")"
+    domain_name="$(domain_name_for_index "$idx")"
     ip_addr="$(ip_for_index "$idx")"
     disk_path="${VM_DISK_DIR}/${domain_name}.qcow2"
     actual_mac="$(mac_for_index "$idx")"
@@ -1327,8 +1336,8 @@ bmc_xnames=()
 
 for offset in $(seq 0 $((COUNT - 1))); do
   idx=$((START_INDEX + offset))
-  domain_name="${NAME_PREFIX}-${idx}"
   xname="$(xname_for_index "$idx")"
+  domain_name="$(domain_name_for_index "$idx")"
   ip_addr="$(ip_for_index "$idx")"
   disk_path="${VM_DISK_DIR}/${domain_name}.qcow2"
   desired_mac="$(mac_for_index "$idx")"

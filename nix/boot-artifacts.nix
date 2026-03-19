@@ -5,6 +5,34 @@
 }:
 
 let
+  xnameIdentityScript = pkgs.writeShellScript "openchami-xname-identity" ''
+    set -eu
+
+    xname=""
+    for token in $(cat /proc/cmdline); do
+      if [ "''${token#xname=}" != "$token" ]; then
+        xname="''${token#xname=}"
+        break
+      fi
+    done
+
+    [ -n "$xname" ] || exit 0
+
+    ${pkgs.coreutils}/bin/install -d -m 0755 /run/openchami
+    printf '%s\n' "$xname" > /run/openchami/xname
+    printf '%s\n' "$xname" > /proc/sys/kernel/hostname
+  '';
+
+  xnamePromptScript = ''
+    if [ -n "''${PS1:-}" ] && [ -r /run/openchami/xname ]; then
+      _openchami_xname="$(cat /run/openchami/xname 2>/dev/null || true)"
+      if [ -n "$_openchami_xname" ]; then
+        export PS1="[\u@''${_openchami_xname} \W]\\$ "
+      fi
+      unset _openchami_xname
+    fi
+  '';
+
   netbootSystem = nixosSystem {
     inherit system;
     modules = [
@@ -16,6 +44,20 @@ let
           "console=tty0"
           "ip=dhcp"
         ];
+        environment.etc."bashrc.local".text = xnamePromptScript;
+        systemd.services.openchami-xname-identity = {
+          description = "Apply OpenCHAMI xname runtime identity";
+          wantedBy = [ "multi-user.target" ];
+          before = [
+            "getty@tty1.service"
+            "serial-getty@ttyS0.service"
+          ];
+          after = [ "local-fs.target" ];
+          serviceConfig = {
+            Type = "oneshot";
+            ExecStart = xnameIdentityScript;
+          };
+        };
       })
     ];
   };

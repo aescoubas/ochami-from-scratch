@@ -11,7 +11,7 @@ The validated end-to-end local workflow is Docker Compose plus libvirt PXE boot:
 
 1. deploy the stack with `make deploy METHOD=compose`
 2. create a libvirt VM with `make create-test-vms COUNT=1`
-3. confirm the guest reaches the `ochami-netboot` serial console
+3. confirm the guest reaches its xname-derived serial login prompt
 
 There is no Python deployment CLI in this repository. The only Python application
 entry point is the standalone MCP server in `ochami/mcp/`.
@@ -118,7 +118,7 @@ broadcasts between guests:
 ```bash
 virsh list
 virsh console openchami-controller
-virsh console ochami-test-node-0
+virsh console ochami-test-node-0-x1000c0s0b0n0
 ```
 
 Even with Homebrew `iproute2mac`, the operational scripts still rely on Linux
@@ -209,12 +209,14 @@ through Redfish. On the compose path, `make deploy` stores the same
 settings unless you override them in the environment. Additional compose VMs
 use one node per BMC slot, so the default xnames are `x1000c0s0b0n0`,
 `x1000c0s0b1n0`, `x1000c0s0b2n0`, and so on. This per-VM BMC flow is not yet
-wired into `METHOD=lab-vm`.
+wired into `METHOD=lab-vm`. The libvirt domain names also include the xname, so
+the first VM appears as `ochami-test-node-0-x1000c0s0b0n0` in `virsh list`, and
+the guest login shell prompt uses that xname directly.
 
 Inspect the guest console:
 
 ```bash
-sudo virsh --connect qemu:///system console ochami-test-node-0
+sudo virsh --connect qemu:///system console ochami-test-node-0-x1000c0s0b0n0
 ```
 
 Inside the guest, verify the OpenCHAMI-provided kernel args:
@@ -225,7 +227,7 @@ cat /proc/cmdline
 
 The successful path is:
 
-- the console reaches the `ochami-netboot` login
+- the console reaches a login prompt for the node xname, such as `x1000c0s0b0n0 login:`
 - `/proc/cmdline` includes values such as `xname=...`, `nid=...`,
   `bss_referral_token=...`, and `ds=nocloud-net;s=192.168.100.1/`
 
@@ -248,9 +250,9 @@ It does not remove libvirt test VMs or their qcow2 disks.
 To remove a test VM manually:
 
 ```bash
-sudo virsh --connect qemu:///system destroy ochami-test-node-0 || true
-sudo virsh --connect qemu:///system undefine ochami-test-node-0
-sudo rm -f /var/lib/libvirt/images/ochami/ochami-test-node-0.qcow2
+sudo virsh --connect qemu:///system destroy ochami-test-node-0-x1000c0s0b0n0 || true
+sudo virsh --connect qemu:///system undefine ochami-test-node-0-x1000c0s0b0n0
+sudo rm -f /var/lib/libvirt/images/ochami/ochami-test-node-0-x1000c0s0b0n0.qcow2
 ```
 
 ### Controller VM Lab
@@ -306,7 +308,7 @@ PXE network and boot them from the controller guest:
 
 ```bash
 make create-test-vms METHOD=lab-vm COUNT=1
-virsh --connect qemu:///system console ochami-test-node-0
+virsh --connect qemu:///system console ochami-test-node-0-x1000c0s0b0n0
 ```
 
 That path reuses the `openchami-lab-net` libvirt network, registers the node
@@ -320,15 +322,15 @@ networking:
 ```bash
 make create-test-vms METHOD=lab-vm COUNT=1
 virsh list
-virsh console ochami-test-node-0
+virsh console ochami-test-node-0-x1000c0s0b0n0
 ```
 
-The expected success path is the same: the console reaches `ochami-netboot`,
-and `/proc/cmdline` inside the guest shows the controller-generated `xname`,
+The expected success path is the same: the console reaches the xname-derived
+login prompt, and `/proc/cmdline` inside the guest shows the controller-generated `xname`,
 `nid`, `bss_referral_token`, and `ds=nocloud-net;s=http://10.0.2.2:28000/cloud-init/`
 arguments. The translated iPXE script and extracted kernel arguments are cached
 under `.tmp/lab-vm/compute/boot/<domain>/` for inspection, and the captured
-serial transcript is written to `.tmp/lab-vm/compute/logs/ochami-test-node-0.serial.log`.
+serial transcript is written to `.tmp/lab-vm/compute/logs/ochami-test-node-0-x1000c0s0b0n0.serial.log`.
 
 Relevant overrides:
 

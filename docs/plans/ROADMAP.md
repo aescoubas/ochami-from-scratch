@@ -1,6 +1,10 @@
 # OpenCHAMI From Scratch Roadmap
 
 ## In Progress
+- [x] Include xnames in libvirt test VM names and guest prompts
+  - [x] Derive compose and `lab-vm` libvirt domain names from both the stable index and the assigned xname so `virsh list` exposes the node identity directly.
+  - [x] Apply the kernel `xname=` value inside the netboot runtime so the guest hostname and interactive shell prompt reflect the node identity.
+  - [x] Verify with `make test`, `nix build .#boot-artifacts`, `nix build .#docker-compose-yml`, `nix build .#quadlet-units`, and `nix build .#deploy-profile`.
 - [x] Make compose PCS transitions work against per-VM libvirt `sushy-tools` BMC endpoints
   - [x] Keep PCS Redfish credentials aligned with the compose/libvirt BMC defaults and backfill the local secrets file on existing deployments.
   - [x] Patch local PCS builds so refreshed HSM Redfish data and fake-vault credstores both reach the runtime power-status and transition paths.

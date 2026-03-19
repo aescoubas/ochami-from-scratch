@@ -211,6 +211,8 @@ class TestScriptStructure:
         assert "init_xname_layout" in content
         assert "bmc_xname_for_index" in content
         assert "xname_for_index" in content
+        assert "domain_name_for_index" in content
+        assert 'printf \'%s-%s-%s\\n\' "$NAME_PREFIX" "$idx" "$xname"' in content
         assert "bmc_ip_for_index" in content
         assert "domain_uuid" in content
         assert "ensure_compose_libvirt_bmc" in content
@@ -233,6 +235,7 @@ class TestScriptStructure:
         assert 'LAB_VM_SHARED_NET_MCAST="${LAB_VM_SHARED_NET_MCAST:-' in content
         assert 'LAB_VM_COMPUTE_BOOT_CACHE_DIR="${LAB_VM_COMPUTE_BOOT_CACHE_DIR:-' in content
         assert 'LAB_VM_DIRECT_GUEST_HOST="${LAB_VM_DIRECT_GUEST_HOST:-10.0.2.2}"' in content
+        assert 'NETBOOT_CONSOLE_READY_PATTERN="${NETBOOT_CONSOLE_READY_PATTERN:-Welcome to NixOS kexec|login:|nixos@}"' in content
         assert "fetch_direct_qemu_second_stage_bootscript" in content
         assert "rewrite_direct_qemu_bootscript" in content
         assert "render_darwin_lab_vm_domain_xml" in content
@@ -246,9 +249,8 @@ class TestScriptStructure:
         assert "<cmdline>$(printf '%s' \"$DIRECT_QEMU_KERNEL_ARGS\" | xml_escape)</cmdline>" in content
         assert "<emulator>$(printf '%s' \"$DIRECT_QEMU_BIN\" | xml_escape)</emulator>" in content
         assert "<interface type='user'>" in content
-        assert "libvirt session console output confirms" in content
+        assert "reached the netboot login or prompt" in content
         assert 'ds=nocloud-net;s=http://${LAB_VM_DIRECT_GUEST_HOST}:${LAB_VM_CONTROLLER_HTTP_PORT}/cloud-init/' in content
-        assert "ochami-netboot" in content
         assert "METHOD=lab-vm compute VMs currently require a Linux host" not in content
         assert "xname,mac,ip,bmc_ip,bmc_xname,domain" in content
         assert "xname,mac,ip,bmc_ip,bmc_xname" in content

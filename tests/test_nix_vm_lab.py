@@ -36,7 +36,7 @@ def test_readme_documents_controller_vm_artifacts() -> None:
     assert "build-lab-boot-node-vm" in readme
     assert "make deploy METHOD=lab-vm" in readme
     assert "make create-test-vms METHOD=lab-vm" in readme
-    assert "ochami-test-node-0.serial.log" in readme
+    assert "ochami-test-node-0-x1000c0s0b0n0.serial.log" in readme
 
 
 def test_controller_vm_supports_standalone_host_access() -> None:
@@ -69,3 +69,15 @@ def test_lab_systems_use_local_image_overrides_for_controller_services() -> None
     assert "profile = labProfile;" in systems
     assert "labLocalImageArchives" in systems
     assert 'id != "kea-sync"' in systems
+
+
+def test_boot_artifacts_apply_runtime_xname_identity() -> None:
+    boot_artifacts = (PROJECT_ROOT / "nix" / "boot-artifacts.nix").read_text(encoding="utf-8")
+
+    assert "openchami-xname-identity" in boot_artifacts
+    assert "/proc/cmdline" in boot_artifacts
+    assert "xname=" in boot_artifacts
+    assert "/run/openchami/xname" in boot_artifacts
+    assert 'serial-getty@ttyS0.service' in boot_artifacts
+    assert 'bashrc.local' in boot_artifacts
+    assert 'export PS1=' in boot_artifacts
