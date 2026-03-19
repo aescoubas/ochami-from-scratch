@@ -38,11 +38,15 @@ in
       TRS_IMPLEMENTATION = "LOCAL";
       HSMLOCK_ENABLED = "true";
       VAULT_ENABLED = "false";
-      FAKE_VAULT_ENABLED = "false";
+      FAKE_VAULT_ENABLED = "true";
       LOG_LEVEL = "INFO";
     };
     secretEnvKeys = [ "PCS_DB_PASSWORD" ];
-    envMapping = { POSTGRES_PASSWORD = "PCS_DB_PASSWORD"; };
+    envMapping = {
+      POSTGRES_PASSWORD = "PCS_DB_PASSWORD";
+      PCS_FAKE_VAULT_REDFISH_USER = "LIBVIRT_BMC_USER";
+      PCS_FAKE_VAULT_REDFISH_PASSWORD = "LIBVIRT_BMC_PASSWORD";
+    };
     after = [ "smd" "pcs-init" ];
     type = "service";
   };

@@ -29,6 +29,8 @@ done
 SMD_HOST="${SMD_HOST:-localhost}"
 SMD_PORT="${SMD_PORT:-27779}"
 SMD_BASE_URL="https://${SMD_HOST}:${SMD_PORT}"
+REDFISH_BMC_USER="${REDFISH_BMC_USER:-admin}"
+REDFISH_BMC_PASSWORD="${REDFISH_BMC_PASSWORD:-password}"
 
 if [ -z "$NODES_CSV" ]; then
   log_error "usage: $0 --nodes-csv FILE [--dry-run]"
@@ -141,8 +143,8 @@ ensure_redfish_endpoint() {
       \"ID\": \"$bmc_xname\",
       \"FQDN\": \"$bmc_ip\",
       \"RediscoverOnUpdate\": false,
-      \"User\": \"admin\",
-      \"Password\": \"password\"
+      \"User\": \"$REDFISH_BMC_USER\",
+      \"Password\": \"$REDFISH_BMC_PASSWORD\"
     }" || {
       if [ "$DRY_RUN" != "true" ] && redfish_endpoint_exists "$bmc_xname"; then
         log_info "BMC endpoint $bmc_xname already present after retry"

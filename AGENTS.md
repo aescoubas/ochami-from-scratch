@@ -23,7 +23,7 @@
 *   The portable `lab-vm` path runs the controller VM through libvirt: `qemu:///system` on Linux and `qemu:///session` on macOS.
 *   On macOS, `make create-test-vms METHOD=lab-vm` still uses controller-generated boot artifacts over user networking, but the controller and compute nodes are both real libvirt session domains.
 *   macOS `lab-vm` deploys may need `OPENCHAMI_LAB_VM_BUILD_HOST` (or another `x86_64-linux` builder) so the Linux guest closure can be built or warmed from a Linux machine before the local libvirt session domains start.
-*   Local OCI image builds are orchestrated by `scripts/ops/build-images.sh`; the `kea-sync` image is built from an external checkout and may be cloned from `https://github.com/aescoubas/kea-sync.git` when needed.
+*   Local OCI image builds are orchestrated by `scripts/ops/build-images.sh`; `make build-images` and `make deploy` accept `SMD_SRC`, `BSS_SRC`, `PCS_SRC`, `CLOUD_INIT_SRC`, and `KEA_SYNC_SRC` to build specific services from local checkouts, and the `kea-sync` image may still be cloned from `https://github.com/aescoubas/kea-sync.git` when needed.
 *   `make teardown METHOD=compose` removes compose containers and volumes and restores paused libvirt DHCP networks, but it does **not** delete libvirt test VMs or their qcow2 disks.
 *   Architecture overviews and ADRs belong under `docs/architecture/`, not a top-level `ARCHITECTURE/` directory.
 *   The MCP server (`ochami/mcp/`) is self-contained with zero external dependencies (stdlib only).

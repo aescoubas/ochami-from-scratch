@@ -243,24 +243,41 @@ generate_secret() {
 # Creates a secrets.env file with random passwords if it doesn't exist.
 ensure_secrets_file() {
   local secrets_file="$1"
+  local created_new_file="false"
+  local updated_existing_file="false"
   if [ -f "$secrets_file" ]; then
     log_info "secrets file already exists: $secrets_file"
-    return 0
+  else
+    log_info "generating secrets file: $secrets_file"
+    mkdir -p "$(dirname "$secrets_file")"
+    {
+      echo "# Auto-generated OpenCHAMI secrets — $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+      echo "POSTGRES_PASSWORD=$(generate_secret)"
+      echo "SMD_DB_PASSWORD=$(generate_secret)"
+      echo "BSS_DB_PASSWORD=$(generate_secret)"
+      echo "KEA_DB_PASSWORD=$(generate_secret)"
+      echo "PCS_DB_PASSWORD=$(generate_secret)"
+      echo "STORK_DB_PASSWORD=$(generate_secret)"
+    } > "$secrets_file"
+    created_new_file="true"
   fi
 
-  log_info "generating secrets file: $secrets_file"
-  mkdir -p "$(dirname "$secrets_file")"
-  {
-    echo "# Auto-generated OpenCHAMI secrets — $(date -u +%Y-%m-%dT%H:%M:%SZ)"
-    echo "POSTGRES_PASSWORD=$(generate_secret)"
-    echo "SMD_DB_PASSWORD=$(generate_secret)"
-    echo "BSS_DB_PASSWORD=$(generate_secret)"
-    echo "KEA_DB_PASSWORD=$(generate_secret)"
-    echo "PCS_DB_PASSWORD=$(generate_secret)"
-    echo "STORK_DB_PASSWORD=$(generate_secret)"
-  } > "$secrets_file"
+  if ! grep -Eq '^LIBVIRT_BMC_USER=' "$secrets_file"; then
+    printf 'LIBVIRT_BMC_USER=admin\n' >> "$secrets_file"
+    updated_existing_file="true"
+  fi
+
+  if ! grep -Eq '^LIBVIRT_BMC_PASSWORD=' "$secrets_file"; then
+    printf 'LIBVIRT_BMC_PASSWORD=password\n' >> "$secrets_file"
+    updated_existing_file="true"
+  fi
+
   chmod 600 "$secrets_file"
-  log_info "secrets file created: $secrets_file"
+  if [ "$created_new_file" = "true" ]; then
+    log_info "secrets file created: $secrets_file"
+  elif [ "$updated_existing_file" = "true" ]; then
+    log_info "updated secrets file with missing libvirt BMC defaults: $secrets_file"
+  fi
 }
 
 _sudo_noninteractive_cmd() {

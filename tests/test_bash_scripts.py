@@ -82,6 +82,8 @@ class TestScriptStructure:
         content = self._read_script("lib/common.sh")
         assert "generate_secret" in content
         assert "ensure_secrets_file" in content
+        assert 'LIBVIRT_BMC_USER=admin' in content
+        assert 'LIBVIRT_BMC_PASSWORD=password' in content
 
     def test_common_sh_has_bridge_carrier_helpers(self):
         content = self._read_script("lib/common.sh")
@@ -162,6 +164,8 @@ class TestScriptStructure:
         assert 'SMD_BASE_URL="https://' in content
         assert 'curl -skf' in content or 'curl -ksf' in content
         assert "SMD_PORT" in content
+        assert "REDFISH_BMC_USER" in content
+        assert "REDFISH_BMC_PASSWORD" in content
 
     def test_deploy_uses_managed_generated_compose_file(self):
         content = self._read_script("deploy.sh")
@@ -188,12 +192,23 @@ class TestScriptStructure:
         assert 'if ! libvirt_uri_is_session "$LIBVIRT_URI"; then' in content
         assert "register-nodes.sh" in content
         assert "register-bss-defaults.sh" in content
+        assert 'LIBVIRT_BMC_IMAGE="${LIBVIRT_BMC_IMAGE:-localhost/libvirt-bmc:latest}"' in content
+        assert 'EXPLICIT_LIBVIRT_BMC_USER="${LIBVIRT_BMC_USER:-}"' in content
+        assert 'EXPLICIT_LIBVIRT_BMC_PASSWORD="${LIBVIRT_BMC_PASSWORD:-}"' in content
+        assert '. "$SECRETS_FILE"' in content
+        assert 'LIBVIRT_BMC_USER="${EXPLICIT_LIBVIRT_BMC_USER:-${LIBVIRT_BMC_USER:-admin}}"' in content
+        assert 'LIBVIRT_BMC_PASSWORD="${EXPLICIT_LIBVIRT_BMC_PASSWORD:-${LIBVIRT_BMC_PASSWORD:-password}}"' in content
         assert "ochami-pxe-net" in content
         assert "virbr-ochami" in content
         assert "openchami-lab-net" in content
         assert "virbr-ochlab" in content
         assert "ensure_bridge_carrier" in content
         assert "docker_compose" in content
+        assert "bmc_ip_for_index" in content
+        assert "domain_uuid" in content
+        assert "ensure_compose_libvirt_bmc" in content
+        assert "wait_for_compose_libvirt_bmc" in content
+        assert 'https://${bmc_ip}/redfish/v1/' in content
         assert "--no-deps" in content
         assert "kea kea-sync" in content
         assert "kea-ctrl-agent" not in content
@@ -236,6 +251,8 @@ class TestScriptStructure:
         content = self._read_script("teardown.sh")
         assert '$(dirname "$(dirname "$SCRIPT_DIR")")/ochami-docker-compose' in content
         assert "docker-compose.generated.yml" in content
+        assert 'LIBVIRT_BMC_CONTAINER_PREFIX="${LIBVIRT_BMC_CONTAINER_PREFIX:-ochami-libvirt-bmc}"' in content
+        assert 'docker ps -a --filter "name=${LIBVIRT_BMC_CONTAINER_PREFIX}-"' in content
         assert "remove_bridge_carrier_dummy" in content
         assert "restore_conflicting_dhcp_networks" in content
 
@@ -247,6 +264,10 @@ class TestScriptStructure:
         content = self._read_script("build-images.sh")
         assert "oci-images" in content
         assert "PROFILE" in content
+        assert "SMD_SRC" in content
+        assert "BSS_SRC" in content
+        assert "PCS_SRC" in content
+        assert "CLOUD_INIT_SRC" in content
         assert "KEA_SYNC_SRC" in content
         assert "--impure" in content
         assert "https://github.com/aescoubas/kea-sync.git" in content
@@ -255,6 +276,11 @@ class TestScriptStructure:
     def test_build_images_supports_runtime_flag(self):
         content = self._read_script("build-images.sh")
         assert "--runtime" in content
+        assert "SMD_IMAGE_TAG" in content
+        assert "BSS_IMAGE_TAG" in content
+        assert "PCS_IMAGE_TAG" in content
+        assert "CLOUD_INIT_IMAGE_TAG" in content
+        assert "EXPLICIT_KEA_SYNC_SRC" in content
         assert "KEA_SYNC_SRC" in content
 
     def test_lab_vm_script_manages_controller_vm(self):
@@ -387,6 +413,11 @@ class TestMakefileTargets:
     def test_has_build_images_target(self):
         assert "build-images:" in self.content
         assert "build-images.sh" in self.content
+        assert "SMD_SRC" in self.content
+        assert "BSS_SRC" in self.content
+        assert "PCS_SRC" in self.content
+        assert "CLOUD_INIT_SRC" in self.content
+        assert "KEA_SYNC_SRC" in self.content
 
     def test_has_create_test_vms_target(self):
         assert "create-test-vms:" in self.content
@@ -402,3 +433,11 @@ class TestMakefileTargets:
         assert "$(NIX) build $(NIX_FLAKE_REF)#lab-controller-vm" in self.content
         assert "build-lab-boot-node-vm:" in self.content
         assert "$(NIX) build $(NIX_FLAKE_REF)#lab-boot-node-vm" in self.content
+
+    def test_makefile_exposes_local_source_override_variables(self):
+        for name in ["SMD_SRC", "BSS_SRC", "PCS_SRC", "CLOUD_INIT_SRC", "KEA_SYNC_SRC"]:
+            assert f"{name} ?=" in self.content
+
+    def test_makefile_forwards_local_source_override_variables(self):
+        for name in ["SMD_SRC", "BSS_SRC", "PCS_SRC", "CLOUD_INIT_SRC", "KEA_SYNC_SRC"]:
+            assert f'{name}="$({name})"' in self.content

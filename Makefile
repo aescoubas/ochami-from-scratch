@@ -5,7 +5,13 @@
 METHOD ?= compose
 COUNT ?= 1
 PROFILE ?= official
+SMD_SRC ?=
+BSS_SRC ?=
+PCS_SRC ?=
+CLOUD_INIT_SRC ?=
+KEA_SYNC_SRC ?=
 PROFILE_SUFFIX = $(if $(filter official,$(PROFILE)),,-$(PROFILE))
+IMAGE_SOURCE_OVERRIDES = SMD_SRC="$(SMD_SRC)" BSS_SRC="$(BSS_SRC)" PCS_SRC="$(PCS_SRC)" CLOUD_INIT_SRC="$(CLOUD_INIT_SRC)" KEA_SYNC_SRC="$(KEA_SYNC_SRC)"
 NIX ?= env NIX_CONFIG='experimental-features = nix-command flakes' nix
 NIX_FLAKE_REF ?= path:.
 
@@ -24,7 +30,7 @@ test-vm-destroy:
 	bash libvirt/scripts/vm_tests.sh --destroy-all
 
 deploy:
-	OPENCHAMI_PROFILE=$(PROFILE) scripts/ops/deploy.sh --method $(METHOD)
+	$(IMAGE_SOURCE_OVERRIDES) OPENCHAMI_PROFILE=$(PROFILE) scripts/ops/deploy.sh --method $(METHOD)
 
 teardown:
 	OPENCHAMI_PROFILE=$(PROFILE) scripts/ops/teardown.sh --method $(METHOD)
@@ -44,7 +50,7 @@ generate-images:
 	$(NIX) build $(NIX_FLAKE_REF)#boot-artifacts --no-link --print-out-paths
 
 build-images:
-	OPENCHAMI_PROFILE=$(PROFILE) scripts/ops/build-images.sh
+	$(IMAGE_SOURCE_OVERRIDES) OPENCHAMI_PROFILE=$(PROFILE) scripts/ops/build-images.sh
 
 create-test-vms:
 	scripts/ops/create-test-vms.sh --method $(METHOD) --count $(COUNT)

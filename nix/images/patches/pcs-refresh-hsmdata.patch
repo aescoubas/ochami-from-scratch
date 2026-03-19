@@ -1,0 +1,49 @@
+--- a/internal/domain/power-status.go
++++ b/internal/domain/power-status.go
+@@ -363,21 +363,24 @@
+ 		case xnametypes.CDUMgmtSwitch:
+ 			fallthrough
+ 		case xnametypes.CabinetPDUPowerConnector:
+-			_, ok := hwStateMap[v.BaseData.ID]
++			comp, ok := hwStateMap[v.BaseData.ID]
+ 			if !ok {
+ 				//New component.
+ 				newComp := componentPowerInfo{}
+ 				newComp.PSComp.XName = v.BaseData.ID
+ 				newComp.PSComp.PowerState = pcsmodel.PowerStateFilter_Undefined.String()
+ 				newComp.PSComp.ManagementState = pcsmodel.ManagementStateFilter_unavailable.String()
+-				newComp.PSComp.SupportedPowerTransitions = toPCSPowerActions(v.AllowableActions)
+-				newComp.HSMData.RfFQDN = v.RfFQDN
+-				newComp.HSMData.PowerStatusURI = v.PowerStatusURI
+-				newComp.HSMData.PowerActionURI = v.PowerActionURI
+-				newComp.HSMData.PowerCapURI = v.PowerCapURI
+ 				newComp.PSComp.LastUpdated = time.Now()
+ 				hwStateMap[v.BaseData.ID] = &newComp
++				comp = &newComp
+ 			}
++
++			// Refresh HSM-derived Redfish details for both new and existing components.
++			comp.PSComp.SupportedPowerTransitions = toPCSPowerActions(v.AllowableActions)
++			comp.HSMData.RfFQDN = v.RfFQDN
++			comp.HSMData.PowerStatusURI = v.PowerStatusURI
++			comp.HSMData.PowerActionURI = v.PowerActionURI
++			comp.HSMData.PowerCapURI = v.PowerCapURI
+ 		default:
+ 			glogger.Tracef("%s: Component type not handled: %s", fname, string(v.BaseData.Type))
+ 		}
+--- a/cmd/power-control/service.go
++++ b/cmd/power-control/service.go
+@@ -395,10 +395,12 @@
+ 		podName = "unknown_pod_name"
+ 	}
+ 
++	credStoreEnabled := pcs.vaultEnabled || pcs.fakeVaultEnabled
++
+ 	//DOMAIN CONFIGURATION
+ 	var domainGlobals domain.DOMAIN_GLOBALS
+ 	domainGlobals.NewGlobals(&BaseTRSTask, &TLOC_rf, &TLOC_svc, rfClient, svcClient,
+-		rfClientLock, &Running, &DSP, &HSM, pcs.vaultEnabled,
++		rfClientLock, &Running, &DSP, &HSM, credStoreEnabled,
+ 		&CS, &DLOCK, pcs.maxNumCompleted, pcs.expireTimeMins, podName)
+ 
+ 	//Wait for vault PKI to respond for CA bundle.  Once this happens, re-do

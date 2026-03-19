@@ -35,7 +35,10 @@
         EOF
       ''
 , imageName ? "localhost/kea-sync"
-, imageTag ? "latest"
+, imageTag ? let
+    envTag = builtins.getEnv "KEA_SYNC_IMAGE_TAG";
+  in
+    if envTag != "" then envTag else "latest"
 }:
 
 let

@@ -44,8 +44,19 @@ def test_flake_exports_generators_and_images() -> None:
     assert "lab-boot-node-vm" in flake
     assert "oci-smd" in flake
     assert "oci-bss" in flake
+    assert "oci-libvirt-bmc" in flake
     assert "oci-images" in flake
     assert "oci-images-dev" in flake
+
+
+def test_flake_supports_local_image_tag_overrides() -> None:
+    flake = (PROJECT_ROOT / "flake.nix").read_text(encoding="utf-8")
+
+    assert "SMD_IMAGE_TAG" in flake
+    assert "BSS_IMAGE_TAG" in flake
+    assert "PCS_IMAGE_TAG" in flake
+    assert "CLOUD_INIT_IMAGE_TAG" in flake
+    assert "KEA_SYNC_IMAGE_TAG" in flake
 
 
 def test_readme_documents_nix_workflow() -> None:
@@ -53,3 +64,16 @@ def test_readme_documents_nix_workflow() -> None:
 
     assert "nix develop" in readme
     assert "nix build" in readme
+    assert "SMD_SRC" in readme
+    assert "BSS_SRC" in readme
+    assert "PCS_SRC" in readme
+    assert "CLOUD_INIT_SRC" in readme
+
+
+def test_agents_documents_local_source_overrides() -> None:
+    agents = (PROJECT_ROOT / "AGENTS.md").read_text(encoding="utf-8")
+
+    assert "SMD_SRC" in agents
+    assert "BSS_SRC" in agents
+    assert "PCS_SRC" in agents
+    assert "CLOUD_INIT_SRC" in agents

@@ -1,6 +1,20 @@
 # OpenCHAMI From Scratch Roadmap
 
 ## In Progress
+- [x] Make compose PCS transitions work against per-VM libvirt `sushy-tools` BMC endpoints
+  - [x] Keep PCS Redfish credentials aligned with the compose/libvirt BMC defaults and backfill the local secrets file on existing deployments.
+  - [x] Patch local PCS builds so refreshed HSM Redfish data and fake-vault credstores both reach the runtime power-status and transition paths.
+  - [x] Verify with `make test`, `nix build .#oci-pcs`, `nix build .#docker-compose-yml`, `nix build .#quadlet-units`, `nix build .#deploy-profile`, and a live compose PCS-driven off/on cycle of a libvirt VM.
+- [x] Add per-VM libvirt Redfish BMC endpoints for compose test VMs
+  - [x] Package a local `sushy-tools` OCI image for libvirt-backed Redfish.
+  - [x] Start one filtered Redfish endpoint per compose/libvirt test VM and register its loopback BMC address in SMD.
+  - [x] Clean up per-VM Redfish BMC containers during compose teardown and document the current `lab-vm` limitation.
+  - [x] Verify with `make test`, `nix build .#oci-libvirt-bmc`, `nix build .#docker-compose-yml`, `nix build .#quadlet-units`, and `nix build .#deploy-profile`.
+- [x] Add Makefile-level local checkout overrides for Go service image builds
+  - [x] Expose `SMD_SRC`, `BSS_SRC`, `PCS_SRC`, and `CLOUD_INIT_SRC` as top-level `make` variables for `build-images` and `deploy`.
+  - [x] Let the Nix OCI image builders consume those local checkout overrides during `--impure` builds and derive OCI-safe image tags from the checkout ref.
+  - [x] Document the override workflow in `README.md` and `AGENTS.md`.
+  - [x] Verify with `make test`, `nix build .#docker-compose-yml`, `nix build .#quadlet-units`, `nix build .#deploy-profile`, and `make build-images PROFILE=dev SMD_SRC=/home/escoubas/git_repos/github/OpenCHAMI/smd`.
 - [x] Add first-class `official` and `dev` stack profiles with ref-tagged local OCI images
   - [x] Model profile-specific service refs and enabled services in Nix so generated compose, quadlet, Helm, and deploy-profile outputs stay in sync.
   - [x] Make the unqualified flake outputs and operator workflow default to the `official` profile.

@@ -77,26 +77,31 @@
           if pkgs.stdenv.isLinux then
             lib.mapAttrs (profileName: profile:
               let
+                envOr = name: fallback:
+                  let
+                    value = builtins.getEnv name;
+                  in
+                  if value != "" then value else fallback;
                 ociImageArchives = {
                   smd = pkgs.callPackage ./nix/images/smd.nix {
                     inherit lib;
                     sourceSpec = profile.sources.smd;
-                    imageTag = profile.refs.smd;
+                    imageTag = envOr "SMD_IMAGE_TAG" profile.refs.smd;
                   };
                   bss = pkgs.callPackage ./nix/images/bss.nix {
                     inherit lib;
                     sourceSpec = profile.sources.bss;
-                    imageTag = profile.refs.bss;
+                    imageTag = envOr "BSS_IMAGE_TAG" profile.refs.bss;
                   };
                   pcs = pkgs.callPackage ./nix/images/pcs.nix {
                     inherit lib;
                     sourceSpec = profile.sources.pcs;
-                    imageTag = profile.refs.pcs;
+                    imageTag = envOr "PCS_IMAGE_TAG" profile.refs.pcs;
                   };
                   cloudInit = pkgs.callPackage ./nix/images/cloud-init.nix {
                     inherit lib;
                     sourceSpec = profile.sources.cloudInit;
-                    imageTag = profile.refs.cloudInit;
+                    imageTag = envOr "CLOUD_INIT_IMAGE_TAG" profile.refs.cloudInit;
                   };
                   kea = pkgs.callPackage ./nix/images/kea.nix {
                     imageTag = profile.refs.kea;
@@ -104,11 +109,12 @@
                   httpServer = pkgs.callPackage ./nix/images/http-server.nix {
                     imageTag = profile.refs.httpServer;
                   };
+                  libvirtBmc = pkgs.callPackage ./nix/images/libvirt-bmc.nix { };
                   tftp = pkgs.callPackage ./nix/images/tftp.nix {
                     imageTag = profile.refs.tftp;
                   };
                   keaSync = pkgs.callPackage ./nix/images/kea-sync.nix {
-                    imageTag = profile.refs.keaSync;
+                    imageTag = envOr "KEA_SYNC_IMAGE_TAG" profile.refs.keaSync;
                   };
                 };
               in
@@ -132,6 +138,7 @@
                 "oci-cloud-init" = ociImageArchives.cloudInit;
                 "oci-kea" = ociImageArchives.kea;
                 "oci-http-server" = ociImageArchives.httpServer;
+                "oci-libvirt-bmc" = ociImageArchives.libvirtBmc;
                 "oci-tftp" = ociImageArchives.tftp;
                 "oci-kea-sync" = ociImageArchives.keaSync;
                 "oci-images" = pkgs.callPackage ./nix/images/bundle.nix {
@@ -184,6 +191,9 @@
           "oci-http-server" = profilePackages.official."oci-http-server";
           "oci-http-server-official" = profilePackages.official."oci-http-server";
           "oci-http-server-dev" = profilePackages.dev."oci-http-server";
+          "oci-libvirt-bmc" = profilePackages.official."oci-libvirt-bmc";
+          "oci-libvirt-bmc-official" = profilePackages.official."oci-libvirt-bmc";
+          "oci-libvirt-bmc-dev" = profilePackages.dev."oci-libvirt-bmc";
           "oci-tftp" = profilePackages.official."oci-tftp";
           "oci-tftp-official" = profilePackages.official."oci-tftp";
           "oci-tftp-dev" = profilePackages.dev."oci-tftp";

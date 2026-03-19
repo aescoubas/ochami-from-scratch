@@ -13,17 +13,32 @@
     hash = "sha256-SKAao/ib26e2I0QKprxQjUcxD9gFKdFHUwJpGfLTLkc=";
     vendorHash = "sha256-Gqvn+GMctybEOhLsXo1/2TewpGiO7c0IO/YFC2TPWKQ=";
   }
+, smdSrcOverride ? let
+    envSrc = builtins.getEnv "SMD_SRC";
+  in
+    if envSrc != "" then builtins.path {
+      path = envSrc;
+      name = "smd-src";
+    } else
+      null
 , imageName ? "localhost/smd"
-, imageTag ? sourceSpec.rev
+, imageTag ? let
+    envTag = builtins.getEnv "SMD_IMAGE_TAG";
+  in
+    if envTag != "" then envTag else sourceSpec.rev
 }:
 
 let
-  smdSrc = pkgs.fetchFromGitHub {
-    inherit (sourceSpec) owner repo rev hash;
-  };
+  smdSrc =
+    if smdSrcOverride != null then
+      smdSrcOverride
+    else
+      pkgs.fetchFromGitHub {
+        inherit (sourceSpec) owner repo rev hash;
+      };
   smd = pkgs.buildGoModule {
     pname = "smd";
-    version = sourceSpec.rev;
+    version = imageTag;
     src = smdSrc;
     vendorHash = sourceSpec.vendorHash;
     subPackages = [ "cmd/smd" "cmd/smd-init" ];

@@ -153,6 +153,13 @@ Deploy the stack:
 make deploy METHOD=compose
 ```
 
+To build one Go service from a local checkout while keeping the rest of the
+selected profile unchanged, pass the source path as a `make` variable:
+
+```bash
+make deploy METHOD=compose PROFILE=dev BSS_SRC=/path/to/bss
+```
+
 The default stack profile is `official`. That profile pins locally built images to
 the upstream refs:
 
@@ -191,6 +198,16 @@ If existing `ochami-test-node-*` domains are already defined, use a fresh index:
 ```bash
 scripts/ops/create-test-vms.sh --count 1 --start-index 2
 ```
+
+On the Linux compose/libvirt path, `create-test-vms` also starts one
+`sushy-tools` Redfish endpoint per VM on a deterministic loopback address in
+`127.84.0.0/16`. Those per-VM BMC addresses are registered in SMD with default
+credentials `admin` / `password`, so PCS can drive libvirt power operations
+through Redfish. On the compose path, `make deploy` stores the same
+`LIBVIRT_BMC_USER` and `LIBVIRT_BMC_PASSWORD` values in
+`.tmp/openchami-secrets.env`, and `create-test-vms` plus PCS both consume those
+settings unless you override them in the environment. This per-VM BMC flow is
+not yet wired into `METHOD=lab-vm`.
 
 Inspect the guest console:
 
@@ -376,6 +393,23 @@ Use `PROFILE=dev` if you want the cutting-edge stack instead of the default
 make build-images PROFILE=dev
 ```
 
+To override a specific Go service from a local checkout, pass the source path on
+the `make` command line:
+
+```bash
+make build-images PROFILE=dev SMD_SRC=/path/to/smd
+make build-images PROFILE=dev BSS_SRC=/path/to/bss
+make build-images PROFILE=dev PCS_SRC=/path/to/power-control
+make build-images PROFILE=dev CLOUD_INIT_SRC=/path/to/cloud-init
+```
+
+`make deploy` accepts the same override variables and forwards them into the
+image build step before the stack starts:
+
+```bash
+make deploy METHOD=compose PROFILE=dev SMD_SRC=/path/to/smd
+```
+
 Or call the script directly:
 
 ```bash
@@ -384,14 +418,21 @@ scripts/ops/build-images.sh --runtime podman
 ```
 
 The Docker Compose and quadlet paths now build a local Kea image from Nixpkgs.
-The `kea-sync` image is built from an external checkout. The build script will:
+The Go service images can also consume local checkouts, and the `kea-sync`
+image is built from an external checkout. The build script will:
 
+- use `SMD_SRC`, `BSS_SRC`, `PCS_SRC`, and `CLOUD_INIT_SRC` if you set them
+- derive an OCI-safe image tag from the current git ref of each local checkout
 - use `KEA_SYNC_SRC` if you set it
 - otherwise reuse `../services/kea-sync` if it is already a git checkout
 - otherwise clone `https://github.com/aescoubas/kea-sync.git` into that location
 
 Relevant overrides:
 
+- `SMD_SRC`
+- `BSS_SRC`
+- `PCS_SRC`
+- `CLOUD_INIT_SRC`
 - `KEA_SYNC_SRC`
 - `KEA_SYNC_CHECKOUT`
 - `KEA_SYNC_REPO`

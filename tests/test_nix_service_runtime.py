@@ -66,13 +66,20 @@ class TestServiceCommandPaths:
         content = (ROOT / "nix" / "services" / "nginx.nix").read_text()
         assert "healthCheck = \"bash -ec ': >/dev/tcp/127.0.0.1/" in content
 
+    def test_pcs_uses_fake_vault_credentials_for_local_redfish(self):
+        content = (ROOT / "nix" / "services" / "pcs.nix").read_text()
+        assert 'VAULT_ENABLED = "false";' in content
+        assert 'FAKE_VAULT_ENABLED = "true";' in content
+        assert 'PCS_FAKE_VAULT_REDFISH_USER = "LIBVIRT_BMC_USER";' in content
+        assert 'PCS_FAKE_VAULT_REDFISH_PASSWORD = "LIBVIRT_BMC_PASSWORD";' in content
+
 
 class TestRuntimeImageAssets:
     """Local images should include the runtime assets they need at startup."""
 
     def test_pcs_image_packages_migrations_and_workdir(self):
         content = (ROOT / "nix" / "images" / "pcs.nix").read_text()
-        assert "cp -r ${pcsSrc}/migrations app/migrations" in content
+        assert "cp -r ${patchedPcsSrc}/migrations app/migrations" in content
         assert 'WorkingDir = "/app";' in content
 
     def test_smd_image_packages_persistent_migrations(self):

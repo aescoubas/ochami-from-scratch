@@ -24,11 +24,19 @@ case "$METHOD" in
     COMPOSE_DIR="${COMPOSE_DIR:-$(dirname "$(dirname "$SCRIPT_DIR")")/ochami-docker-compose}"
     COMPOSE_FILE="${COMPOSE_DIR}/docker-compose.generated.yml"
     LIBVIRT_NET_STATE_FILE="$(dirname "$(dirname "$SCRIPT_DIR")")/.tmp/libvirt-networks.paused"
+    LIBVIRT_BMC_CONTAINER_PREFIX="${LIBVIRT_BMC_CONTAINER_PREFIX:-ochami-libvirt-bmc}"
     if [ -f "$COMPOSE_FILE" ]; then
       docker_compose -f "$COMPOSE_FILE" down -v --remove-orphans
     else
       # Try generated compose file
       docker_compose down -v --remove-orphans
+    fi
+    if [ "$DRY_RUN" = "true" ]; then
+      log_info "[dry-run] would remove docker containers matching ${LIBVIRT_BMC_CONTAINER_PREFIX}-*"
+    elif docker_daemon_reachable; then
+      for container in $(docker ps -a --filter "name=${LIBVIRT_BMC_CONTAINER_PREFIX}-" --format '{{.Names}}' 2>/dev/null); do
+        run_cmd docker rm -f "$container" 2>/dev/null || true
+      done
     fi
     remove_bridge_carrier_dummy
     restore_conflicting_dhcp_networks "$LIBVIRT_NET_STATE_FILE"

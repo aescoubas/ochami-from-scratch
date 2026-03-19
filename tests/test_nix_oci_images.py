@@ -16,6 +16,7 @@ class TestImageFilesExist:
         "cloud-init.nix",
         "kea.nix",
         "http-server.nix",
+        "libvirt-bmc.nix",
         "tftp.nix",
         "kea-sync.nix",
         "redfish-emulator.nix",
@@ -30,6 +31,12 @@ class TestGoServiceImages:
     """Go service images follow the fetchFromGitHub + buildGoModule pattern."""
 
     GO_SERVICES = ["smd.nix", "bss.nix", "pcs.nix", "cloud-init.nix"]
+    LOCAL_OVERRIDE_ENVS = {
+        "smd.nix": "SMD_SRC",
+        "bss.nix": "BSS_SRC",
+        "pcs.nix": "PCS_SRC",
+        "cloud-init.nix": "CLOUD_INIT_SRC",
+    }
 
     def test_uses_fetch_from_github(self):
         for name in self.GO_SERVICES:
@@ -58,11 +65,31 @@ class TestGoServiceImages:
             assert "sha256-" in content, \
                 f"{name} should contain real sha256 hashes"
 
+    def test_supports_local_checkout_overrides(self):
+        for name, env_name in self.LOCAL_OVERRIDE_ENVS.items():
+            content = (IMAGES_DIR / name).read_text()
+            assert f'builtins.getEnv "{env_name}"' in content, \
+                f"{name} should support the {env_name} local checkout override"
+            assert "builtins.path" in content, \
+                f"{name} should package a local checkout through builtins.path"
+            assert f'builtins.getEnv "{env_name.replace("_SRC", "_IMAGE_TAG")}"' in content, \
+                f"{name} should support a derived image tag when a local checkout override is used"
+
+    def test_pcs_applies_local_refresh_patch(self):
+        content = (IMAGES_DIR / "pcs.nix").read_text()
+        assert "applyPatches" in content
+        assert "pcs-refresh-hsmdata.patch" in content
+
+    def test_pcs_patch_enables_fake_vault_credstore_in_domain_layer(self):
+        content = (IMAGES_DIR / "patches" / "pcs-refresh-hsmdata.patch").read_text()
+        assert "cmd/power-control/service.go" in content
+        assert "credStoreEnabled := pcs.vaultEnabled || pcs.fakeVaultEnabled" in content
+
 
 class TestUtilityImages:
     """Utility images (non-Go) should use dockerTools."""
 
-    UTILITY = ["kea.nix", "http-server.nix", "tftp.nix", "redfish-emulator.nix"]
+    UTILITY = ["kea.nix", "http-server.nix", "libvirt-bmc.nix", "tftp.nix", "redfish-emulator.nix"]
 
     def test_uses_docker_tools(self):
         for name in self.UTILITY:
@@ -90,6 +117,23 @@ class TestParameterizedSourcePaths:
         assert "../../../" not in content, "redfish-emulator.nix should not use relative paths"
 
 
+class TestLibvirtBmcImage:
+    """Verify the libvirt BMC image packages sushy-tools for per-VM Redfish."""
+
+    def test_libvirt_bmc_packages_sushy_tools(self):
+        content = (IMAGES_DIR / "libvirt-bmc.nix").read_text()
+        assert "buildPythonApplication" in content
+        assert "fetchPypi" in content
+        assert "sushy_tools" in content
+        assert "SUSHY_EMULATOR_ALLOWED_INSTANCES" in content
+        assert "sushy-emulator" in content
+        assert "openssl" in content
+        assert "/redfish/v1/Systems/<identity>/Memory" in content
+        assert "MemoryCollection" in content
+        assert "get_storage_col" in content
+        assert "PYTHONPATH" in content
+
+
 class TestFlakeExportsOciImages:
     """Verify flake.nix references all OCI image packages."""
 
@@ -101,7 +145,7 @@ class TestFlakeExportsOciImages:
             assert name in self.flake, f"flake.nix should export {name}"
 
     def test_exports_utility_images(self):
-        for name in ["oci-http-server", "oci-tftp", "oci-kea", "oci-kea-sync", "oci-redfish-emulator"]:
+        for name in ["oci-http-server", "oci-libvirt-bmc", "oci-tftp", "oci-kea", "oci-kea-sync", "oci-redfish-emulator"]:
             assert name in self.flake, f"flake.nix should export {name}"
 
     def test_passes_source_paths_to_images(self):

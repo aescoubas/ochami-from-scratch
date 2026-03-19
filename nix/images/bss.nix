@@ -13,17 +13,32 @@
     hash = "sha256-NGgLB/2o6KW1ZPAlbITtlRSurja93lLBjyHVkhmDGaE=";
     vendorHash = "sha256-TXBznp95gkHKc76UgwQJ+xQHD8HfAC7nbfse0YrjH9A=";
   }
+, bssSrcOverride ? let
+    envSrc = builtins.getEnv "BSS_SRC";
+  in
+    if envSrc != "" then builtins.path {
+      path = envSrc;
+      name = "bss-src";
+    } else
+      null
 , imageName ? "localhost/bss"
-, imageTag ? sourceSpec.rev
+, imageTag ? let
+    envTag = builtins.getEnv "BSS_IMAGE_TAG";
+  in
+    if envTag != "" then envTag else sourceSpec.rev
 }:
 
 let
-  bssSrc = pkgs.fetchFromGitHub {
-    inherit (sourceSpec) owner repo rev hash;
-  };
+  bssSrc =
+    if bssSrcOverride != null then
+      bssSrcOverride
+    else
+      pkgs.fetchFromGitHub {
+        inherit (sourceSpec) owner repo rev hash;
+      };
   bss = pkgs.buildGoModule {
     pname = "bss";
-    version = sourceSpec.rev;
+    version = imageTag;
     src = bssSrc;
     vendorHash = sourceSpec.vendorHash;
     subPackages = [ "cmd/boot-script-service" "cmd/bss-init" ];

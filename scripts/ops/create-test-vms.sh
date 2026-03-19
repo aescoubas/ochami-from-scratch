@@ -27,6 +27,16 @@ COMPOSE_FILE="${COMPOSE_DIR}/docker-compose.generated.yml"
 SECRETS_FILE="${OPENCHAMI_SECRETS:-${PROJECT_ROOT}/.tmp/openchami-secrets.env}"
 MANIFEST_FILE="${MANIFEST_FILE:-${PROJECT_ROOT}/.tmp/ochami-test-vms.csv}"
 KEA_SYNC_PORT="${KEA_SYNC_PORT:-28080}"
+LIBVIRT_BMC_IMAGE="${LIBVIRT_BMC_IMAGE:-localhost/libvirt-bmc:latest}"
+EXPLICIT_LIBVIRT_BMC_USER="${LIBVIRT_BMC_USER:-}"
+EXPLICIT_LIBVIRT_BMC_PASSWORD="${LIBVIRT_BMC_PASSWORD:-}"
+LIBVIRT_BMC_USER="${LIBVIRT_BMC_USER:-}"
+LIBVIRT_BMC_PASSWORD="${LIBVIRT_BMC_PASSWORD:-}"
+LIBVIRT_BMC_READY_ATTEMPTS="${LIBVIRT_BMC_READY_ATTEMPTS:-30}"
+LIBVIRT_BMC_READY_INTERVAL="${LIBVIRT_BMC_READY_INTERVAL:-2}"
+LIBVIRT_BMC_LISTEN_PORT="${LIBVIRT_BMC_LISTEN_PORT:-443}"
+LIBVIRT_BMC_CONTAINER_PREFIX="${LIBVIRT_BMC_CONTAINER_PREFIX:-ochami-libvirt-bmc}"
+LIBVIRT_BMC_SOCKET_PATH="${LIBVIRT_BMC_SOCKET_PATH:-/var/run/libvirt}"
 DEFAULT_LAB_VM_STATE_DIR="${PROJECT_ROOT}/.tmp/lab-vm"
 if [ "$(uname -s)" = "Linux" ]; then
   DEFAULT_LAB_VM_STATE_DIR="${XDG_STATE_HOME:-${HOME}/.local/state}/openchami/lab-vm"
@@ -262,6 +272,9 @@ case "$METHOD" in
       log_error "run 'make deploy METHOD=compose' first"
       exit 1
     fi
+
+    # shellcheck disable=SC1090
+    . "$SECRETS_FILE"
     ;;
   lab-vm)
     if lab_vm_uses_darwin_libvirt_boot_assets; then
@@ -271,6 +284,9 @@ case "$METHOD" in
     log_info "using controller VM endpoints http://127.0.0.1:${LAB_VM_CONTROLLER_HTTP_PORT}, http://127.0.0.1:${LAB_VM_CONTROLLER_BSS_PORT}, and https://127.0.0.1:${LAB_VM_CONTROLLER_SMD_PORT}"
     ;;
 esac
+
+LIBVIRT_BMC_USER="${EXPLICIT_LIBVIRT_BMC_USER:-${LIBVIRT_BMC_USER:-admin}}"
+LIBVIRT_BMC_PASSWORD="${EXPLICIT_LIBVIRT_BMC_PASSWORD:-${LIBVIRT_BMC_PASSWORD:-password}}"
 
 sudo_cmd=""
 if ! libvirt_uri_is_session "$LIBVIRT_URI"; then
@@ -862,6 +878,96 @@ domain_state() {
   libvirt_virsh domstate "$1" 2>/dev/null | tr -d '\r' | xargs
 }
 
+compose_method_uses_libvirt_bmc() {
+  [ "$METHOD" = "compose" ] && [ "$(uname -s)" = "Linux" ]
+}
+
+domain_uuid() {
+  libvirt_virsh domuuid "$1" 2>/dev/null | tr -d '\r' | xargs
+}
+
+bmc_ip_for_index() {
+  local idx="$1"
+  local subnet host
+
+  subnet=$((idx / 254))
+  host=$(((idx % 254) + 1))
+
+  if [ "$subnet" -gt 254 ]; then
+    log_error "index $idx is too large for deterministic libvirt BMC IP allocation"
+    exit 1
+  fi
+
+  printf '127.84.%d.%d\n' "$subnet" "$host"
+}
+
+bmc_container_name() {
+  local domain_name="$1"
+  printf '%s-%s\n' "$LIBVIRT_BMC_CONTAINER_PREFIX" "$domain_name"
+}
+
+wait_for_compose_libvirt_bmc() {
+  local bmc_ip="$1"
+  local attempt=1
+  local url="https://${bmc_ip}/redfish/v1/"
+
+  log_info "waiting for Redfish BMC endpoint ${url}"
+  while [ "$attempt" -le "$LIBVIRT_BMC_READY_ATTEMPTS" ]; do
+    if curl -skfu "${LIBVIRT_BMC_USER}:${LIBVIRT_BMC_PASSWORD}" \
+      --max-time 5 "$url" >/dev/null 2>&1; then
+      log_info "Redfish BMC endpoint is ready at ${url}"
+      return 0
+    fi
+
+    sleep "$LIBVIRT_BMC_READY_INTERVAL"
+    attempt=$((attempt + 1))
+  done
+
+  log_error "Redfish BMC endpoint never became ready at ${url}"
+  return 1
+}
+
+ensure_compose_libvirt_bmc() {
+  local domain_name="$1"
+  local domain_identity="$2"
+  local bmc_ip="$3"
+  local container_name
+
+  if ! compose_method_uses_libvirt_bmc; then
+    return 0
+  fi
+
+  container_name="$(bmc_container_name "$domain_name")"
+
+  if [ "$DRY_RUN" = "true" ]; then
+    log_info "[dry-run] would run ${container_name} for ${domain_name} at ${bmc_ip}:${LIBVIRT_BMC_LISTEN_PORT}"
+    return 0
+  fi
+
+  require_command docker "compose libvirt Redfish BMC containers"
+  if ! docker_daemon_reachable; then
+    log_error "docker daemon is not reachable for libvirt Redfish BMC container management"
+    exit 1
+  fi
+
+  docker rm -f "$container_name" >/dev/null 2>&1 || true
+  docker run -d \
+    --name "$container_name" \
+    --restart unless-stopped \
+    --network host \
+    -e "SUSHY_EMULATOR_ALLOWED_INSTANCES=${domain_identity}" \
+    -e "SUSHY_EMULATOR_LIBVIRT_URI=${LIBVIRT_URI}" \
+    -e "SUSHY_EMULATOR_LISTEN_IP=${bmc_ip}" \
+    -e "SUSHY_EMULATOR_LISTEN_PORT=${LIBVIRT_BMC_LISTEN_PORT}" \
+    -e "SUSHY_EMULATOR_PASSWORD=${LIBVIRT_BMC_PASSWORD}" \
+    -e "SUSHY_EMULATOR_SSL_COMMON_NAME=${bmc_ip}" \
+    -e "SUSHY_EMULATOR_USERNAME=${LIBVIRT_BMC_USER}" \
+    -v "${LIBVIRT_BMC_SOCKET_PATH}:/var/run/libvirt" \
+    "$LIBVIRT_BMC_IMAGE" >/dev/null
+
+  wait_for_compose_libvirt_bmc "$bmc_ip"
+}
+
 mac_for_index() {
   local idx="$1"
   if [ "$idx" -gt 255 ]; then
@@ -1056,6 +1162,8 @@ prepare_runtime() {
 }
 
 register_nodes() {
+  REDFISH_BMC_USER="$LIBVIRT_BMC_USER" \
+  REDFISH_BMC_PASSWORD="$LIBVIRT_BMC_PASSWORD" \
   SMD_HOST="$SMD_HOST" SMD_PORT="$SMD_PORT" \
     "$SCRIPT_DIR/register-nodes.sh" --nodes-csv "$registration_csv" $DRY_RUN_FLAG
 }
@@ -1087,6 +1195,7 @@ domain_names=()
 xnames=()
 macs=()
 ips=()
+bmc_ips=()
 
 for offset in $(seq 0 $((COUNT - 1))); do
   idx=$((START_INDEX + offset))
@@ -1095,6 +1204,7 @@ for offset in $(seq 0 $((COUNT - 1))); do
   ip_addr="$(ip_for_index "$idx")"
   disk_path="${VM_DISK_DIR}/${domain_name}.qcow2"
   desired_mac="$(mac_for_index "$idx")"
+  bmc_ip="-"
 
   ensure_domain_defined "$domain_name" "$disk_path" "$desired_mac"
 
@@ -1107,16 +1217,22 @@ for offset in $(seq 0 $((COUNT - 1))); do
     fi
   fi
 
+  if compose_method_uses_libvirt_bmc; then
+    bmc_ip="$(bmc_ip_for_index "$idx")"
+    ensure_compose_libvirt_bmc "$domain_name" "$(domain_uuid "$domain_name")" "$bmc_ip"
+  fi
+
   if [ "$DRY_RUN" = "true" ]; then
     log_info "[dry-run] would register ${xname} (${actual_mac}, ${ip_addr})"
   else
-    printf '%s,%s,%s,-,%s\n' "$xname" "$actual_mac" "$ip_addr" "$domain_name" >> "$MANIFEST_FILE"
+    printf '%s,%s,%s,%s,%s\n' "$xname" "$actual_mac" "$ip_addr" "$bmc_ip" "$domain_name" >> "$MANIFEST_FILE"
   fi
 
   domain_names+=("$domain_name")
   xnames+=("$xname")
   macs+=("$actual_mac")
   ips+=("$ip_addr")
+  bmc_ips+=("$bmc_ip")
 done
 
 registration_csv="$(mktemp)"
@@ -1125,7 +1241,7 @@ trap 'rm -f "$registration_csv"' EXIT
 {
   printf 'xname,mac,ip,bmc_ip\n'
   for idx in "${!xnames[@]}"; do
-    printf '%s,%s,%s,-\n' "${xnames[$idx]}" "${macs[$idx]}" "${ips[$idx]}"
+    printf '%s,%s,%s,%s\n' "${xnames[$idx]}" "${macs[$idx]}" "${ips[$idx]}" "${bmc_ips[$idx]}"
   done
 } > "$registration_csv"
 
