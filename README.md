@@ -206,8 +206,10 @@ credentials `admin` / `password`, so PCS can drive libvirt power operations
 through Redfish. On the compose path, `make deploy` stores the same
 `LIBVIRT_BMC_USER` and `LIBVIRT_BMC_PASSWORD` values in
 `.tmp/openchami-secrets.env`, and `create-test-vms` plus PCS both consume those
-settings unless you override them in the environment. This per-VM BMC flow is
-not yet wired into `METHOD=lab-vm`.
+settings unless you override them in the environment. Additional compose VMs
+use one node per BMC slot, so the default xnames are `x1000c0s0b0n0`,
+`x1000c0s0b1n0`, `x1000c0s0b2n0`, and so on. This per-VM BMC flow is not yet
+wired into `METHOD=lab-vm`.
 
 Inspect the guest console:
 

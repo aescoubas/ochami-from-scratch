@@ -37,6 +37,11 @@ LIBVIRT_BMC_READY_INTERVAL="${LIBVIRT_BMC_READY_INTERVAL:-2}"
 LIBVIRT_BMC_LISTEN_PORT="${LIBVIRT_BMC_LISTEN_PORT:-443}"
 LIBVIRT_BMC_CONTAINER_PREFIX="${LIBVIRT_BMC_CONTAINER_PREFIX:-ochami-libvirt-bmc}"
 LIBVIRT_BMC_SOCKET_PATH="${LIBVIRT_BMC_SOCKET_PATH:-/var/run/libvirt}"
+HSM_DISCOVERY_ATTEMPTS="${HSM_DISCOVERY_ATTEMPTS:-30}"
+HSM_DISCOVERY_INTERVAL="${HSM_DISCOVERY_INTERVAL:-2}"
+PCS_POWER_STATUS_URL="${PCS_POWER_STATUS_URL:-http://localhost/power-control/v1/power-status}"
+PCS_READY_ATTEMPTS="${PCS_READY_ATTEMPTS:-20}"
+PCS_READY_INTERVAL="${PCS_READY_INTERVAL:-2}"
 DEFAULT_LAB_VM_STATE_DIR="${PROJECT_ROOT}/.tmp/lab-vm"
 if [ "$(uname -s)" = "Linux" ]; then
   DEFAULT_LAB_VM_STATE_DIR="${XDG_STATE_HOME:-${HOME}/.local/state}/openchami/lab-vm"
@@ -75,7 +80,7 @@ Options:
   --count N            Number of test VMs to ensure exist
   --start-index N      Starting index for VM names, xnames, MACs, and reserved IPs
   --name-prefix NAME   Domain name prefix (default: ${NAME_PREFIX})
-  --xname-prefix NAME  Xname prefix (default: ${XNAME_PREFIX})
+  --xname-prefix NAME  BMC or legacy node xname prefix (default: ${XNAME_PREFIX})
   --memory-mib N       Memory in MiB per VM (default: ${VM_MEMORY_MIB})
   --vcpus N            vCPUs per VM (default: ${VM_VCPUS})
   --disk-size SIZE     Disk size passed to qemu-img (default: ${VM_DISK_SIZE})
@@ -238,6 +243,10 @@ require_positive_int "$START_INDEX" "start-index"
 require_positive_int "$VM_MEMORY_MIB" "memory-mib"
 require_positive_int "$VM_VCPUS" "vcpus"
 require_positive_int "$VM_IP_START" "vm-ip-start"
+require_positive_int "$HSM_DISCOVERY_ATTEMPTS" "hsm-discovery-attempts"
+require_positive_int "$HSM_DISCOVERY_INTERVAL" "hsm-discovery-interval"
+require_positive_int "$PCS_READY_ATTEMPTS" "pcs-ready-attempts"
+require_positive_int "$PCS_READY_INTERVAL" "pcs-ready-interval"
 
 if [ "$COUNT" -eq 0 ]; then
   log_info "no VMs requested; nothing to do"
@@ -256,6 +265,44 @@ if ! lab_vm_uses_darwin_libvirt_boot_assets; then
   require_command virt-install "libvirt VM creation"
   require_command qemu-img "disk image creation"
 fi
+
+XNAME_BMC_PREFIX=""
+XNAME_BMC_INDEX_BASE="0"
+
+init_xname_layout() {
+  if [[ "$XNAME_PREFIX" =~ ^(.*b)([0-9]+)n$ ]]; then
+    XNAME_BMC_PREFIX="${BASH_REMATCH[1]}"
+    XNAME_BMC_INDEX_BASE="${BASH_REMATCH[2]}"
+    return 0
+  fi
+
+  if [[ "$XNAME_PREFIX" =~ ^(.*b)([0-9]+)$ ]]; then
+    XNAME_BMC_PREFIX="${BASH_REMATCH[1]}"
+    XNAME_BMC_INDEX_BASE="${BASH_REMATCH[2]}"
+    return 0
+  fi
+
+  if [[ "$XNAME_PREFIX" =~ ^.*b$ ]]; then
+    XNAME_BMC_PREFIX="$XNAME_PREFIX"
+    XNAME_BMC_INDEX_BASE="0"
+    return 0
+  fi
+
+  log_error "xname-prefix must identify a BMC lineage like x1000c0s0b or x1000c0s0b0n (got: $XNAME_PREFIX)"
+  exit 1
+}
+
+bmc_xname_for_index() {
+  local idx="$1"
+  printf '%s%d\n' "$XNAME_BMC_PREFIX" "$((XNAME_BMC_INDEX_BASE + idx))"
+}
+
+xname_for_index() {
+  local idx="$1"
+  printf '%sn0\n' "$(bmc_xname_for_index "$idx")"
+}
+
+init_xname_layout
 
 case "$METHOD" in
   compose)
@@ -785,7 +832,7 @@ run_darwin_libvirt_lab_vms() {
 
   if [ "$DRY_RUN" != "true" ]; then
     mkdir -p "$(dirname "$MANIFEST_FILE")"
-    printf 'xname,mac,ip,bmc_ip,domain\n' > "$MANIFEST_FILE"
+    printf 'xname,mac,ip,bmc_ip,bmc_xname,domain\n' > "$MANIFEST_FILE"
   fi
 
   domain_names=()
@@ -796,7 +843,7 @@ run_darwin_libvirt_lab_vms() {
   for offset in $(seq 0 $((COUNT - 1))); do
     idx=$((START_INDEX + offset))
     domain_name="${NAME_PREFIX}-${idx}"
-    xname="${XNAME_PREFIX}${idx}"
+    xname="$(xname_for_index "$idx")"
     ip_addr="$(ip_for_index "$idx")"
     disk_path="${VM_DISK_DIR}/${domain_name}.qcow2"
     actual_mac="$(mac_for_index "$idx")"
@@ -806,7 +853,7 @@ run_darwin_libvirt_lab_vms() {
     if [ "$DRY_RUN" = "true" ]; then
       log_info "[dry-run] would register ${xname} (${actual_mac}, ${ip_addr})"
     else
-      printf '%s,%s,%s,-,%s\n' "$xname" "$actual_mac" "$ip_addr" "$domain_name" >> "$MANIFEST_FILE"
+      printf '%s,%s,%s,-,-,%s\n' "$xname" "$actual_mac" "$ip_addr" "$domain_name" >> "$MANIFEST_FILE"
     fi
 
     domain_names+=("$domain_name")
@@ -819,9 +866,9 @@ run_darwin_libvirt_lab_vms() {
   trap 'rm -f "$registration_csv"' EXIT
 
   {
-    printf 'xname,mac,ip,bmc_ip\n'
+    printf 'xname,mac,ip,bmc_ip,bmc_xname\n'
     for idx in "${!xnames[@]}"; do
-      printf '%s,%s,%s,-\n' "${xnames[$idx]}" "${macs[$idx]}" "${ips[$idx]}"
+      printf '%s,%s,%s,-,-\n' "${xnames[$idx]}" "${macs[$idx]}" "${ips[$idx]}"
     done
   } > "$registration_csv"
 
@@ -924,6 +971,86 @@ wait_for_compose_libvirt_bmc() {
   done
 
   log_error "Redfish BMC endpoint never became ready at ${url}"
+  return 1
+}
+
+component_endpoint_ready() {
+  local xname="$1"
+  local bmc_xname="$2"
+  local response
+
+  response="$(curl -skfG "https://${SMD_HOST}:${SMD_PORT}/hsm/v2/Inventory/ComponentEndpoints" \
+    --data-urlencode "id=${xname}" 2>/dev/null || true)"
+  [ -n "$response" ] || return 1
+
+  printf '%s' "$response" | jq -e \
+    --arg xname "$xname" \
+    --arg bmc_xname "$bmc_xname" \
+    '.ComponentEndpoints | any(.ID == $xname and .RedfishEndpointID == $bmc_xname and .Enabled == true)' \
+    >/dev/null
+}
+
+wait_for_component_endpoint() {
+  local xname="$1"
+  local bmc_xname="$2"
+  local attempt=1
+
+  if [ "$DRY_RUN" = "true" ]; then
+    log_info "[dry-run] would wait for SMD ComponentEndpoint ${xname} via ${bmc_xname}"
+    return 0
+  fi
+
+  log_info "waiting for SMD ComponentEndpoint ${xname} via ${bmc_xname}"
+  while [ "$attempt" -le "$HSM_DISCOVERY_ATTEMPTS" ]; do
+    if component_endpoint_ready "$xname" "$bmc_xname"; then
+      log_info "SMD ComponentEndpoint is ready for ${xname}"
+      return 0
+    fi
+
+    sleep "$HSM_DISCOVERY_INTERVAL"
+    attempt=$((attempt + 1))
+  done
+
+  log_error "SMD ComponentEndpoint never became ready for ${xname} via ${bmc_xname}"
+  return 1
+}
+
+pcs_power_status_ready() {
+  local xname="$1"
+  local response
+
+  response="$(curl -fsS "$PCS_POWER_STATUS_URL" \
+    -H 'Content-Type: application/json' \
+    -d "{\"xnames\":[\"${xname}\"]}" 2>/dev/null || true)"
+  [ -n "$response" ] || return 1
+
+  printf '%s' "$response" | jq -e \
+    --arg xname "$xname" \
+    '.status | any(.xname == $xname and .managementState == "available")' \
+    >/dev/null
+}
+
+wait_for_pcs_power_status() {
+  local xname="$1"
+  local attempt=1
+
+  if [ "$DRY_RUN" = "true" ]; then
+    log_info "[dry-run] would wait for PCS power-status for ${xname}"
+    return 0
+  fi
+
+  log_info "waiting for PCS power-status for ${xname}"
+  while [ "$attempt" -le "$PCS_READY_ATTEMPTS" ]; do
+    if pcs_power_status_ready "$xname"; then
+      log_info "PCS power-status is ready for ${xname}"
+      return 0
+    fi
+
+    sleep "$PCS_READY_INTERVAL"
+    attempt=$((attempt + 1))
+  done
+
+  log_error "PCS power-status never became ready for ${xname}"
   return 1
 }
 
@@ -1188,7 +1315,7 @@ ensure_lab_vm_controller_domain
 
 if [ "$DRY_RUN" != "true" ]; then
   mkdir -p "$(dirname "$MANIFEST_FILE")"
-  printf 'xname,mac,ip,bmc_ip,domain\n' > "$MANIFEST_FILE"
+  printf 'xname,mac,ip,bmc_ip,bmc_xname,domain\n' > "$MANIFEST_FILE"
 fi
 
 domain_names=()
@@ -1196,15 +1323,17 @@ xnames=()
 macs=()
 ips=()
 bmc_ips=()
+bmc_xnames=()
 
 for offset in $(seq 0 $((COUNT - 1))); do
   idx=$((START_INDEX + offset))
   domain_name="${NAME_PREFIX}-${idx}"
-  xname="${XNAME_PREFIX}${idx}"
+  xname="$(xname_for_index "$idx")"
   ip_addr="$(ip_for_index "$idx")"
   disk_path="${VM_DISK_DIR}/${domain_name}.qcow2"
   desired_mac="$(mac_for_index "$idx")"
   bmc_ip="-"
+  bmc_xname="-"
 
   ensure_domain_defined "$domain_name" "$disk_path" "$desired_mac"
 
@@ -1219,13 +1348,14 @@ for offset in $(seq 0 $((COUNT - 1))); do
 
   if compose_method_uses_libvirt_bmc; then
     bmc_ip="$(bmc_ip_for_index "$idx")"
+    bmc_xname="$(bmc_xname_for_index "$idx")"
     ensure_compose_libvirt_bmc "$domain_name" "$(domain_uuid "$domain_name")" "$bmc_ip"
   fi
 
   if [ "$DRY_RUN" = "true" ]; then
-    log_info "[dry-run] would register ${xname} (${actual_mac}, ${ip_addr})"
+    log_info "[dry-run] would register ${xname} (${actual_mac}, ${ip_addr}, ${bmc_xname})"
   else
-    printf '%s,%s,%s,%s,%s\n' "$xname" "$actual_mac" "$ip_addr" "$bmc_ip" "$domain_name" >> "$MANIFEST_FILE"
+    printf '%s,%s,%s,%s,%s,%s\n' "$xname" "$actual_mac" "$ip_addr" "$bmc_ip" "$bmc_xname" "$domain_name" >> "$MANIFEST_FILE"
   fi
 
   domain_names+=("$domain_name")
@@ -1233,20 +1363,32 @@ for offset in $(seq 0 $((COUNT - 1))); do
   macs+=("$actual_mac")
   ips+=("$ip_addr")
   bmc_ips+=("$bmc_ip")
+  bmc_xnames+=("$bmc_xname")
 done
 
 registration_csv="$(mktemp)"
 trap 'rm -f "$registration_csv"' EXIT
 
 {
-  printf 'xname,mac,ip,bmc_ip\n'
+  printf 'xname,mac,ip,bmc_ip,bmc_xname\n'
   for idx in "${!xnames[@]}"; do
-    printf '%s,%s,%s,%s\n' "${xnames[$idx]}" "${macs[$idx]}" "${ips[$idx]}" "${bmc_ips[$idx]}"
+    printf '%s,%s,%s,%s,%s\n' \
+      "${xnames[$idx]}" "${macs[$idx]}" "${ips[$idx]}" "${bmc_ips[$idx]}" "${bmc_xnames[$idx]}"
   done
 } > "$registration_csv"
 
 register_nodes
+if compose_method_uses_libvirt_bmc; then
+  for idx in "${!xnames[@]}"; do
+    wait_for_component_endpoint "${xnames[$idx]}" "${bmc_xnames[$idx]}"
+  done
+fi
 reconcile_dhcp_runtime
+if compose_method_uses_libvirt_bmc; then
+  for idx in "${!xnames[@]}"; do
+    wait_for_pcs_power_status "${xnames[$idx]}"
+  done
+fi
 
 for idx in "${!xnames[@]}"; do
   if [ "$DRY_RUN" != "true" ]; then

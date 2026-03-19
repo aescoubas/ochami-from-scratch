@@ -23,13 +23,17 @@ case "$METHOD" in
     log_info "tearing down docker-compose deployment..."
     COMPOSE_DIR="${COMPOSE_DIR:-$(dirname "$(dirname "$SCRIPT_DIR")")/ochami-docker-compose}"
     COMPOSE_FILE="${COMPOSE_DIR}/docker-compose.generated.yml"
+    SECRETS_FILE="${OPENCHAMI_SECRETS:-$(dirname "$(dirname "$SCRIPT_DIR")")/.tmp/openchami-secrets.env}"
     LIBVIRT_NET_STATE_FILE="$(dirname "$(dirname "$SCRIPT_DIR")")/.tmp/libvirt-networks.paused"
     LIBVIRT_BMC_CONTAINER_PREFIX="${LIBVIRT_BMC_CONTAINER_PREFIX:-ochami-libvirt-bmc}"
+    if [ "$DRY_RUN" != "true" ]; then
+      ensure_secrets_file "$SECRETS_FILE"
+    fi
     if [ -f "$COMPOSE_FILE" ]; then
-      docker_compose -f "$COMPOSE_FILE" down -v --remove-orphans
+      docker_compose -f "$COMPOSE_FILE" --env-file "$SECRETS_FILE" down -v --remove-orphans
     else
       # Try generated compose file
-      docker_compose down -v --remove-orphans
+      docker_compose --env-file "$SECRETS_FILE" down -v --remove-orphans
     fi
     if [ "$DRY_RUN" = "true" ]; then
       log_info "[dry-run] would remove docker containers matching ${LIBVIRT_BMC_CONTAINER_PREFIX}-*"

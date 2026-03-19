@@ -166,6 +166,10 @@ class TestScriptStructure:
         assert "SMD_PORT" in content
         assert "REDFISH_BMC_USER" in content
         assert "REDFISH_BMC_PASSWORD" in content
+        assert "bmc_xname" in content
+        assert 'RediscoverOnUpdate' in content
+        assert '\\"RediscoverOnUpdate\\": true' in content or '"RediscoverOnUpdate": true' in content
+        assert "-X PATCH" in content
 
     def test_deploy_uses_managed_generated_compose_file(self):
         content = self._read_script("deploy.sh")
@@ -204,10 +208,15 @@ class TestScriptStructure:
         assert "virbr-ochlab" in content
         assert "ensure_bridge_carrier" in content
         assert "docker_compose" in content
+        assert "init_xname_layout" in content
+        assert "bmc_xname_for_index" in content
+        assert "xname_for_index" in content
         assert "bmc_ip_for_index" in content
         assert "domain_uuid" in content
         assert "ensure_compose_libvirt_bmc" in content
         assert "wait_for_compose_libvirt_bmc" in content
+        assert "wait_for_component_endpoint" in content
+        assert "wait_for_pcs_power_status" in content
         assert 'https://${bmc_ip}/redfish/v1/' in content
         assert "--no-deps" in content
         assert "kea kea-sync" in content
@@ -241,6 +250,8 @@ class TestScriptStructure:
         assert 'ds=nocloud-net;s=http://${LAB_VM_DIRECT_GUEST_HOST}:${LAB_VM_CONTROLLER_HTTP_PORT}/cloud-init/' in content
         assert "ochami-netboot" in content
         assert "METHOD=lab-vm compute VMs currently require a Linux host" not in content
+        assert "xname,mac,ip,bmc_ip,bmc_xname,domain" in content
+        assert "xname,mac,ip,bmc_ip,bmc_xname" in content
 
     def test_lab_setup_uses_ochami_libvirt_names(self):
         content = self._read_script("lab-setup.sh")
@@ -251,6 +262,10 @@ class TestScriptStructure:
         content = self._read_script("teardown.sh")
         assert '$(dirname "$(dirname "$SCRIPT_DIR")")/ochami-docker-compose' in content
         assert "docker-compose.generated.yml" in content
+        assert '.tmp/openchami-secrets.env' in content
+        assert 'SECRETS_FILE="${OPENCHAMI_SECRETS:-' in content
+        assert 'ensure_secrets_file "$SECRETS_FILE"' in content
+        assert '--env-file "$SECRETS_FILE"' in content
         assert 'LIBVIRT_BMC_CONTAINER_PREFIX="${LIBVIRT_BMC_CONTAINER_PREFIX:-ochami-libvirt-bmc}"' in content
         assert 'docker ps -a --filter "name=${LIBVIRT_BMC_CONTAINER_PREFIX}-"' in content
         assert "remove_bridge_carrier_dummy" in content

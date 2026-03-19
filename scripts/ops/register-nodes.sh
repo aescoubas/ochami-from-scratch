@@ -2,8 +2,8 @@
 # register-nodes.sh — Register nodes with SMD and BSS via curl.
 # Usage: ./register-nodes.sh --nodes-csv NODES_CSV [--dry-run]
 #
-# CSV format: xname,mac,ip,bmc_ip
-# Example:    x1000c0s0b0n0,02:00:00:00:00:01,192.168.100.101,10.0.0.101
+# CSV format: xname,mac,ip,bmc_ip,bmc_xname
+# Example:    x1000c0s0b0n0,02:00:00:00:00:01,192.168.100.101,10.0.0.101,x1000c0s0b0
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$SCRIPT_DIR/lib/common.sh"
@@ -134,33 +134,50 @@ ensure_redfish_endpoint() {
 
   if [ "$DRY_RUN" != "true" ] && redfish_endpoint_exists "$bmc_xname"; then
     log_info "BMC endpoint $bmc_xname already registered"
-    return 0
+  else
+    run_cmd curl -skf -X POST "${SMD_BASE_URL}/hsm/v2/Inventory/RedfishEndpoints" \
+      -H 'Content-Type: application/json' \
+      -d "{
+        \"ID\": \"$bmc_xname\",
+        \"FQDN\": \"$bmc_ip\",
+        \"RediscoverOnUpdate\": true,
+        \"User\": \"$REDFISH_BMC_USER\",
+        \"Password\": \"$REDFISH_BMC_PASSWORD\"
+      }" || {
+        if [ "$DRY_RUN" != "true" ] && redfish_endpoint_exists "$bmc_xname"; then
+          log_info "BMC endpoint $bmc_xname already present after retry"
+        else
+          log_warn "failed to register BMC endpoint $bmc_xname"
+          return 1
+        fi
+      }
   fi
 
-  run_cmd curl -skf -X POST "${SMD_BASE_URL}/hsm/v2/Inventory/RedfishEndpoints" \
+  # SMD discovery is reliably triggered by an endpoint update, even when the
+  # RedfishEndpoint already exists or was just created.
+  run_cmd curl -skf -X PATCH "${SMD_BASE_URL}/hsm/v2/Inventory/RedfishEndpoints/${bmc_xname}" \
     -H 'Content-Type: application/json' \
     -d "{
-      \"ID\": \"$bmc_xname\",
       \"FQDN\": \"$bmc_ip\",
-      \"RediscoverOnUpdate\": false,
+      \"RediscoverOnUpdate\": true,
       \"User\": \"$REDFISH_BMC_USER\",
       \"Password\": \"$REDFISH_BMC_PASSWORD\"
     }" || {
-      if [ "$DRY_RUN" != "true" ] && redfish_endpoint_exists "$bmc_xname"; then
-        log_info "BMC endpoint $bmc_xname already present after retry"
-        return 0
-      fi
-      log_warn "failed to register BMC endpoint $bmc_xname"
+      log_warn "failed to refresh BMC endpoint $bmc_xname discovery"
       return 1
     }
 }
 
 failed=0
-while IFS=',' read -r xname mac ip bmc_ip; do
+while IFS=',' read -r xname mac ip bmc_ip bmc_xname _; do
   # Skip header and empty lines
   [ -z "$xname" ] && continue
   [[ "$xname" =~ ^# ]] && continue
   [[ "$xname" == "xname" ]] && continue
+
+  if [ -z "${bmc_xname:-}" ] || [ "$bmc_xname" = "-" ]; then
+    bmc_xname="${xname%n*}"
+  fi
 
   log_info "registering $xname (mac=$mac, ip=$ip, bmc=$bmc_ip)"
 
@@ -174,7 +191,6 @@ while IFS=',' read -r xname mac ip bmc_ip; do
 
   # Register BMC RedfishEndpoint if bmc_ip is provided
   if [ -n "$bmc_ip" ] && [ "$bmc_ip" != "-" ]; then
-    bmc_xname="${xname%n*}"  # Strip node suffix to get BMC xname
     ensure_redfish_endpoint "$bmc_xname" "$bmc_ip" \
       || log_warn "failed to register BMC for $xname"
   fi
