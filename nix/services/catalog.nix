@@ -25,12 +25,11 @@ let
   cloudInit = import ../services/cloud-init.nix { defaults = effectiveDefaults; };
   pcs = import ../services/pcs.nix { defaults = effectiveDefaults; };
   kea = import ../services/kea.nix {
-    inherit pkgs;
     defaults = effectiveDefaults;
     inherit hostIP pxeInterface dhcpRange pxeCidr;
   };
   nginx = import ../services/nginx.nix {
-    inherit pkgs lib;
+    inherit lib;
     defaults = effectiveDefaults;
     inherit hostIP enableStork bootArtifacts;
   };
@@ -67,9 +66,13 @@ let
   configFiles =
     (if profileEnablesAny [ "kea-init" "kea" "kea-sync" ] then kea.configFiles else { })
     // (if profileEnablesAny [ "http-server" ] then nginx.configFiles else { });
+
+  # Files that must be placed alongside the generated artifacts (init scripts, etc.).
+  supportFiles =
+    (if profileEnablesAny [ "postgres" ] then (postgres.supportFiles or { }) else { });
 in
 {
-  inherit effectiveDefaults containerServices scriptServices configFiles;
+  inherit effectiveDefaults containerServices scriptServices configFiles supportFiles;
   allContainerServices = selectServices profile.containerServiceIds containerServices;
   allScriptServices = selectServices (profile.scriptServiceIds or [ ]) scriptServices;
 }

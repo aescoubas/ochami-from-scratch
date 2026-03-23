@@ -7,6 +7,9 @@ PROJECT_ROOT="$(dirname "$(dirname "$SCRIPT_DIR")")"
 NIX_FLAKE_REF="${OPENCHAMI_NIX_FLAKE_REF:-$(nix_flake_ref "$PROJECT_ROOT")}"
 
 ACTION="status"
+TEST_NODE_IMAGE="${TEST_NODE_IMAGE:-nixos}"
+TEST_NODE_IMAGE="${OPENCHAMI_TEST_NODE_IMAGE:-$TEST_NODE_IMAGE}"
+export OPENCHAMI_TEST_NODE_IMAGE="$TEST_NODE_IMAGE"
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -94,11 +97,13 @@ lab_vm_uses_managed_network() {
 }
 
 controller_vm_artifact() {
-  nix build "${NIX_FLAKE_REF}#lab-controller-vm" --no-link --print-out-paths
+  OPENCHAMI_TEST_NODE_IMAGE="$TEST_NODE_IMAGE" \
+    nix build --impure "${NIX_FLAKE_REF}#lab-controller-vm" --no-link --print-out-paths
 }
 
 controller_vm_guest_system_artifact() {
-  nix build "${NIX_FLAKE_REF}#lab-controller-system" --no-link --print-out-paths
+  OPENCHAMI_TEST_NODE_IMAGE="$TEST_NODE_IMAGE" \
+    nix build --impure "${NIX_FLAKE_REF}#lab-controller-system" --no-link --print-out-paths
 }
 
 controller_vm_runner() {
@@ -150,7 +155,7 @@ warm_controller_vm_guest_closure_from_build_host() {
     return 1
   fi
 
-  remote_guest_target="path:${LAB_VM_BUILD_REPO_PATH}#lab-controller-system"
+remote_guest_target="path:${LAB_VM_BUILD_REPO_PATH}#lab-controller-system"
   remote_guest_target_quoted="$(printf '%q' "$remote_guest_target")"
   remote_store_url="$(nix_ssh_store_url "$LAB_VM_BUILD_HOST")"
 
@@ -158,7 +163,8 @@ warm_controller_vm_guest_closure_from_build_host() {
   if ! remote_lab_vm_ssh <<EOF | copy_store_paths_from_build_host "$remote_store_url"
 set -euo pipefail
 export NIX_CONFIG='experimental-features = nix-command flakes'
-nix build $remote_guest_target_quoted --no-link >/dev/null
+export OPENCHAMI_TEST_NODE_IMAGE=${TEST_NODE_IMAGE@Q}
+nix build --impure $remote_guest_target_quoted --no-link >/dev/null
 nix path-info -r $remote_guest_target_quoted
 EOF
   then

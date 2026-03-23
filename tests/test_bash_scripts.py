@@ -146,6 +146,8 @@ class TestScriptStructure:
         assert "register-bss-defaults.sh" in content
         assert "build-images.sh" in content
         assert "lab-vm.sh" in content
+        assert 'TEST_NODE_IMAGE="${TEST_NODE_IMAGE:-nixos}"' in content
+        assert "OPENCHAMI_TEST_NODE_IMAGE" in content
 
     def test_deploy_builds_images_before_services(self):
         content = self._read_script("deploy.sh")
@@ -154,10 +156,21 @@ class TestScriptStructure:
         assert build_pos < compose_up_pos, \
             "build-images.sh should run before docker compose up"
 
+    def test_deploy_builds_boot_artifacts_before_compose_start(self):
+        content = self._read_script("deploy.sh")
+        boot_artifacts_pos = content.index("boot_artifacts_output_for_image")
+        compose_up_pos = content.index("docker_compose -f")
+        assert boot_artifacts_pos < compose_up_pos, \
+            "boot artifacts should be built before docker compose up"
+
     def test_deploy_supports_skip_image_build(self):
         content = self._read_script("deploy.sh")
         assert "SKIP_IMAGE_BUILD" in content
         assert "PROFILE" in content
+
+    def test_deploy_places_boot_artifacts_for_quadlets(self):
+        content = self._read_script("deploy.sh")
+        assert "/etc/openchami/artifacts" in content
 
     def test_register_nodes_uses_direct_smd_writes(self):
         content = self._read_script("register-nodes.sh")
@@ -173,21 +186,27 @@ class TestScriptStructure:
 
     def test_deploy_uses_managed_generated_compose_file(self):
         content = self._read_script("deploy.sh")
-        assert "docker-compose.generated.yml" in content
-        assert 'cp "$GENERATED" "$COMPOSE_FILE"' in content
-        assert 'if [ ! -f "$COMPOSE_FILE" ]' not in content
+        assert "docker-compose.yml" in content
         assert 'NIX_FLAKE_REF' in content
-        assert '#deploy-profile' in content
         assert "envsubst" in content
         assert "--wait" in content
         assert "CHECK_KEA=true" in content
         assert ".tmp/openchami-secrets.env" in content
         assert "ensure_bridge_carrier" in content
         assert "disable_conflicting_dhcp_networks" in content
+        # Supports committed static artifacts
+        assert "using committed docker-compose artifacts" in content
+        # Renders configs to staging directory, not in-place on committed files
+        assert ".tmp/rendered-configs" in content
+        assert "CONFIG_DIR}.templates" in content
+        # Places boot artifacts for compose volume mount
+        assert "boot artifacts placed at" in content
+        assert "ARTIFACTS_DIR" in content
 
     def test_create_test_vms_bootstraps_libvirt_and_registration(self):
         content = self._read_script("create-test-vms.sh")
         assert 'METHOD="${METHOD:-compose}"' in content
+        assert 'TEST_NODE_IMAGE="${TEST_NODE_IMAGE:-nixos}"' in content
         assert "lab-vm" in content
         assert "--count" in content
         assert "virt-install" in content
@@ -219,6 +238,7 @@ class TestScriptStructure:
         assert "wait_for_compose_libvirt_bmc" in content
         assert "wait_for_component_endpoint" in content
         assert "wait_for_pcs_power_status" in content
+        assert "console_ready_pattern_for_boot_image" in content
         assert 'https://${bmc_ip}/redfish/v1/' in content
         assert "--no-deps" in content
         assert "kea kea-sync" in content
@@ -235,7 +255,7 @@ class TestScriptStructure:
         assert 'LAB_VM_SHARED_NET_MCAST="${LAB_VM_SHARED_NET_MCAST:-' in content
         assert 'LAB_VM_COMPUTE_BOOT_CACHE_DIR="${LAB_VM_COMPUTE_BOOT_CACHE_DIR:-' in content
         assert 'LAB_VM_DIRECT_GUEST_HOST="${LAB_VM_DIRECT_GUEST_HOST:-10.0.2.2}"' in content
-        assert 'NETBOOT_CONSOLE_READY_PATTERN="${NETBOOT_CONSOLE_READY_PATTERN:-Welcome to NixOS kexec|login:|nixos@}"' in content
+        assert 'NETBOOT_CONSOLE_READY_PATTERN="${NETBOOT_CONSOLE_READY_PATTERN:-}"' in content
         assert "fetch_direct_qemu_second_stage_bootscript" in content
         assert "rewrite_direct_qemu_bootscript" in content
         assert "render_darwin_lab_vm_domain_xml" in content
@@ -260,10 +280,21 @@ class TestScriptStructure:
         assert 'NETWORK_NAME="${NETWORK_NAME:-ochami-pxe-net}"' in content
         assert 'NETWORK_BRIDGE="${NETWORK_BRIDGE:-virbr-ochami}"' in content
 
+    def test_boot_image_scripts_do_not_hardcode_opensuse_artifact_paths(self):
+        register_defaults = self._read_script("register-bss-defaults.sh")
+        health_check = self._read_script("health-check.sh")
+
+        assert 'TEST_NODE_IMAGE="${TEST_NODE_IMAGE:-nixos}"' in register_defaults
+        assert "resolve_boot_image_metadata" in register_defaults
+        assert 'ARTIFACT_SUBDIR="${ARTIFACT_SUBDIR:-artifacts/opensuse}"' not in register_defaults
+        assert "resolve_boot_image_metadata" in health_check
+        assert "/artifacts/opensuse/vmlinuz-lts" not in health_check
+        assert "/artifacts/opensuse/initramfs-lts" not in health_check
+
     def test_teardown_uses_managed_generated_compose_file(self):
         content = self._read_script("teardown.sh")
-        assert '$(dirname "$(dirname "$SCRIPT_DIR")")/ochami-docker-compose' in content
-        assert "docker-compose.generated.yml" in content
+        assert "ochami-docker-compose" in content
+        assert "docker-compose.yml" in content
         assert '.tmp/openchami-secrets.env' in content
         assert 'SECRETS_FILE="${OPENCHAMI_SECRETS:-' in content
         assert 'ensure_secrets_file "$SECRETS_FILE"' in content
@@ -272,6 +303,10 @@ class TestScriptStructure:
         assert 'docker ps -a --filter "name=${LIBVIRT_BMC_CONTAINER_PREFIX}-"' in content
         assert "remove_bridge_carrier_dummy" in content
         assert "restore_conflicting_dhcp_networks" in content
+        # Restores committed config templates after teardown
+        assert "CONFIG_DIR}.templates" in content
+        assert "restored committed config templates" in content
+        assert ".tmp/rendered-configs" in content
 
     def test_build_images_sources_common(self):
         content = self._read_script("build-images.sh")
@@ -382,20 +417,22 @@ class TestScriptStructure:
         content = self._read_script("health-check.sh")
         assert 'KEA_SYNC_PORT="${KEA_SYNC_PORT:-28080}"' in content
         assert "CHECK_KEA" in content
+        assert "resolve_boot_image_metadata" in content
         assert "checking kea container health via docker compose" in content
         assert "ps --format json kea" in content
         assert "checking kea on UDP port" in content
         assert "ss -lun" in content
         assert "/readiness" in content
-        assert "artifacts/opensuse/vmlinuz-lts" in content
+        assert "BOOT_IMAGE_RELATIVE_DIR" in content
 
     def test_register_bss_defaults_uses_generated_boot_artifacts(self):
         content = self._read_script("register-bss-defaults.sh")
         assert "NIX_FLAKE_REF" in content
-        assert "#boot-artifacts" in content
+        assert "boot_artifacts_output_for_image" in content
+        assert "resolve_boot_image_metadata" in content
         assert "kernel-params" in content
-        assert "vmlinuz-lts" in content
-        assert "initramfs-lts" in content
+        assert "BOOT_IMAGE_KERNEL_FILE" in content
+        assert "BOOT_IMAGE_INITRD_FILE" in content
         assert "rootfs.squashfs" not in content
 
     def test_create_test_vms_uses_default_kea_sync_port(self):
@@ -443,13 +480,13 @@ class TestMakefileTargets:
 
     def test_has_generate_images_target(self):
         assert "generate-images:" in self.content
-        assert "$(NIX) build $(NIX_FLAKE_REF)#boot-artifacts" in self.content
+        assert "$(NIX) build $(NIX_FLAKE_REF)#boot-artifacts-$(TEST_NODE_IMAGE)" in self.content
 
     def test_has_lab_vm_build_targets(self):
         assert "build-lab-controller-vm:" in self.content
-        assert "$(NIX) build $(NIX_FLAKE_REF)#lab-controller-vm" in self.content
+        assert "$(NIX_BOOT_IMAGE_ENV) $(NIX) build --impure $(NIX_FLAKE_REF)#lab-controller-vm" in self.content
         assert "build-lab-boot-node-vm:" in self.content
-        assert "$(NIX) build $(NIX_FLAKE_REF)#lab-boot-node-vm" in self.content
+        assert "$(NIX_BOOT_IMAGE_ENV) $(NIX) build --impure $(NIX_FLAKE_REF)#lab-boot-node-vm" in self.content
 
     def test_makefile_exposes_local_source_override_variables(self):
         for name in ["SMD_SRC", "BSS_SRC", "PCS_SRC", "CLOUD_INIT_SRC", "KEA_SYNC_SRC"]:

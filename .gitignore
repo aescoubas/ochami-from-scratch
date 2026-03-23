@@ -15,13 +15,12 @@ ochami-cloud-init/
 # Hardware node inventory (user-specific)
 nodes.csv
 
-# Docker Compose generated files
+# Docker Compose runtime files (secrets, override)
 ochami-docker-compose/.env
-ochami-docker-compose/docker-compose.generated.yml
-ochami-docker-compose/configs/kea-dhcp4.conf
-ochami-docker-compose/configs/nginx.conf
-ochami-docker-compose/configs/nginx-default.conf
-ochami-docker-compose/configs/boot.ipxe
+ochami-docker-compose/docker-compose.override.yml
+
+# Boot artifacts (large binaries, built separately)
+ochami-docker-compose/artifacts/
 
 # Locally generated secrets used by deploy scripts
 .openchami-secrets.env

@@ -23,9 +23,12 @@ BOOTSCRIPT_INTERVAL="${BOOTSCRIPT_INTERVAL:-5}"
 BOOTSCRIPT_HOST="${BOOTSCRIPT_HOST:-}"
 BOOTSCRIPT_PORT="${BOOTSCRIPT_PORT:-}"
 COMPOSE_DIR="${COMPOSE_DIR:-${PROJECT_ROOT}/ochami-docker-compose}"
-COMPOSE_FILE="${COMPOSE_DIR}/docker-compose.generated.yml"
+COMPOSE_FILE="${COMPOSE_DIR}/docker-compose.yml"
 SECRETS_FILE="${OPENCHAMI_SECRETS:-${PROJECT_ROOT}/.tmp/openchami-secrets.env}"
 MANIFEST_FILE="${MANIFEST_FILE:-${PROJECT_ROOT}/.tmp/ochami-test-vms.csv}"
+TEST_NODE_IMAGE="${TEST_NODE_IMAGE:-nixos}"
+TEST_NODE_IMAGE="${OPENCHAMI_TEST_NODE_IMAGE:-$TEST_NODE_IMAGE}"
+BOOT_ARTIFACTS_PATH="${BOOT_ARTIFACTS_PATH:-}"
 KEA_SYNC_PORT="${KEA_SYNC_PORT:-28080}"
 LIBVIRT_BMC_IMAGE="${LIBVIRT_BMC_IMAGE:-localhost/libvirt-bmc:latest}"
 EXPLICIT_LIBVIRT_BMC_USER="${LIBVIRT_BMC_USER:-}"
@@ -64,7 +67,7 @@ LAB_VM_COMPUTE_BOOT_ATTEMPTS="${LAB_VM_COMPUTE_BOOT_ATTEMPTS:-90}"
 LAB_VM_COMPUTE_BOOT_INTERVAL="${LAB_VM_COMPUTE_BOOT_INTERVAL:-2}"
 LAB_VM_DIRECT_QEMU_MACHINE="${LAB_VM_DIRECT_QEMU_MACHINE:-q35,accel=tcg}"
 LAB_VM_DIRECT_GUEST_HOST="${LAB_VM_DIRECT_GUEST_HOST:-10.0.2.2}"
-NETBOOT_CONSOLE_READY_PATTERN="${NETBOOT_CONSOLE_READY_PATTERN:-Welcome to NixOS kexec|login:|nixos@}"
+NETBOOT_CONSOLE_READY_PATTERN="${NETBOOT_CONSOLE_READY_PATTERN:-}"
 NETWORK_NAME="${NETWORK_NAME:-}"
 NETWORK_BRIDGE="${NETWORK_BRIDGE:-}"
 HOST_IP="${HOST_IP:-}"
@@ -260,6 +263,8 @@ if [ "$DRY_RUN" = "true" ]; then
 fi
 
 require_command jq "JSON processing"
+require_command nix "boot artifact selection"
+export OPENCHAMI_TEST_NODE_IMAGE="$TEST_NODE_IMAGE"
 
 require_command virsh "libvirt management"
 if ! lab_vm_uses_darwin_libvirt_boot_assets; then
@@ -311,7 +316,35 @@ domain_name_for_index() {
   printf '%s-%s-%s\n' "$NAME_PREFIX" "$idx" "$xname"
 }
 
+boot_artifacts_path_for_test_node_image() {
+  if [ -n "$BOOT_ARTIFACTS_PATH" ] && [ -d "$BOOT_ARTIFACTS_PATH" ]; then
+    printf '%s\n' "$BOOT_ARTIFACTS_PATH"
+    return 0
+  fi
+
+  BOOT_ARTIFACTS_PATH="$(
+    cd "$PROJECT_ROOT" && OPENCHAMI_TEST_NODE_IMAGE="$TEST_NODE_IMAGE" \
+      nix build --impure "${NIX_FLAKE_REF}#$(boot_artifacts_output_for_image "$TEST_NODE_IMAGE")" \
+      --no-link --print-out-paths
+  )"
+  printf '%s\n' "$BOOT_ARTIFACTS_PATH"
+}
+
+console_ready_pattern_for_boot_image() {
+  local artifacts_path
+
+  if [ -n "$NETBOOT_CONSOLE_READY_PATTERN" ]; then
+    printf '%s\n' "$NETBOOT_CONSOLE_READY_PATTERN"
+    return 0
+  fi
+
+  artifacts_path="$(boot_artifacts_path_for_test_node_image)"
+  resolve_boot_image_metadata "$artifacts_path" "$TEST_NODE_IMAGE" || return 1
+  printf '%s\n' "$BOOT_IMAGE_CONSOLE_READY_PATTERN"
+}
+
 init_xname_layout
+NETBOOT_CONSOLE_READY_PATTERN="$(console_ready_pattern_for_boot_image)"
 
 case "$METHOD" in
   compose)

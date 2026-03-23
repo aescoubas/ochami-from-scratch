@@ -1,0 +1,28 @@
+[Unit]
+Description=OpenCHAMI smd
+After=smd-init.service
+Requires=smd-init.service
+
+[Container]
+Image=localhost/smd:v2.19.2
+Network=host
+Environment=SMD_DBHOST=localhost
+Environment=SMD_DBNAME=hmsds
+Environment=SMD_DBOPTS=sslmode=disable
+Environment=SMD_DBPORT=15432
+Environment=SMD_DBUSER=smd-user
+Environment=SMD_JWKS_URL=
+Environment=SMD_DBPASS=${SMD_DBPASS}
+EnvironmentFile=/etc/openchami/openchami.env
+HealthCmd=curl -kfs https://localhost:27779/hsm/v2/service/ready
+HealthInterval=5s
+HealthTimeout=5s
+HealthRetries=30
+Notify=healthy
+
+[Service]
+Restart=on-failure
+TimeoutStartSec=300
+
+[Install]
+WantedBy=openchami.target

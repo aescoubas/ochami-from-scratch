@@ -139,7 +139,8 @@ class TestRuntimeImageAssets:
     def test_nginx_mounts_generated_boot_artifacts(self):
         content = (ROOT / "nix" / "services" / "nginx.nix").read_text()
         assert "/usr/share/nginx/html/artifacts:ro" in content
-        assert "bootArtifacts.package" in content
+        assert "./artifacts:" in content
+        assert "bootArtifacts" in content
 
     def test_nginx_boot_ipxe_uses_generated_kernel_args_without_rootfs(self):
         content = (ROOT / "nix" / "services" / "nginx.nix").read_text()

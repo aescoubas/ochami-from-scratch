@@ -1,6 +1,11 @@
 # OpenCHAMI From Scratch Roadmap
 
 ## In Progress
+- [x] Add selectable test node boot images for the local PXE and controller-VM labs
+  - [x] Model a boot image catalog for `almalinux`, `opensuse`, `ubuntu`, and `nixos`, with pinned artifact sources and per-image kernel parameters.
+  - [x] Make `boot-artifacts`, nginx, BSS default registration, health checks, and VM bootstrap consume the selected image instead of hardcoding the current single-image path.
+  - [x] Expose `TEST_NODE_IMAGE` through `make`, deploy flows, and the controller VM lab, while exporting per-image `boot-artifacts-*` flake outputs for verification.
+  - [x] Verify with `make test`, `nix build .#boot-artifacts-nixos`, `nix build .#boot-artifacts-ubuntu`, `nix build .#boot-artifacts-opensuse`, `nix build .#boot-artifacts-almalinux`, `nix build .#docker-compose-yml`, `nix build .#quadlet-units`, and `nix build .#deploy-profile`.
 - [x] Include xnames in libvirt test VM names and guest prompts
   - [x] Derive compose and `lab-vm` libvirt domain names from both the stable index and the assigned xname so `virsh list` exposes the node identity directly.
   - [x] Apply the kernel `xname=` value inside the netboot runtime so the guest hostname and interactive shell prompt reflect the node identity.

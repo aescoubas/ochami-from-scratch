@@ -1,0 +1,239 @@
+services:
+  postgres:
+    image: docker.io/postgres:11.5-alpine
+    network_mode: host
+    environment:
+      BSS_DB_PASSWORD: "${BSS_DB_PASSWORD:?BSS_DB_PASSWORD is required}"
+      KEA_DB_PASSWORD: "${KEA_DB_PASSWORD:?KEA_DB_PASSWORD is required}"
+      PCS_DB_PASSWORD: "${PCS_DB_PASSWORD:?PCS_DB_PASSWORD is required}"
+      POSTGRES_USER: "ochami"
+      SMD_DB_PASSWORD: "${SMD_DB_PASSWORD:?SMD_DB_PASSWORD is required}"
+      STORK_DB_PASSWORD: "${STORK_DB_PASSWORD:?STORK_DB_PASSWORD is required}"
+    command: ["postgres", "-p", "15432"]
+    volumes:
+      - ./pg-init/multi-psql-db.sh:/docker-entrypoint-initdb.d/multi-psql-db.sh:ro
+      - ochami-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ochami -p 15432"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  smd-init:
+    image: localhost/smd:v2.19.2
+    network_mode: host
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      SMD_DBHOST: "localhost"
+      SMD_DBNAME: "hmsds"
+      SMD_DBOPTS: "sslmode=disable"
+      SMD_DBPASS: "${SMD_DB_PASSWORD:?SMD_DB_PASSWORD is required}"
+      SMD_DBPORT: "15432"
+      SMD_DBUSER: "smd-user"
+      SMD_DB_PASSWORD: "${SMD_DB_PASSWORD:?SMD_DB_PASSWORD is required}"
+    command: ["/bin/smd-init", "-migrationsdir", "/persistent_migrations/postgres"]
+    restart: "no"
+
+  smd:
+    image: localhost/smd:v2.19.2
+    network_mode: host
+    depends_on:
+      smd-init:
+        condition: service_completed_successfully
+    environment:
+      SMD_DBHOST: "localhost"
+      SMD_DBNAME: "hmsds"
+      SMD_DBOPTS: "sslmode=disable"
+      SMD_DBPASS: "${SMD_DB_PASSWORD:?SMD_DB_PASSWORD is required}"
+      SMD_DBPORT: "15432"
+      SMD_DBUSER: "smd-user"
+      SMD_DB_PASSWORD: "${SMD_DB_PASSWORD:?SMD_DB_PASSWORD is required}"
+      SMD_JWKS_URL: ""
+    healthcheck:
+      test: ["CMD-SHELL", "curl -kfs https://localhost:27779/hsm/v2/service/ready"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  bss-init:
+    image: localhost/bss:v1.32.2
+    network_mode: host
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      BSS_DBHOST: "localhost"
+      BSS_DBNAME: "bssdb"
+      BSS_DBOPTS: "sslmode=disable"
+      BSS_DBPASS: "${BSS_DB_PASSWORD:?BSS_DB_PASSWORD is required}"
+      BSS_DBPORT: "15432"
+      BSS_DBSTEP: "2"
+      BSS_DBUSER: "bss-user"
+      BSS_DB_PASSWORD: "${BSS_DB_PASSWORD:?BSS_DB_PASSWORD is required}"
+      BSS_INSECURE: "true"
+    command: ["/bin/bss-init", "--postgres-migrations", "/migrations/postgres"]
+    restart: "no"
+
+  bss:
+    image: localhost/bss:v1.32.2
+    network_mode: host
+    depends_on:
+      smd:
+        condition: service_healthy
+      bss-init:
+        condition: service_completed_successfully
+    environment:
+      BSS_ADVERTISE_ADDRESS: "192.168.100.1"
+      BSS_CHAIN_PROTO: "http"
+      BSS_DBHOST: "localhost"
+      BSS_DBNAME: "bssdb"
+      BSS_DBOPTS: "sslmode=disable"
+      BSS_DBPASS: "${BSS_DB_PASSWORD:?BSS_DB_PASSWORD is required}"
+      BSS_DBPORT: "15432"
+      BSS_DBUSER: "bss-user"
+      BSS_DB_PASSWORD: "${BSS_DB_PASSWORD:?BSS_DB_PASSWORD is required}"
+      BSS_DEBUG: "true"
+      BSS_ENDPOINT: "localhost"
+      BSS_INSECURE: "true"
+      BSS_IPXE_SERVER: "192.168.100.1"
+      BSS_JWKS_URL: ""
+      HSM_URL: "https://localhost:27779"
+      NFD_URL: "http://192.168.100.1:80/hmi/v1/subscribe"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:27778/boot/v1/bootparameters"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  cloud-init:
+    image: localhost/cloud-init:v1.4.0
+    network_mode: host
+    depends_on:
+      smd:
+        condition: service_healthy
+    command: ["/bin/cloud-init-server", "--listen", "0.0.0.0:27777", "--smd-url", "https://localhost:27779", "--cluster-name", "ochami", "--insecure"]
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/27777'"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  pcs-init:
+    image: localhost/pcs:main
+    network_mode: host
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PCS_DB_PASSWORD: "${PCS_DB_PASSWORD:?PCS_DB_PASSWORD is required}"
+      POSTGRES_DBNAME: "pcsdb"
+      POSTGRES_HOST: "localhost"
+      POSTGRES_INSECURE: "true"
+      POSTGRES_PASSWORD: "${PCS_DB_PASSWORD:?PCS_DB_PASSWORD is required}"
+      POSTGRES_PORT: "15432"
+      POSTGRES_USER: "pcs-user"
+    command: ["power-control", "init-postgres"]
+    restart: "no"
+
+  pcs:
+    image: localhost/pcs:main
+    network_mode: host
+    depends_on:
+      smd:
+        condition: service_healthy
+      pcs-init:
+        condition: service_completed_successfully
+    environment:
+      FAKE_VAULT_ENABLED: "true"
+      HSMLOCK_ENABLED: "true"
+      LOG_LEVEL: "INFO"
+      PCS_DB_PASSWORD: "${PCS_DB_PASSWORD:?PCS_DB_PASSWORD is required}"
+      PCS_FAKE_VAULT_REDFISH_PASSWORD: "${LIBVIRT_BMC_PASSWORD:?LIBVIRT_BMC_PASSWORD is required}"
+      PCS_FAKE_VAULT_REDFISH_USER: "${LIBVIRT_BMC_USER:?LIBVIRT_BMC_USER is required}"
+      POSTGRES_DBNAME: "pcsdb"
+      POSTGRES_HOST: "localhost"
+      POSTGRES_INSECURE: "true"
+      POSTGRES_PASSWORD: "${PCS_DB_PASSWORD:?PCS_DB_PASSWORD is required}"
+      POSTGRES_PORT: "15432"
+      POSTGRES_USER: "pcs-user"
+      SMS_SERVER: "http://localhost:80"
+      STORAGE: "POSTGRES"
+      TRS_IMPLEMENTATION: "LOCAL"
+      VAULT_ENABLED: "false"
+    command: ["power-control", "--run-control"]
+
+  kea-init:
+    image: localhost/kea:3.0.2
+    network_mode: host
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: ["/bin/kea-admin", "db-init", "pgsql", "-h", "localhost", "-P", "15432", "-u", "kea-user", "-p", "$KEA_DB_PASSWORD", "-n", "kea"]
+    restart: "no"
+
+  kea:
+    image: localhost/kea:3.0.2
+    network_mode: host
+    depends_on:
+      kea-init:
+        condition: service_completed_successfully
+    command: ["/bin/kea-dhcp4", "-c", "/etc/kea/kea-dhcp4.conf"]
+    volumes:
+      - ./configs/kea-dhcp4.conf:/etc/kea/kea-dhcp4.conf:ro
+    cap_add:
+      - NET_RAW
+      - NET_ADMIN
+    healthcheck:
+      test: ["CMD-SHELL", "bash -ec ': >/dev/tcp/127.0.0.1/8000'"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  kea-sync:
+    image: localhost/kea-sync:main
+    network_mode: host
+    depends_on:
+      smd:
+        condition: service_healthy
+      kea-init:
+        condition: service_completed_successfully
+      kea:
+        condition: service_healthy
+      http-server:
+        condition: service_healthy
+    environment:
+      KEA_SYNC_KEA_SERVICES: "dhcp4"
+      KEA_SYNC_KEA_URL: "http://localhost:8000"
+      KEA_SYNC_LISTEN_ADDR: ":28080"
+      KEA_SYNC_LOG_LEVEL: "info"
+      KEA_SYNC_SMD_URL: "http://localhost:80"
+      KEA_SYNC_SYNC_INTERVAL: "10s"
+    command: ["/bin/kea-sync"]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:28080/readiness"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  http-server:
+    image: localhost/http-server:latest
+    network_mode: host
+    volumes:
+      - ./artifacts:/usr/share/nginx/html/artifacts:ro
+      - ./configs/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./configs/nginx-default.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./configs/boot.ipxe:/usr/share/nginx/html/boot.ipxe:ro
+    healthcheck:
+      test: ["CMD-SHELL", "bash -ec ': >/dev/tcp/127.0.0.1/80'"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  tftp:
+    image: localhost/tftp:latest
+    network_mode: host
+
+volumes:
+  ochami-postgres-data:

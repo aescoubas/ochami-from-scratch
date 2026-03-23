@@ -71,6 +71,25 @@ def test_lab_systems_use_local_image_overrides_for_controller_services() -> None
     assert 'id != "kea-sync"' in systems
 
 
+def test_lab_systems_do_not_pass_pkgs_to_plain_nix_services() -> None:
+    """kea.nix and nginx.nix no longer take pkgs; systems.nix should not pass it."""
+    systems = (PROJECT_ROOT / "nix" / "lab" / "systems.nix").read_text(encoding="utf-8")
+
+    # labKea and labNginx calls should not contain 'pkgs ='
+    import re
+    kea_block = re.search(r'labKea = import.*?;$', systems, re.DOTALL | re.MULTILINE)
+    nginx_block = re.search(r'labNginx = import.*?;$', systems, re.DOTALL | re.MULTILINE)
+    assert kea_block is not None
+    assert nginx_block is not None
+    assert "pkgs =" not in kea_block.group()
+    assert "pkgs =" not in nginx_block.group()
+
+
+def test_lab_systems_set_state_version() -> None:
+    systems = (PROJECT_ROOT / "nix" / "lab" / "systems.nix").read_text(encoding="utf-8")
+    assert 'system.stateVersion = "25.11"' in systems
+
+
 def test_boot_artifacts_apply_runtime_xname_identity() -> None:
     boot_artifacts = (PROJECT_ROOT / "nix" / "boot-artifacts.nix").read_text(encoding="utf-8")
 
@@ -81,3 +100,15 @@ def test_boot_artifacts_apply_runtime_xname_identity() -> None:
     assert 'serial-getty@ttyS0.service' in boot_artifacts
     assert 'bashrc.local' in boot_artifacts
     assert 'export PS1=' in boot_artifacts
+
+
+def test_boot_artifacts_define_supported_test_node_images() -> None:
+    boot_artifacts = (PROJECT_ROOT / "nix" / "boot-artifacts.nix").read_text(encoding="utf-8")
+
+    assert 'bootImage ? "nixos"' in boot_artifacts
+    assert "almalinux" in boot_artifacts
+    assert "opensuse" in boot_artifacts
+    assert "ubuntu" in boot_artifacts
+    assert "nixos" in boot_artifacts
+    assert "consoleReadyPattern" in boot_artifacts
+    assert "unsupported test node image" in boot_artifacts

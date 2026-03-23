@@ -1,6 +1,6 @@
 # Kea DHCP4 - db-init oneshot + DHCP service + kea-sync.
 # Config file has $KEA_DB_PASSWORD placeholder for envsubst at activation.
-{ pkgs, defaults, hostIP, pxeInterface, dhcpRange, pxeCidr }:
+{ defaults, hostIP, pxeInterface, dhcpRange, pxeCidr }:
 
 let
   pgPort = toString defaults.ports.postgres;
@@ -19,8 +19,8 @@ let
         }
       ];
       hooks-libraries = [
-        { library = "${pkgs.kea}/lib/kea/hooks/libdhcp_pgsql.so"; }
-        { library = "${pkgs.kea}/lib/kea/hooks/libdhcp_host_cmds.so"; }
+        { library = "${defaults.containerPaths.keaHooksDir}/libdhcp_pgsql.so"; }
+        { library = "${defaults.containerPaths.keaHooksDir}/libdhcp_host_cmds.so"; }
       ];
       lease-database = {
         type = "postgresql";
@@ -73,7 +73,6 @@ let
     };
   };
 
-  keaConfigFile = pkgs.writeText "kea-dhcp4.conf" keaConfig;
 in
 {
   init = {
@@ -117,6 +116,6 @@ in
   };
 
   configFiles = {
-    "kea-dhcp4.conf" = keaConfigFile;
+    "kea-dhcp4.conf" = keaConfig;
   };
 }

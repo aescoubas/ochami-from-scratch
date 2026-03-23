@@ -27,11 +27,13 @@ The repository currently exports these Nix-built artifacts:
 - `deploy-profile` from `nix/deploy/profile.nix`
 - `deploy-profile-dev` for the cutting-edge profile
 - `boot-artifacts` from `nix/boot-artifacts.nix`
+- `boot-artifacts-nixos`, `boot-artifacts-ubuntu`, `boot-artifacts-opensuse`, and
+  `boot-artifacts-almalinux` for explicit test-node image builds
 - `lab-controller-vm` from the `nix/lab/controller.nix` module
 - `lab-boot-node-vm` from the `nix/lab/boot-node.nix` module
 
 `boot-artifacts` packages the PXE/iPXE kernel, initramfs, and kernel parameters used
-by the local Docker Compose and Quadlet runtime.
+by the local Docker Compose and Quadlet runtime for the selected test-node image.
 The lab VM outputs turn the existing NixOS smoke-lab modules into explicit VM
 artifacts that can be reused as the portable Linux lab boundary.
 
@@ -64,6 +66,10 @@ That flow uses:
 - libvirt bridge `virbr-ochami`
 - generated nginx and BSS config from the Nix deploy profile
 - generated boot artifacts mounted into the nginx container
+
+`TEST_NODE_IMAGE` selects which test-node payload is registered with BSS and
+served by nginx. Supported values are `nixos` (default), `ubuntu`, `opensuse`,
+and `almalinux`.
 
 See `docs/architecture/compose-pxe-lab.md` for the detailed boot path.
 See `docs/architecture/README.md` for the full architecture document and ADR index.

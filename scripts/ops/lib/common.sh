@@ -651,3 +651,38 @@ flake_output_for_profile() {
 
   printf '%s-%s\n' "$base" "$profile_name"
 }
+
+default_test_node_image() {
+  printf '%s\n' "${TEST_NODE_IMAGE:-${OPENCHAMI_TEST_NODE_IMAGE:-nixos}}"
+}
+
+boot_artifacts_output_for_image() {
+  local image="${1:-$(default_test_node_image)}"
+  printf 'boot-artifacts-%s\n' "$image"
+}
+
+resolve_boot_image_metadata() {
+  local artifacts_path="$1"
+  local requested_image="${2:-}"
+  local metadata_path="${artifacts_path}/metadata.json"
+
+  if [ ! -f "$metadata_path" ]; then
+    log_error "boot artifact metadata not found: $metadata_path"
+    return 1
+  fi
+
+  require_command jq "boot artifact metadata inspection" || return 1
+
+  BOOT_IMAGE_ID="$(jq -re '.selected.id' "$metadata_path")" || return 1
+  BOOT_IMAGE_LABEL="$(jq -re '.selected.label' "$metadata_path")" || return 1
+  BOOT_IMAGE_RELATIVE_DIR="$(jq -re '.selected.relativeDir' "$metadata_path")" || return 1
+  BOOT_IMAGE_KERNEL_FILE="$(jq -re '.selected.kernelFile' "$metadata_path")" || return 1
+  BOOT_IMAGE_INITRD_FILE="$(jq -re '.selected.initrdFile' "$metadata_path")" || return 1
+  BOOT_IMAGE_KERNEL_ARGS="$(jq -re '.selected.kernelArgs' "$metadata_path")" || return 1
+  BOOT_IMAGE_CONSOLE_READY_PATTERN="$(jq -re '.selected.consoleReadyPattern' "$metadata_path")" || return 1
+
+  if [ -n "$requested_image" ] && [ "$BOOT_IMAGE_ID" != "$requested_image" ]; then
+    log_error "boot artifact image mismatch: requested $requested_image, metadata has $BOOT_IMAGE_ID"
+    return 1
+  fi
+}

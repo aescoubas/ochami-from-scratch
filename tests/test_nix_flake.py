@@ -49,6 +49,16 @@ def test_flake_exports_generators_and_images() -> None:
     assert "oci-images-dev" in flake
 
 
+def test_flake_exports_per_image_boot_artifact_outputs() -> None:
+    flake = (PROJECT_ROOT / "flake.nix").read_text(encoding="utf-8")
+
+    assert "boot-artifacts-almalinux" in flake
+    assert "boot-artifacts-opensuse" in flake
+    assert "boot-artifacts-ubuntu" in flake
+    assert "boot-artifacts-nixos" in flake
+    assert "OPENCHAMI_TEST_NODE_IMAGE" in flake
+
+
 def test_flake_supports_local_image_tag_overrides() -> None:
     flake = (PROJECT_ROOT / "flake.nix").read_text(encoding="utf-8")
 

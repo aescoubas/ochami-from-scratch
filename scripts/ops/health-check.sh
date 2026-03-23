@@ -3,7 +3,9 @@
 # Usage: ./health-check.sh [--dry-run]
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(dirname "$(dirname "$SCRIPT_DIR")")"
 . "$SCRIPT_DIR/lib/common.sh"
+NIX_FLAKE_REF="${OPENCHAMI_NIX_FLAKE_REF:-$(nix_flake_ref "$PROJECT_ROOT")}"
 
 parse_common_args "$@"
 
@@ -17,11 +19,31 @@ KEA_PORT="${KEA_PORT:-67}"
 KEA_SYNC_PORT="${KEA_SYNC_PORT:-28080}"
 CHECK_KEA="${CHECK_KEA:-false}"
 PXE_INTERFACE="${PXE_INTERFACE:-virbr-ochami}"
+TEST_NODE_IMAGE="${TEST_NODE_IMAGE:-nixos}"
+TEST_NODE_IMAGE="${OPENCHAMI_TEST_NODE_IMAGE:-$TEST_NODE_IMAGE}"
 
 MAX_ATTEMPTS="${MAX_ATTEMPTS:-60}"
 INTERVAL="${INTERVAL:-5}"
 
 failed=0
+
+BOOT_ARTIFACTS_PATH="${BOOT_ARTIFACTS_PATH:-}"
+if [ -z "$BOOT_ARTIFACTS_PATH" ] && [ "$DRY_RUN" != "true" ]; then
+  BOOT_ARTIFACTS_OUTPUT="$(boot_artifacts_output_for_image "$TEST_NODE_IMAGE")"
+  log_info "building ${BOOT_ARTIFACTS_OUTPUT} to verify test node image ${TEST_NODE_IMAGE}"
+  BOOT_ARTIFACTS_PATH="$(
+    cd "$PROJECT_ROOT" && OPENCHAMI_TEST_NODE_IMAGE="$TEST_NODE_IMAGE" \
+      nix build --impure "${NIX_FLAKE_REF}#${BOOT_ARTIFACTS_OUTPUT}" --no-link --print-out-paths
+  )"
+fi
+
+if [ "$DRY_RUN" = "true" ]; then
+  BOOT_IMAGE_RELATIVE_DIR="artifacts/${TEST_NODE_IMAGE}"
+  BOOT_IMAGE_KERNEL_FILE="vmlinuz"
+  BOOT_IMAGE_INITRD_FILE="initrd"
+else
+  resolve_boot_image_metadata "$BOOT_ARTIFACTS_PATH" "$TEST_NODE_IMAGE"
+fi
 
 check_service() {
   local name="$1"
@@ -41,8 +63,8 @@ check_service() {
 }
 
 check_service "HTTP server" "http://${HOST}:${HTTP_PORT}/"
-check_service "Boot kernel" "http://${HOST}:${HTTP_PORT}/artifacts/opensuse/vmlinuz-lts" "-I"
-check_service "Boot initramfs" "http://${HOST}:${HTTP_PORT}/artifacts/opensuse/initramfs-lts" "-I"
+check_service "Boot kernel" "http://${HOST}:${HTTP_PORT}/${BOOT_IMAGE_RELATIVE_DIR}/${BOOT_IMAGE_KERNEL_FILE}" "-I"
+check_service "Boot initramfs" "http://${HOST}:${HTTP_PORT}/${BOOT_IMAGE_RELATIVE_DIR}/${BOOT_IMAGE_INITRD_FILE}" "-I"
 check_service "SMD" "https://${HOST}:${SMD_PORT}/hsm/v2/service/ready" "-k"
 check_service "BSS" "http://${HOST}:${BSS_PORT}/boot/v1/bootparameters"
 if [ "$CHECK_KEA" = "true" ]; then

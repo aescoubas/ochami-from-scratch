@@ -37,15 +37,15 @@ let
       parts = lib.splitString ":" v;
       src = builtins.head parts;
       rest = lib.concatStringsSep ":" (builtins.tail parts);
-      # Named volumes (podman manages them) or absolute paths (nix store) pass through.
-      # Short names are config files mapped from /etc/openchami/configs/.
       isNamed = lib.hasPrefix "ochami-" v;
       isAbsolute = lib.hasPrefix "/" src;
+      isRelative = lib.hasPrefix "./" src;
+      hasSlash = lib.hasInfix "/" src;
     in
-    if isNamed || isAbsolute then
-      v
-    else
-      "/etc/openchami/configs/${src}:${rest}";
+    if isNamed || isAbsolute then v
+    else if isRelative then "/etc/openchami/${lib.removePrefix "./" src}:${rest}"
+    else if hasSlash then "/etc/openchami/${src}:${rest}"
+    else "/etc/openchami/configs/${src}:${rest}";
 
   makeContainerRunner = svc:
     let
@@ -188,7 +188,9 @@ let
   '';
 
   # --- Config files that need envsubst for secrets ---
+  # configFiles are now content strings (not store paths).
   configFiles = stack.configFiles;
+  supportFiles = stack.supportFiles;
 
   # --- Secrets template ---
   secretsTemplate = pkgs.writeText "secrets.env.template" (
@@ -211,11 +213,18 @@ let
 
     # Place config files, substituting secret placeholders
     mkdir -p /etc/openchami/configs
+    . "$SECRETS"
+    export $(cut -d= -f1 "$SECRETS" | grep -v '^#')
+    envsubst_vars="$(cut -d= -f1 "$SECRETS" | grep -v '^#' | sed 's/^/$/; s/$/ /' | tr -d '\n')"
     for f in "$PROFILE"/etc/openchami/configs/*; do
-      . "$SECRETS"
-      export $(cut -d= -f1 "$SECRETS" | grep -v '^#')
-      ${pkgs.envsubst}/bin/envsubst < "$f" > "/etc/openchami/configs/$(basename "$f")"
+      ${pkgs.envsubst}/bin/envsubst "$envsubst_vars" < "$f" > "/etc/openchami/configs/$(basename "$f")"
     done
+
+    # Place support files (pg-init scripts, etc.)
+    if [ -d "$PROFILE"/etc/openchami/pg-init ]; then
+      mkdir -p /etc/openchami/pg-init
+      cp -r "$PROFILE"/etc/openchami/pg-init/* /etc/openchami/pg-init/
+    fi
 
     # Install systemd units
     ln -sf "$PROFILE"/etc/openchami/systemd/*.service /etc/systemd/system/
@@ -253,10 +262,16 @@ pkgs.runCommand "ochami-deploy-profile" { } ''
   cp ${ochamiTarget} $out/etc/openchami/systemd/ochami.target
   cp ${ochamiTarget} $out/lib/systemd/system/ochami.target
 
-  # Config files (with secret placeholders for envsubst)
-  ${lib.concatStringsSep "\n" (lib.mapAttrsToList (name: path:
-    "cp ${path} $out/etc/openchami/configs/${name}"
+  # Config files (content strings with secret placeholders for envsubst)
+  ${lib.concatStringsSep "\n" (lib.mapAttrsToList (name: content:
+    "cp ${pkgs.writeText name content} $out/etc/openchami/configs/${name}"
   ) configFiles)}
+
+  # Support files (init scripts, etc.)
+  ${lib.concatStringsSep "\n" (lib.mapAttrsToList (relPath: storePath:
+    let dir = builtins.dirOf relPath;
+    in "mkdir -p $out/etc/openchami/${dir}\ncp ${storePath} $out/etc/openchami/${relPath}"
+  ) supportFiles)}
 
   # Secrets template
   cp ${secretsTemplate} $out/etc/openchami/secrets.env.template

@@ -37,11 +37,15 @@ in
     };
     secretEnvKeys = map (db: db.passwordEnv) defaults.databases.entries;
     volumes = [
-      "${initScript}:/docker-entrypoint-initdb.d/multi-psql-db.sh:ro"
+      "pg-init/multi-psql-db.sh:/docker-entrypoint-initdb.d/multi-psql-db.sh:ro"
       "ochami-postgres-data:/var/lib/postgresql/data"
     ];
     healthCheck = "pg_isready -U ${defaults.databases.superuser} -p ${toString defaults.ports.postgres}";
     after = [ ];
     type = "service";
+  };
+
+  supportFiles = {
+    "pg-init/multi-psql-db.sh" = initScript;
   };
 }

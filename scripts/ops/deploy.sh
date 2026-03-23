@@ -32,6 +32,10 @@ LIBVIRT_NETWORK_NAME="${LIBVIRT_NETWORK_NAME:-ochami-pxe-net}"
 HOST_IP="${HOST_IP:-192.168.100.1}"
 PXE_CIDR="${PXE_CIDR:-24}"
 LIBVIRT_NET_STATE_FILE="${PROJECT_ROOT}/.tmp/libvirt-networks.paused"
+TEST_NODE_IMAGE="${TEST_NODE_IMAGE:-nixos}"
+TEST_NODE_IMAGE="${OPENCHAMI_TEST_NODE_IMAGE:-$TEST_NODE_IMAGE}"
+BOOT_ARTIFACTS_PATH="${BOOT_ARTIFACTS_PATH:-}"
+export OPENCHAMI_TEST_NODE_IMAGE="$TEST_NODE_IMAGE"
 
 CHECK_KEA=false
 case "$METHOD" in
@@ -83,44 +87,86 @@ case "$METHOD" in
     ;;
 esac
 
+# Build boot artifacts early so they are available for compose volume mounts.
+if [ "$METHOD" != "lab-vm" ] && [ "$DRY_RUN" != "true" ] && [ -z "$BOOT_ARTIFACTS_PATH" ]; then
+  BOOT_ARTIFACTS_OUTPUT="$(boot_artifacts_output_for_image "$TEST_NODE_IMAGE")"
+  log_info "preparing ${BOOT_ARTIFACTS_OUTPUT} for test node image ${TEST_NODE_IMAGE}..."
+  BOOT_ARTIFACTS_PATH="$(
+    OPENCHAMI_TEST_NODE_IMAGE="$TEST_NODE_IMAGE" \
+      nix build --impure "${NIX_FLAKE_REF}#${BOOT_ARTIFACTS_OUTPUT}" --no-link --print-out-paths 2>/dev/null
+  )"
+  if [ -z "$BOOT_ARTIFACTS_PATH" ] || [ ! -d "$BOOT_ARTIFACTS_PATH" ]; then
+    log_error "failed to build ${BOOT_ARTIFACTS_OUTPUT}"
+    exit 1
+  fi
+fi
+
 # Step 4: Start services
 log_info "step 4/6: starting services (method=$METHOD)..."
 case "$METHOD" in
   compose|docker-compose)
     COMPOSE_DIR="${COMPOSE_DIR:-${PROJECT_ROOT}/ochami-docker-compose}"
-    COMPOSE_FILE="${COMPOSE_DIR}/docker-compose.generated.yml"
+    COMPOSE_FILE="${COMPOSE_DIR}/docker-compose.yml"
     CONFIG_DIR="${COMPOSE_DIR}/configs"
     ensure_libvirt_network "$LIBVIRT_NETWORK_NAME" "$PXE_INTERFACE" "$HOST_IP" "$PXE_CIDR"
     disable_conflicting_dhcp_networks "$PXE_INTERFACE" "$LIBVIRT_NET_STATE_FILE"
     ensure_bridge_carrier "$PXE_INTERFACE"
-    mkdir -p "$COMPOSE_DIR"
-    mkdir -p "$CONFIG_DIR"
-    log_info "generating docker-compose.yml via nix..."
-    COMPOSE_OUTPUT="$(flake_output_for_profile "docker-compose-yml" "$PROFILE")"
-    GENERATED=$(nix build "${NIX_FLAKE_REF}#${COMPOSE_OUTPUT}" --no-link --print-out-paths 2>/dev/null)
-    if [ -z "$GENERATED" ] || [ ! -f "$GENERATED" ]; then
-      log_error "failed to generate ${COMPOSE_OUTPUT}"
-      exit 1
+
+    # Use committed static artifacts if present; regenerate via nix otherwise.
+    if [ -f "$COMPOSE_FILE" ] && [ -d "$CONFIG_DIR" ]; then
+      log_info "using committed docker-compose artifacts from $COMPOSE_DIR"
+    else
+      log_info "generating docker-compose directory via nix..."
+      COMPOSE_OUTPUT="$(flake_output_for_profile "docker-compose-yml" "$PROFILE")"
+      GENERATED="$(
+        OPENCHAMI_TEST_NODE_IMAGE="$TEST_NODE_IMAGE" \
+          nix build --impure "${NIX_FLAKE_REF}#${COMPOSE_OUTPUT}" --no-link --print-out-paths 2>/dev/null
+      )"
+      if [ -z "$GENERATED" ] || [ ! -d "$GENERATED" ]; then
+        log_error "failed to generate ${COMPOSE_OUTPUT}"
+        exit 1
+      fi
+      mkdir -p "$COMPOSE_DIR"
+      cp "$GENERATED"/docker-compose.yml "$COMPOSE_FILE"
+      cp -r "$GENERATED"/configs "$CONFIG_DIR"
+      cp -r "$GENERATED"/pg-init "$COMPOSE_DIR/pg-init"
+      [ -f "$GENERATED/.env.template" ] && cp "$GENERATED/.env.template" "$COMPOSE_DIR/.env.template"
+      chmod -R u+w "$COMPOSE_DIR"
+      log_info "docker-compose artifacts generated at $COMPOSE_DIR"
     fi
-    cp "$GENERATED" "$COMPOSE_FILE"
-    chmod 644 "$COMPOSE_FILE"
-    log_info "docker-compose.yml generated at $COMPOSE_FILE"
-    log_info "rendering compose config files via nix deploy profile..."
-    # Resolve .#deploy-profile or .#deploy-profile-<profile> through flake_output_for_profile.
-    DEPLOY_PROFILE_OUTPUT="$(flake_output_for_profile "deploy-profile" "$PROFILE")"
-    PROFILE_DIR=$(nix build "${NIX_FLAKE_REF}#${DEPLOY_PROFILE_OUTPUT}" --no-link --print-out-paths 2>/dev/null)
-    if [ -z "$PROFILE_DIR" ] || [ ! -d "$PROFILE_DIR" ]; then
-      log_error "failed to build ${DEPLOY_PROFILE_OUTPUT} for compose configs"
-      exit 1
-    fi
+
+    # Render config templates with secrets into a staging directory, then swap
+    # them into the configs dir for compose volume mounts. Committed templates
+    # are backed up and restored by teardown.
+    RENDERED_CONFIG_DIR="${PROJECT_ROOT}/.tmp/rendered-configs"
+    rm -rf "$RENDERED_CONFIG_DIR"
+    mkdir -p "$RENDERED_CONFIG_DIR"
     # shellcheck disable=SC1090
     . "$SECRETS_FILE"
+    # shellcheck disable=SC2046
     export $(cut -d= -f1 "$SECRETS_FILE" | grep -v '^#')
     envsubst_vars="$(cut -d= -f1 "$SECRETS_FILE" | grep -v '^#' | sed 's/^/${/; s/$/}/' | tr '\n' ' ')"
-    for f in "$PROFILE_DIR"/etc/openchami/configs/*; do
-      envsubst "$envsubst_vars" < "$f" > "$CONFIG_DIR/$(basename "$f")"
-      chmod 644 "$CONFIG_DIR/$(basename "$f")"
+    for f in "$CONFIG_DIR"/*; do
+      [ -f "$f" ] || continue
+      envsubst "$envsubst_vars" < "$f" > "$RENDERED_CONFIG_DIR/$(basename "$f")"
+      chmod 644 "$RENDERED_CONFIG_DIR/$(basename "$f")"
     done
+    # Back up committed templates and install rendered configs for compose.
+    if [ ! -d "${CONFIG_DIR}.templates" ]; then
+      cp -r "$CONFIG_DIR" "${CONFIG_DIR}.templates"
+    fi
+    cp "$RENDERED_CONFIG_DIR"/* "$CONFIG_DIR/"
+
+    # Place boot artifacts where the compose volume mount expects them.
+    if [ -n "$BOOT_ARTIFACTS_PATH" ] && [ -d "$BOOT_ARTIFACTS_PATH" ]; then
+      ARTIFACTS_DIR="${COMPOSE_DIR}/artifacts"
+      rm -rf "$ARTIFACTS_DIR" 2>/dev/null || sudo rm -rf "$ARTIFACTS_DIR"
+      mkdir -p "$ARTIFACTS_DIR"
+      cp -rL "$BOOT_ARTIFACTS_PATH"/artifacts/* "$ARTIFACTS_DIR/"
+      chmod -R u+rw "$ARTIFACTS_DIR"
+      log_info "boot artifacts placed at $ARTIFACTS_DIR"
+    fi
+
     docker_compose -f "$COMPOSE_FILE" --env-file "$SECRETS_FILE" up -d --wait --wait-timeout "${COMPOSE_WAIT_TIMEOUT:-120}"
     ;;
 
@@ -133,11 +179,20 @@ case "$METHOD" in
     if [ -z "$PROFILE_DIR" ]; then
       log_info "building deploy profile with nix..."
       DEPLOY_PROFILE_OUTPUT="$(flake_output_for_profile "deploy-profile" "$PROFILE")"
-      PROFILE_DIR=$(nix build "${NIX_FLAKE_REF}#${DEPLOY_PROFILE_OUTPUT}" --no-link --print-out-paths 2>/dev/null)
+      PROFILE_DIR="$(
+        OPENCHAMI_TEST_NODE_IMAGE="$TEST_NODE_IMAGE" \
+          nix build --impure "${NIX_FLAKE_REF}#${DEPLOY_PROFILE_OUTPUT}" --no-link --print-out-paths 2>/dev/null
+      )"
     fi
     if [ -z "$PROFILE_DIR" ] || [ ! -d "$PROFILE_DIR" ]; then
       log_error "deploy profile not found. Run: nix build .#$(flake_output_for_profile "deploy-profile" "$PROFILE")"
       exit 1
+    fi
+    # Place boot artifacts for quadlets containers.
+    if [ -n "$BOOT_ARTIFACTS_PATH" ] && [ -d "$BOOT_ARTIFACTS_PATH" ]; then
+      run_cmd sudo mkdir -p /etc/openchami/artifacts
+      run_cmd sudo cp -rL "$BOOT_ARTIFACTS_PATH"/artifacts/* /etc/openchami/artifacts/
+      log_info "boot artifacts placed at /etc/openchami/artifacts"
     fi
     run_cmd sudo "$PROFILE_DIR/bin/activate"
     ;;
@@ -171,7 +226,9 @@ case "$METHOD" in
     "$SCRIPT_DIR/lab-vm.sh" health $DRY_RUN_FLAG
     ;;
   *)
-    CHECK_KEA="$CHECK_KEA" PXE_INTERFACE="$PXE_INTERFACE" COMPOSE_FILE="${COMPOSE_FILE:-}" SECRETS_FILE="$SECRETS_FILE" "$SCRIPT_DIR/health-check.sh" $DRY_RUN_FLAG
+    CHECK_KEA="$CHECK_KEA" TEST_NODE_IMAGE="$TEST_NODE_IMAGE" BOOT_ARTIFACTS_PATH="$BOOT_ARTIFACTS_PATH" \
+      PXE_INTERFACE="$PXE_INTERFACE" COMPOSE_FILE="${COMPOSE_FILE:-}" SECRETS_FILE="$SECRETS_FILE" \
+      "$SCRIPT_DIR/health-check.sh" $DRY_RUN_FLAG
     ;;
 esac
 
@@ -182,8 +239,9 @@ case "$METHOD" in
     log_info "skipping BSS default registration (not applicable for lab-vm)"
     ;;
   *)
-    "$SCRIPT_DIR/register-bss-defaults.sh" $DRY_RUN_FLAG
+    TEST_NODE_IMAGE="$TEST_NODE_IMAGE" BOOT_ARTIFACTS_PATH="$BOOT_ARTIFACTS_PATH" \
+      "$SCRIPT_DIR/register-bss-defaults.sh" $DRY_RUN_FLAG
     ;;
 esac
 
-log_info "deployment complete (method=$METHOD profile=$PROFILE)"
+log_info "deployment complete (method=$METHOD profile=$PROFILE test-node-image=$TEST_NODE_IMAGE)"

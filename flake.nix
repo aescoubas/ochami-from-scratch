@@ -34,12 +34,25 @@
         checkPackage = pkgs.callPackage ./nix/package.nix {
           runTests = true;
         };
+        selectedBootImage =
+          let
+            value = builtins.getEnv "OPENCHAMI_TEST_NODE_IMAGE";
+          in
+          if value != "" then value else "nixos";
+        bootArtifactsFor = image:
+          import ./nix/boot-artifacts.nix {
+            inherit pkgs system;
+            lib = pkgs.lib;
+            nixosSystem = nixpkgs.lib.nixosSystem;
+            bootImage = image;
+          };
         hostPkgs = pkgs;
         labSystems = import ./nix/lab/systems.nix {
           inherit nixpkgs hostPkgs;
           guestSystem = labGuestSystem;
           package = null;
           rawOfficialProfile = rawProfiles.official;
+          bootImage = selectedBootImage;
         };
         labControllerSystem = labSystems.controller.config.system.build.toplevel;
         labBootNodeSystem = labSystems.bootnode.config.system.build.toplevel;
@@ -50,13 +63,14 @@
         };
         bootArtifacts =
           if pkgs.stdenv.isLinux then
-            import ./nix/boot-artifacts.nix {
-              inherit pkgs system;
-              lib = pkgs.lib;
-              nixosSystem = nixpkgs.lib.nixosSystem;
-            }
+            bootArtifactsFor selectedBootImage
           else
             null;
+        bootArtifactsByImage =
+          if pkgs.stdenv.isLinux then
+            lib.genAttrs [ "almalinux" "opensuse" "ubuntu" "nixos" ] bootArtifactsFor
+          else
+            { };
         devPython = pkgs.python3.withPackages (ps: [
           ps.build
           ps.pip
@@ -161,6 +175,10 @@
           "boot-artifacts" = profilePackages.official."boot-artifacts";
           "boot-artifacts-official" = profilePackages.official."boot-artifacts";
           "boot-artifacts-dev" = profilePackages.dev."boot-artifacts";
+          "boot-artifacts-almalinux" = bootArtifactsByImage.almalinux.package;
+          "boot-artifacts-opensuse" = bootArtifactsByImage.opensuse.package;
+          "boot-artifacts-ubuntu" = bootArtifactsByImage.ubuntu.package;
+          "boot-artifacts-nixos" = bootArtifactsByImage.nixos.package;
           "deploy-profile" = profilePackages.official."deploy-profile";
           "deploy-profile-official" = profilePackages.official."deploy-profile";
           "deploy-profile-dev" = profilePackages.dev."deploy-profile";

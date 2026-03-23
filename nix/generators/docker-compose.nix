@@ -1,8 +1,15 @@
-# Generate docker-compose.yml from nix/services/*.nix definitions.
+# Generate a self-contained docker-compose directory from nix/services/*.nix.
+#
+# Output:
+#   result/
+#     docker-compose.yml
+#     configs/          — config files (kea, nginx, boot.ipxe) with ${VAR} secret placeholders
+#     pg-init/          — postgres init scripts
+#     .env.template     — lists all required secret env vars
 #
 # Usage:
 #   nix build .#docker-compose-yml
-#   cat result
+#   ls result/
 #
 { pkgs
 , lib
@@ -72,17 +79,29 @@ let
         (k: v: "  ${k}: ${builtins.toJSON v}")
         env);
 
-  # Map a volume source: config file names become ./configs/<name> paths.
+  # Map a volume source to a compose-relative path.
+  # - Absolute paths (/...) pass through.
+  # - Named volumes (ochami-*) pass through.
+  # - Already relative (./...) pass through.
+  # - Paths with / (subdir/file) get ./ prefix.
+  # - Dotted names (config files) get ./configs/ prefix.
+  # - Everything else passes through (assumed named volume).
   mapVolSrc = v:
     let
       parts = lib.splitString ":" v;
       src = builtins.head parts;
       rest = lib.concatStringsSep ":" (builtins.tail parts);
-      isPath = lib.hasPrefix "/" src;
-      isOchami = lib.hasPrefix "ochami-" src;
-      isConfigFile = lib.hasInfix "." src && !isPath && !isOchami;
+      isAbsolute = lib.hasPrefix "/" src;
+      isRelative = lib.hasPrefix "./" src;
+      isNamedVol = lib.hasPrefix "ochami-" src;
+      hasSlash = lib.hasInfix "/" src;
+      hasDot = lib.hasInfix "." src;
     in
-    if isConfigFile then "./configs/${src}:${rest}"
+    if isAbsolute then v
+    else if isRelative then v
+    else if isNamedVol then v
+    else if hasSlash then "./${src}:${rest}"
+    else if hasDot then "./configs/${src}:${rest}"
     else v;
 
   # Build volumes block.
@@ -151,22 +170,20 @@ let
       allVols = lib.concatMap (s: s.volumes or [ ]) allServiceDefs;
       isNamed = v: lib.hasPrefix "ochami-" v;
       extractName = v: builtins.head (lib.splitString ":" v);
-      # Keep named volumes centralized from the service definitions.
       names = lib.unique (map extractName (lib.filter isNamed allVols));
     in
     names;
 
-  # Also find non-ochami named volumes (like standalone names that aren't paths).
   simpleNamedVolumes =
     let
       allVols = lib.concatMap (s: s.volumes or [ ]) allServiceDefs;
       extractSrc = v: builtins.head (lib.splitString ":" v);
       isPath = s: lib.hasPrefix "/" s;
       isOchami = s: lib.hasPrefix "ochami-" s;
-      # A named volume is one that doesn't start with / and isn't a config file name with dots
+      isRelative = s: lib.hasPrefix "./" s;
       isNamedVol = v:
         let src = extractSrc v;
-        in !isPath src && !isOchami src && !lib.hasInfix "." src;
+        in !isPath src && !isOchami src && !isRelative src && !lib.hasInfix "." src && !lib.hasInfix "/" src;
     in
     lib.unique (map extractSrc (lib.filter isNamedVol allVols));
 
@@ -184,5 +201,31 @@ let
     ${volumesBlock}
   '';
 
+  # .env.template: list all required secret env vars.
+  envTemplate = lib.concatStringsSep "\n" (map (k: "${k}=") defaults.secretKeys) + "\n";
+
+  # Config files and support files from the catalog.
+  configFiles = stack.configFiles;
+  supportFiles = stack.supportFiles;
+
 in
-pkgs.writeText "docker-compose.yml" composeYaml
+pkgs.runCommand "ochami-docker-compose" { } ''
+  mkdir -p $out/configs $out/pg-init
+
+  # docker-compose.yml
+  cp ${pkgs.writeText "docker-compose.yml" composeYaml} $out/docker-compose.yml
+
+  # Config files (content strings → files)
+  ${lib.concatStringsSep "\n" (lib.mapAttrsToList (name: content:
+    "cp ${pkgs.writeText name content} $out/configs/${name}"
+  ) configFiles)}
+
+  # Support files (Nix store paths → relative locations)
+  ${lib.concatStringsSep "\n" (lib.mapAttrsToList (relPath: storePath:
+    let dir = builtins.dirOf relPath;
+    in "mkdir -p $out/${dir}\ncp ${storePath} $out/${relPath}"
+  ) supportFiles)}
+
+  # .env.template
+  cp ${pkgs.writeText "env.template" envTemplate} $out/.env.template
+''

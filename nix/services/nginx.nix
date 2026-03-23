@@ -1,5 +1,5 @@
 # Nginx reverse proxy + boot.ipxe artifact.
-{ pkgs, lib, defaults, hostIP, enableStork ? false, bootArtifacts }:
+{ lib, defaults, hostIP, enableStork ? false, bootArtifacts }:
 
 let
   httpPort = toString defaults.ports.http;
@@ -8,7 +8,7 @@ let
   ciPort = toString defaults.ports.cloudInit;
   pcsPort = toString defaults.ports.pcs;
   storkPort = toString defaults.ports.stork;
-  nginxMainConf = pkgs.writeText "nginx.conf" ''
+  nginxMainConf = ''
     worker_processes auto;
     error_log /dev/stderr info;
     pid /tmp/nginx.pid;
@@ -19,7 +19,7 @@ let
 
     http {
         access_log /dev/stdout;
-        include ${pkgs.nginx}/conf/mime.types;
+        include ${defaults.containerPaths.nginxMimeTypes};
         default_type application/octet-stream;
         sendfile on;
         keepalive_timeout 65;
@@ -32,7 +32,7 @@ let
     }
   '';
 
-  nginxConf = pkgs.writeText "nginx-default.conf" ''
+  nginxConf = ''
     server {
         listen       ${httpPort};
         listen  [::]:${httpPort};
@@ -106,7 +106,7 @@ let
     }
   '';
 
-  bootIpxe = pkgs.writeText "boot.ipxe" ''
+  bootIpxe = ''
     #!ipxe
 
     echo "=============================================="
@@ -131,7 +131,7 @@ in
     name = "http-server";
     image = defaults.images.nginx;
     volumes = [
-      "${bootArtifacts.package}/artifacts:/usr/share/nginx/html/artifacts:ro"
+      "./artifacts:/usr/share/nginx/html/artifacts:ro"
     ] ++ [
       "nginx.conf:/etc/nginx/nginx.conf:ro"
       "nginx-default.conf:/etc/nginx/conf.d/default.conf:ro"
@@ -147,4 +147,8 @@ in
     "nginx-default.conf" = nginxConf;
     "boot.ipxe" = bootIpxe;
   };
+
+  # Boot artifacts are external — not bundled in generated output.
+  # Deploy scripts must place kernel + initrd in the artifacts/ directory.
+  inherit bootArtifacts;
 }

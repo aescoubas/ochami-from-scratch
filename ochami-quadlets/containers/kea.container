@@ -1,0 +1,25 @@
+[Unit]
+Description=OpenCHAMI kea
+After=kea-init.service
+Requires=kea-init.service
+
+[Container]
+Image=localhost/kea:3.0.2
+Network=host
+EnvironmentFile=/etc/openchami/openchami.env
+Volume=/etc/openchami/configs/kea-dhcp4.conf:/etc/kea/kea-dhcp4.conf:ro
+Exec=/bin/kea-dhcp4 -c /etc/kea/kea-dhcp4.conf
+AddCapability=NET_RAW
+AddCapability=NET_ADMIN
+HealthCmd=bash -ec ': >/dev/tcp/127.0.0.1/8000'
+HealthInterval=5s
+HealthTimeout=5s
+HealthRetries=30
+Notify=healthy
+
+[Service]
+Restart=on-failure
+TimeoutStartSec=300
+
+[Install]
+WantedBy=openchami.target

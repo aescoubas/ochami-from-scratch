@@ -2,6 +2,7 @@
 , guestSystem
 , hostPkgs
 , rawOfficialProfile
+, bootImage ? "nixos"
 , package ? null
 }:
 
@@ -23,6 +24,7 @@ let
     lib = guestPkgs.lib;
     nixosSystem = nixpkgs.lib.nixosSystem;
     system = guestSystem;
+    inherit bootImage;
   };
   labLocalImageArchives = {
     smd = guestPkgs.callPackage ../images/smd.nix {
@@ -70,7 +72,6 @@ let
     pkgs = guestPkgs;
   };
   labKea = import ../services/kea.nix {
-    pkgs = guestPkgs;
     defaults = defaults // { images = labProfile.runtimeImages; };
     hostIP = "192.168.100.1";
     pxeInterface = "eth1";
@@ -78,7 +79,6 @@ let
     pxeCidr = "24";
   };
   labNginx = import ../services/nginx.nix {
-    pkgs = guestPkgs;
     lib = guestPkgs.lib;
     defaults = defaults // { images = labProfile.runtimeImages; };
     hostIP = "192.168.100.1";
@@ -86,15 +86,16 @@ let
     bootArtifacts = labBootArtifacts;
   };
   labConfigTemplates = labKea.configFiles // labNginx.configFiles;
-  renderLabConfig = name: path:
-    guestPkgs.runCommand "openchami-lab-${name}" {
+  renderLabConfig = name: content:
+    let templateFile = guestPkgs.writeText "${name}-template" content;
+    in guestPkgs.runCommand "openchami-lab-${name}" {
       nativeBuildInputs = [ guestPkgs.gettext ];
     } ''
       set -euo pipefail
       . ${labSecrets}
       export $(cut -d= -f1 ${labSecrets} | grep -v '^#')
       vars="$(cut -d= -f1 ${labSecrets} | grep -v '^#' | sed 's/^/$/; s/$/ /' | tr -d '\n')"
-      envsubst "$vars" < ${path} > "$out"
+      envsubst "$vars" < ${templateFile} > "$out"
     '';
   labRenderedConfigFiles = guestPkgs.lib.mapAttrs renderLabConfig labConfigTemplates;
   qemuVmModule = { modulesPath, ... }: {
@@ -109,7 +110,7 @@ let
 
   mkSystem = modules: nixpkgs.lib.nixosSystem {
     system = guestSystem;
-    modules = [ qemuVmModule hostPkgsModule ] ++ modules;
+    modules = [ qemuVmModule hostPkgsModule { system.stateVersion = "25.11"; } ] ++ modules;
   };
 in
 {

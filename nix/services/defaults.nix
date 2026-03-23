@@ -58,6 +58,13 @@
     keaSync = "https://github.com/aescoubas/kea-sync.git";
   };
 
+  # Container-native paths (used by static generators that don't have access to pkgs).
+  # These match the paths inside the upstream OCI images referenced in `images` above.
+  containerPaths = {
+    keaHooksDir = "/usr/lib/x86_64-linux-gnu/kea/hooks";
+    nginxMimeTypes = "/etc/nginx/mime.types";
+  };
+
   # All secret env var names that must appear in secrets.env.
   secretKeys = [
     "POSTGRES_PASSWORD"

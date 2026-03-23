@@ -17,9 +17,12 @@ pkgs.dockerTools.buildLayeredImage {
     pkgs.coreutils
     pkgs.bash
   ];
+  # Symlink nginx mime.types to the path expected by containerPaths.nginxMimeTypes
+  # so configs generated for upstream nginx:alpine also work in this Nix image.
   extraCommands = ''
     mkdir -p etc
     mkdir -p etc/nginx/conf.d
+    ln -s ${pkgs.nginx}/conf/mime.types etc/nginx/mime.types
     mkdir -p usr/share/nginx/html
     mkdir -p var/log/nginx
     mkdir -p var/cache/nginx

@@ -98,6 +98,14 @@ def test_deploy_profile_uses_runner_scripts_for_systemd_exec():
     assert 'args[@]' in profile
 
 
+def test_deploy_profile_activate_uses_restricted_envsubst():
+    """The activate script should use restricted envsubst to avoid corrupting
+    nginx $host-style variables in config files."""
+    profile = (ROOT / "nix" / "deploy" / "profile.nix").read_text()
+    assert "envsubst_vars" in profile
+    assert "envsubst \"$envsubst_vars\"" in profile
+
+
 def test_deploy_profile_defaults_to_virbr_ochami_interface():
     """The deploy profile should default to the VM lab PXE bridge."""
     profile = (ROOT / "nix" / "deploy" / "profile.nix").read_text()

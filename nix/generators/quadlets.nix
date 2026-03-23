@@ -1,5 +1,12 @@
 # Generate podman quadlet .container files from nix/services/*.nix definitions.
 #
+# Output:
+#   result/
+#     containers/       — .container quadlet units + openchami.target
+#     configs/          — config files with ${VAR} secret placeholders
+#     pg-init/          — postgres init scripts
+#     .env.template     — lists all required secret env vars
+#
 # Usage:
 #   nix build .#quadlet-units
 #   ls result/
@@ -24,11 +31,15 @@ let
   };
 
   allServices = stack.allContainerServices;
+  configFiles = stack.configFiles;
+  supportFiles = stack.supportFiles;
 
   # Map a volume spec to quadlet Volume= line.
   # Named volumes (ochami-*) → short name (podman manages)
   # Absolute paths → pass through
-  # Config file names → /etc/openchami/configs/<name>:<rest>
+  # Relative paths (./) → pass through
+  # Subdir paths (dir/file) → /etc/openchami/<path>:<rest>
+  # Config file names (with dots) → /etc/openchami/configs/<name>:<rest>
   volumeToLine = v:
     let
       parts = lib.splitString ":" v;
@@ -36,6 +47,8 @@ let
       rest = lib.concatStringsSep ":" (builtins.tail parts);
       isNamed = lib.hasPrefix "ochami-" v;
       isAbsolute = lib.hasPrefix "/" src;
+      isRelative = lib.hasPrefix "./" src;
+      hasSlash = lib.hasInfix "/" src;
       # Strip ochami- prefix for quadlet volume names
       cleanName = builtins.replaceStrings [ "ochami-" ] [ "" ] src;
     in
@@ -43,6 +56,10 @@ let
       "Volume=${cleanName}:${rest}"
     else if isAbsolute then
       "Volume=${v}"
+    else if isRelative then
+      "Volume=/etc/openchami/${lib.removePrefix "./" src}:${rest}"
+    else if hasSlash then
+      "Volume=/etc/openchami/${src}:${rest}"
     else
       "Volume=/etc/openchami/configs/${src}:${rest}";
 
@@ -131,11 +148,30 @@ let
     WantedBy=multi-user.target
   '';
 
+  # .env.template: list all required secret env vars.
+  envTemplate = lib.concatStringsSep "\n" (map (k: "${k}=") defaults.secretKeys) + "\n";
+
 in
 pkgs.runCommand "ochami-quadlet-units" { } ''
-  mkdir -p $out
+  mkdir -p $out/containers $out/configs $out/pg-init
+
+  # Quadlet .container units
   ${lib.concatStringsSep "\n" (map (svc:
-    "cp ${mkQuadletFile svc} $out/${svc.name}.container"
+    "cp ${mkQuadletFile svc} $out/containers/${svc.name}.container"
   ) allServices)}
-  cp ${ochamiTarget} $out/openchami.target
+  cp ${ochamiTarget} $out/containers/openchami.target
+
+  # Config files (content strings → files)
+  ${lib.concatStringsSep "\n" (lib.mapAttrsToList (name: content:
+    "cp ${pkgs.writeText name content} $out/configs/${name}"
+  ) configFiles)}
+
+  # Support files (Nix store paths → relative locations)
+  ${lib.concatStringsSep "\n" (lib.mapAttrsToList (relPath: storePath:
+    let dir = builtins.dirOf relPath;
+    in "mkdir -p $out/${dir}\ncp ${storePath} $out/${relPath}"
+  ) supportFiles)}
+
+  # .env.template
+  cp ${pkgs.writeText "env.template" envTemplate} $out/.env.template
 ''

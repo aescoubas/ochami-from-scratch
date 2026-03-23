@@ -21,10 +21,12 @@ fi
 case "$METHOD" in
   compose|docker-compose)
     log_info "tearing down docker-compose deployment..."
-    COMPOSE_DIR="${COMPOSE_DIR:-$(dirname "$(dirname "$SCRIPT_DIR")")/ochami-docker-compose}"
-    COMPOSE_FILE="${COMPOSE_DIR}/docker-compose.generated.yml"
-    SECRETS_FILE="${OPENCHAMI_SECRETS:-$(dirname "$(dirname "$SCRIPT_DIR")")/.tmp/openchami-secrets.env}"
-    LIBVIRT_NET_STATE_FILE="$(dirname "$(dirname "$SCRIPT_DIR")")/.tmp/libvirt-networks.paused"
+    PROJECT_ROOT="$(dirname "$(dirname "$SCRIPT_DIR")")"
+    COMPOSE_DIR="${COMPOSE_DIR:-${PROJECT_ROOT}/ochami-docker-compose}"
+    COMPOSE_FILE="${COMPOSE_DIR}/docker-compose.yml"
+    CONFIG_DIR="${COMPOSE_DIR}/configs"
+    SECRETS_FILE="${OPENCHAMI_SECRETS:-${PROJECT_ROOT}/.tmp/openchami-secrets.env}"
+    LIBVIRT_NET_STATE_FILE="${PROJECT_ROOT}/.tmp/libvirt-networks.paused"
     LIBVIRT_BMC_CONTAINER_PREFIX="${LIBVIRT_BMC_CONTAINER_PREFIX:-ochami-libvirt-bmc}"
     if [ "$DRY_RUN" != "true" ]; then
       ensure_secrets_file "$SECRETS_FILE"
@@ -42,6 +44,15 @@ case "$METHOD" in
         run_cmd docker rm -f "$container" 2>/dev/null || true
       done
     fi
+    # Restore committed config templates if deploy backed them up.
+    if [ -d "${CONFIG_DIR}.templates" ]; then
+      rm -rf "$CONFIG_DIR"
+      mv "${CONFIG_DIR}.templates" "$CONFIG_DIR"
+      log_info "restored committed config templates"
+    fi
+    # Clean up rendered staging directory and deployed boot artifacts.
+    rm -rf "${PROJECT_ROOT}/.tmp/rendered-configs"
+    rm -rf "${COMPOSE_DIR}/artifacts" 2>/dev/null || sudo rm -rf "${COMPOSE_DIR}/artifacts"
     remove_bridge_carrier_dummy
     restore_conflicting_dhcp_networks "$LIBVIRT_NET_STATE_FILE"
     ;;

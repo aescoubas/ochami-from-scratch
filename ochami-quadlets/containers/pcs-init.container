@@ -1,0 +1,23 @@
+[Unit]
+Description=OpenCHAMI pcs-init
+After=postgres.service
+Requires=postgres.service
+
+[Container]
+Image=localhost/pcs:main
+Network=host
+Environment=POSTGRES_DBNAME=pcsdb
+Environment=POSTGRES_HOST=localhost
+Environment=POSTGRES_INSECURE=true
+Environment=POSTGRES_PORT=15432
+Environment=POSTGRES_USER=pcs-user
+Environment=POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+EnvironmentFile=/etc/openchami/openchami.env
+Exec=power-control init-postgres
+
+[Service]
+Restart=no
+TimeoutStartSec=120
+
+[Install]
+WantedBy=openchami.target

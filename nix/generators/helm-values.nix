@@ -132,7 +132,7 @@ let
 
     kea = {
       controlPort = defaults.ports.keaCtrlAgent;
-      hookLibraryDir = "${pkgs.kea}/lib/kea/hooks";
+      hookLibraryDir = defaults.containerPaths.keaHooksDir;
       image = {
         repository = keaDhcp4Img.repository;
         tag = keaDhcp4Img.tag;

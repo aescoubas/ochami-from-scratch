@@ -1,0 +1,23 @@
+[Unit]
+Description=OpenCHAMI smd-init
+After=postgres.service
+Requires=postgres.service
+
+[Container]
+Image=localhost/smd:v2.19.2
+Network=host
+Environment=SMD_DBHOST=localhost
+Environment=SMD_DBNAME=hmsds
+Environment=SMD_DBOPTS=sslmode=disable
+Environment=SMD_DBPORT=15432
+Environment=SMD_DBUSER=smd-user
+Environment=SMD_DBPASS=${SMD_DBPASS}
+EnvironmentFile=/etc/openchami/openchami.env
+Exec=/bin/smd-init -migrationsdir /persistent_migrations/postgres
+
+[Service]
+Restart=no
+TimeoutStartSec=120
+
+[Install]
+WantedBy=openchami.target

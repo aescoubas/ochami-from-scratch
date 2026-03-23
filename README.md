@@ -34,11 +34,25 @@ Those definitions drive the generated deployment artifacts:
 - `nix build .#helm-values`
 - `nix build .#deploy-profile`
 - `nix build .#boot-artifacts`
+- `nix build .#boot-artifacts-nixos`
+- `nix build .#boot-artifacts-ubuntu`
+- `nix build .#boot-artifacts-opensuse`
+- `nix build .#boot-artifacts-almalinux`
 - `nix build .#lab-controller-vm`
 - `nix build .#lab-boot-node-vm`
 
 The runtime files under `ochami-docker-compose/` and `ochami-quadlets/` are
 generated outputs and rendered configs. They are not hand-maintained source files.
+
+The test-node boot image defaults to `nixos`. Supported values are:
+
+- `nixos`
+- `ubuntu`
+- `opensuse`
+- `almalinux`
+
+Select a different image by passing `TEST_NODE_IMAGE=<name>` to the relevant
+`make` target.
 
 ## Prerequisites
 
@@ -153,6 +167,15 @@ Deploy the stack:
 make deploy METHOD=compose
 ```
 
+To switch the test-node boot image for the compose PXE path:
+
+```bash
+make deploy METHOD=compose TEST_NODE_IMAGE=ubuntu
+make create-test-vms COUNT=1 TEST_NODE_IMAGE=ubuntu
+```
+
+The same selector supports `opensuse`, `almalinux`, and `nixos` (default).
+
 To build one Go service from a local checkout while keeping the rest of the
 selected profile unchanged, pass the source path as a `make` variable:
 
@@ -181,11 +204,11 @@ This compose path:
 
 - ensures the secrets file exists at `.tmp/openchami-secrets.env`
 - builds and loads local OCI images for OpenCHAMI services plus the bundled Kea runtime
-- generates `ochami-docker-compose/docker-compose.generated.yml`
-- builds `.#deploy-profile` and renders runtime configs into `ochami-docker-compose/configs/`
+- uses committed `ochami-docker-compose/docker-compose.yml` (or regenerates via nix if absent)
+- runs `envsubst` on config templates in `ochami-docker-compose/configs/` to inject secrets
 - ensures the libvirt PXE network `ochami-pxe-net` exists on bridge `virbr-ochami`
 - temporarily pauses conflicting libvirt DHCP networks while PXE is active
-- registers default BSS boot parameters from `.#boot-artifacts`
+- registers default BSS boot parameters from the selected `boot-artifacts-*` package
 
 Create and register a test VM:
 
@@ -261,6 +284,14 @@ Build and run the portable controller VM with:
 
 ```bash
 make deploy METHOD=lab-vm
+```
+
+That path uses the same `TEST_NODE_IMAGE` selector for compute-node boot
+artifacts:
+
+```bash
+make deploy METHOD=lab-vm TEST_NODE_IMAGE=opensuse
+make create-test-vms METHOD=lab-vm COUNT=1 TEST_NODE_IMAGE=opensuse
 ```
 
 On Linux, that path builds the controller guest from the NixOS lab modules,
