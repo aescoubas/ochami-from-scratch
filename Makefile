@@ -1,7 +1,7 @@
 .PHONY: test test-vm test-vm-ubuntu test-vm-fedora test-vm-destroy
 .PHONY: deploy teardown check generate generate-images build-images create-test-vms
 .PHONY: build-lab-controller-vm build-lab-boot-node-vm
-.PHONY: build-packages test-package-alma test-package-ubuntu test-package-destroy
+.PHONY: rpm rpm-clean
 
 METHOD ?= compose
 COUNT ?= 1
@@ -101,27 +101,38 @@ build-lab-controller-vm:
 build-lab-boot-node-vm:
 	$(NIX_BOOT_IMAGE_ENV) $(NIX) build --impure $(NIX_FLAKE_REF)#lab-boot-node-vm
 
-build-packages:
-	@set -e; \
-	echo "==> Building RPM/DEB packages for profile=$(PROFILE)..."; \
-	PKG_OUT="$$($(NIX_BOOT_IMAGE_ENV) $(NIX) build --impure \
-	  $(NIX_FLAKE_REF)#packages$(PROFILE_SUFFIX) \
-	  --no-link --print-out-paths)"; \
-	mkdir -p ochami-packages; \
-	rm -f ochami-packages/*.rpm ochami-packages/*.deb; \
-	cp "$$PKG_OUT"/*.rpm ochami-packages/; \
-	cp "$$PKG_OUT"/*.deb ochami-packages/; \
-	chmod u+w ochami-packages/*; \
-	echo ""; \
-	echo "==> Packages written to ochami-packages/:"; \
-	ls -lh ochami-packages/
+# --- RPM packaging (mirrors openchami-release style) ---
 
-test-package-alma:
-	scripts/ops/test-packages.sh --distro alma
+GIT     ?= $(shell command -v git 2>/dev/null)
+TAG     ?= $(shell $(GIT) describe --tags --always --abbrev=0)
+RPM_VERSION ?= $(patsubst v%,%,$(TAG))
+RPM_RELEASE ?= 1
 
-test-package-ubuntu:
-	scripts/ops/test-packages.sh --distro ubuntu
+rwildcard = $(foreach d,$(wildcard $(1:=/*)),$(call rwildcard,$d,$2) $(filter $(subst *,%,$2),$d))
 
-test-package-destroy:
-	scripts/ops/test-packages.sh --distro alma --destroy
-	scripts/ops/test-packages.sh --distro ubuntu --destroy
+rpm: ochami-from-scratch-$(RPM_VERSION)-$(RPM_RELEASE).noarch.rpm
+
+$(HOME)/rpmbuild:
+	mkdir -p $(HOME)/rpmbuild/{BUILD,RPMS,SOURCES,SPECS,SRPMS}
+
+$(HOME)/rpmbuild/SPECS/ochami-from-scratch.spec: ochami-from-scratch.spec $(HOME)/rpmbuild
+	mkdir -p $(HOME)/rpmbuild/SPECS
+	cp $< $@
+
+$(HOME)/rpmbuild/SOURCES/ochami-from-scratch-$(RPM_VERSION).tar.gz: $(HOME)/rpmbuild $(call rwildcard,.,*)
+	mkdir -p $(HOME)/rpmbuild/SOURCES
+	rm -f $(HOME)/rpmbuild/SOURCES/ochami-from-scratch-$(RPM_VERSION).tar.gz
+	tar czvf $@ --transform 's,^,ochami-from-scratch-$(RPM_VERSION)/,' \
+		ochami-from-scratch.spec \
+		ochami-quadlets/ \
+		scripts/ops/
+
+$(HOME)/rpmbuild/RPMS/noarch/ochami-from-scratch-$(RPM_VERSION)-$(RPM_RELEASE).noarch.rpm: $(HOME)/rpmbuild/SPECS/ochami-from-scratch.spec $(HOME)/rpmbuild/SOURCES/ochami-from-scratch-$(RPM_VERSION).tar.gz
+	rpmbuild -ba $(HOME)/rpmbuild/SPECS/ochami-from-scratch.spec --define 'version $(RPM_VERSION)' --define 'rel $(RPM_RELEASE)'
+
+ochami-from-scratch-$(RPM_VERSION)-$(RPM_RELEASE).noarch.rpm: $(HOME)/rpmbuild/RPMS/noarch/ochami-from-scratch-$(RPM_VERSION)-$(RPM_RELEASE).noarch.rpm
+	cp $< $@
+
+rpm-clean:
+	rm -rf $(HOME)/rpmbuild
+	rm -f ochami-from-scratch-*.noarch.rpm

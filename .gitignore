@@ -37,3 +37,6 @@ __pycache__/
 *.egg-info/
 result
 .tmp/
+
+# RPM build artifacts
+*.noarch.rpm

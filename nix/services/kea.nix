@@ -78,7 +78,7 @@ in
   init = {
     name = "kea-init";
     image = defaults.images.keaAdmin;
-    command = "/bin/kea-admin db-init pgsql -h localhost -P ${pgPort} -u kea-user -p $KEA_DB_PASSWORD -n kea";
+    command = "/bin/bash -c '/bin/kea-admin db-init pgsql -h localhost -P ${pgPort} -u kea-user -p $KEA_DB_PASSWORD -n kea'";
     successExitCodes = [ 2 ];
     after = [ "postgres" ];
     type = "oneshot";

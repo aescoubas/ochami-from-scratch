@@ -6,14 +6,9 @@ Requires=postgres.service
 [Container]
 Image=localhost/pcs:main
 Network=host
-Environment=POSTGRES_DBNAME=pcsdb
-Environment=POSTGRES_HOST=localhost
-Environment=POSTGRES_INSECURE=true
-Environment=POSTGRES_PORT=15432
-Environment=POSTGRES_USER=pcs-user
 Environment=POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
 EnvironmentFile=/etc/openchami/openchami.env
-Exec=power-control init-postgres
+Exec=/bin/bash -c 'power-control init-postgres --postgres-insecure --postgres-host localhost --postgres-port 15432 --postgres-user pcs-user --postgres-dbname pcsdb --postgres-password $PCS_DB_PASSWORD'
 
 [Service]
 Restart=no

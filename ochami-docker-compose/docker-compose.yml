@@ -128,13 +128,8 @@ services:
         condition: service_healthy
     environment:
       PCS_DB_PASSWORD: "${PCS_DB_PASSWORD:?PCS_DB_PASSWORD is required}"
-      POSTGRES_DBNAME: "pcsdb"
-      POSTGRES_HOST: "localhost"
-      POSTGRES_INSECURE: "true"
       POSTGRES_PASSWORD: "${PCS_DB_PASSWORD:?PCS_DB_PASSWORD is required}"
-      POSTGRES_PORT: "15432"
-      POSTGRES_USER: "pcs-user"
-    command: ["power-control", "init-postgres"]
+    command: ["/bin/bash", "-c", "'power-control", "init-postgres", "--postgres-insecure", "--postgres-host", "localhost", "--postgres-port", "15432", "--postgres-user", "pcs-user", "--postgres-dbname", "pcsdb", "--postgres-password", "$PCS_DB_PASSWORD'"]
     restart: "no"
 
   pcs:
@@ -152,17 +147,11 @@ services:
       PCS_DB_PASSWORD: "${PCS_DB_PASSWORD:?PCS_DB_PASSWORD is required}"
       PCS_FAKE_VAULT_REDFISH_PASSWORD: "${LIBVIRT_BMC_PASSWORD:?LIBVIRT_BMC_PASSWORD is required}"
       PCS_FAKE_VAULT_REDFISH_USER: "${LIBVIRT_BMC_USER:?LIBVIRT_BMC_USER is required}"
-      POSTGRES_DBNAME: "pcsdb"
-      POSTGRES_HOST: "localhost"
-      POSTGRES_INSECURE: "true"
-      POSTGRES_PASSWORD: "${PCS_DB_PASSWORD:?PCS_DB_PASSWORD is required}"
-      POSTGRES_PORT: "15432"
-      POSTGRES_USER: "pcs-user"
       SMS_SERVER: "http://localhost:80"
       STORAGE: "POSTGRES"
       TRS_IMPLEMENTATION: "LOCAL"
       VAULT_ENABLED: "false"
-    command: ["power-control", "--run-control"]
+    command: ["/bin/bash", "-c", "'power-control", "--run-control", "--postgres-insecure", "--postgres-host", "localhost", "--postgres-port", "15432", "--postgres-user", "pcs-user", "--postgres-dbname", "pcsdb", "--postgres-password", "$PCS_DB_PASSWORD'"]
 
   kea-init:
     image: localhost/kea:3.0.2
@@ -170,7 +159,7 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    command: ["/bin/kea-admin", "db-init", "pgsql", "-h", "localhost", "-P", "15432", "-u", "kea-user", "-p", "$KEA_DB_PASSWORD", "-n", "kea"]
+    command: ["/bin/bash", "-c", "'/bin/kea-admin", "db-init", "pgsql", "-h", "localhost", "-P", "15432", "-u", "kea-user", "-p", "$KEA_DB_PASSWORD", "-n", "kea'"]
     restart: "no"
 
   kea:

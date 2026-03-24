@@ -9,14 +9,7 @@ in
   init = {
     name = "pcs-init";
     image = defaults.images.pcs;
-    command = "power-control init-postgres";
-    environment = {
-      POSTGRES_HOST = "localhost";
-      POSTGRES_PORT = pgPort;
-      POSTGRES_USER = "pcs-user";
-      POSTGRES_DBNAME = "pcsdb";
-      POSTGRES_INSECURE = "true";
-    };
+    command = "/bin/bash -c 'power-control init-postgres --postgres-insecure --postgres-host localhost --postgres-port ${pgPort} --postgres-user pcs-user --postgres-dbname pcsdb --postgres-password $PCS_DB_PASSWORD'";
     secretEnvKeys = [ "PCS_DB_PASSWORD" ];
     envMapping = { POSTGRES_PASSWORD = "PCS_DB_PASSWORD"; };
     after = [ "postgres" ];
@@ -26,15 +19,10 @@ in
   service = {
     name = "pcs";
     image = defaults.images.pcs;
-    command = "power-control --run-control";
+    command = "/bin/bash -c 'power-control --run-control --postgres-insecure --postgres-host localhost --postgres-port ${pgPort} --postgres-user pcs-user --postgres-dbname pcsdb --postgres-password $PCS_DB_PASSWORD'";
     environment = {
       STORAGE = "POSTGRES";
       SMS_SERVER = "http://localhost:${httpPort}";
-      POSTGRES_HOST = "localhost";
-      POSTGRES_PORT = pgPort;
-      POSTGRES_USER = "pcs-user";
-      POSTGRES_DBNAME = "pcsdb";
-      POSTGRES_INSECURE = "true";
       TRS_IMPLEMENTATION = "LOCAL";
       HSMLOCK_ENABLED = "true";
       VAULT_ENABLED = "false";
@@ -43,7 +31,6 @@ in
     };
     secretEnvKeys = [ "PCS_DB_PASSWORD" ];
     envMapping = {
-      POSTGRES_PASSWORD = "PCS_DB_PASSWORD";
       PCS_FAKE_VAULT_REDFISH_USER = "LIBVIRT_BMC_USER";
       PCS_FAKE_VAULT_REDFISH_PASSWORD = "LIBVIRT_BMC_PASSWORD";
     };

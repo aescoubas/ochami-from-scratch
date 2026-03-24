@@ -16,7 +16,7 @@
 , defaults
 , profile
 , hostIP ? "192.168.100.1"
-, pxeInterface ? "virbr-ochami"
+, pxeInterface ? "*"
 , dhcpRange ? "192.168.100.50 - 192.168.100.150"
 , pxeCidr ? "24"
 , enableStork ? false
@@ -118,11 +118,15 @@ let
       ++ healthLines
       ++ notifyLine));
 
-      serviceSection = lib.concatStringsSep "\n" [
+      successCodes = svc.successExitCodes or [ ];
+      successExitLine = lib.optional (successCodes != [ ])
+        "SuccessExitStatus=${lib.concatMapStringsSep " " toString successCodes}";
+
+      serviceSection = lib.concatStringsSep "\n" (lib.filter (s: s != "") ([
         "[Service]"
         "Restart=${if isOneshot then "no" else "on-failure"}"
         "TimeoutStartSec=${if isOneshot then "120" else "300"}"
-      ];
+      ] ++ successExitLine));
 
       installSection = lib.concatStringsSep "\n" [
         "[Install]"

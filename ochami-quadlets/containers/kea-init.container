@@ -7,11 +7,12 @@ Requires=postgres.service
 Image=localhost/kea:3.0.2
 Network=host
 EnvironmentFile=/etc/openchami/openchami.env
-Exec=/bin/kea-admin db-init pgsql -h localhost -P 15432 -u kea-user -p $KEA_DB_PASSWORD -n kea
+Exec=/bin/bash -c '/bin/kea-admin db-init pgsql -h localhost -P 15432 -u kea-user -p $KEA_DB_PASSWORD -n kea'
 
 [Service]
 Restart=no
 TimeoutStartSec=120
+SuccessExitStatus=2
 
 [Install]
 WantedBy=openchami.target
