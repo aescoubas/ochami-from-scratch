@@ -146,6 +146,13 @@
                 "helm-values" = pkgs.callPackage ./nix/generators/helm-values.nix {
                   inherit lib defaults profile;
                 };
+                "packages" = pkgs.callPackage ./nix/packaging/nfpm.nix {
+                  inherit lib;
+                  quadletUnits = pkgs.callPackage ./nix/generators/quadlets.nix {
+                    inherit lib defaults bootArtifacts profile;
+                  };
+                  version = "0.1.0";
+                };
                 "oci-smd" = ociImageArchives.smd;
                 "oci-bss" = ociImageArchives.bss;
                 "oci-pcs" = ociImageArchives.pcs;
@@ -221,6 +228,9 @@
           "oci-images" = profilePackages.official."oci-images";
           "oci-images-official" = profilePackages.official."oci-images";
           "oci-images-dev" = profilePackages.dev."oci-images";
+          "packages" = profilePackages.official."packages";
+          "packages-official" = profilePackages.official."packages";
+          "packages-dev" = profilePackages.dev."packages";
           "oci-redfish-emulator" = pkgs.callPackage ./nix/images/redfish-emulator.nix {
             emulatorSrc = ./ochami-helm/redfish-emulator;
           };

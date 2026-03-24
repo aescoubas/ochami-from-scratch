@@ -1,6 +1,12 @@
 # OpenCHAMI From Scratch Roadmap
 
 ## In Progress
+- [ ] RPM and DEB packages for OpenCHAMI podman quadlets
+  - [ ] Build portable `activate.sh`/`deactivate.sh` scripts for package-based deployment.
+  - [ ] Create `nix/packaging/nfpm.nix` derivation that produces RPM and DEB from quadlet-units via nfpm.
+  - [ ] Expose `nix build .#packages` and `make build-packages` targets.
+  - [ ] Add `scripts/ops/test-packages.sh` to spin up AlmaLinux/Ubuntu controller VMs, install packages, and verify quadlet deployment.
+  - [ ] Verify with `nix build .#packages`, `make build-packages`, `make test-package-alma`, and `make test-package-ubuntu`.
 - [x] Add selectable test node boot images for the local PXE and controller-VM labs
   - [x] Model a boot image catalog for `almalinux`, `opensuse`, `ubuntu`, and `nixos`, with pinned artifact sources and per-image kernel parameters.
   - [x] Make `boot-artifacts`, nginx, BSS default registration, health checks, and VM bootstrap consume the selected image instead of hardcoding the current single-image path.

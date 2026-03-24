@@ -1,6 +1,7 @@
 .PHONY: test test-vm test-vm-ubuntu test-vm-fedora test-vm-destroy
 .PHONY: deploy teardown check generate generate-images build-images create-test-vms
 .PHONY: build-lab-controller-vm build-lab-boot-node-vm
+.PHONY: build-packages test-package-alma test-package-ubuntu test-package-destroy
 
 METHOD ?= compose
 COUNT ?= 1
@@ -99,3 +100,28 @@ build-lab-controller-vm:
 
 build-lab-boot-node-vm:
 	$(NIX_BOOT_IMAGE_ENV) $(NIX) build --impure $(NIX_FLAKE_REF)#lab-boot-node-vm
+
+build-packages:
+	@set -e; \
+	echo "==> Building RPM/DEB packages for profile=$(PROFILE)..."; \
+	PKG_OUT="$$($(NIX_BOOT_IMAGE_ENV) $(NIX) build --impure \
+	  $(NIX_FLAKE_REF)#packages$(PROFILE_SUFFIX) \
+	  --no-link --print-out-paths)"; \
+	mkdir -p ochami-packages; \
+	rm -f ochami-packages/*.rpm ochami-packages/*.deb; \
+	cp "$$PKG_OUT"/*.rpm ochami-packages/; \
+	cp "$$PKG_OUT"/*.deb ochami-packages/; \
+	chmod u+w ochami-packages/*; \
+	echo ""; \
+	echo "==> Packages written to ochami-packages/:"; \
+	ls -lh ochami-packages/
+
+test-package-alma:
+	scripts/ops/test-packages.sh --distro alma
+
+test-package-ubuntu:
+	scripts/ops/test-packages.sh --distro ubuntu
+
+test-package-destroy:
+	scripts/ops/test-packages.sh --distro alma --destroy
+	scripts/ops/test-packages.sh --distro ubuntu --destroy
