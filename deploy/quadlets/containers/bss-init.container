@@ -1,0 +1,25 @@
+[Unit]
+Description=OpenCHAMI bss-init
+After=postgres.service
+Requires=postgres.service
+
+[Container]
+Image=localhost/bss:v1.32.2
+Network=host
+Environment=BSS_DBHOST=localhost
+Environment=BSS_DBNAME=bssdb
+Environment=BSS_DBOPTS=sslmode=disable
+Environment=BSS_DBPORT=15432
+Environment=BSS_DBSTEP=2
+Environment=BSS_DBUSER=bss-user
+Environment=BSS_INSECURE=true
+Environment=BSS_DBPASS=${BSS_DBPASS}
+EnvironmentFile=/etc/openchami/openchami.env
+Exec=/usr/local/bin/bss-init --postgres-migrations /migrations/postgres
+
+[Service]
+Restart=no
+TimeoutStartSec=120
+
+[Install]
+WantedBy=openchami.target

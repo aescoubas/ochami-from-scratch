@@ -36,10 +36,10 @@ mkdir -p %{buildroot}/etc/openchami/configs \
          %{buildroot}/usr/libexec/openchami \
          %{buildroot}/usr/libexec/openchami/lib
 
-cp -r ochami-quadlets/configs/*        %{buildroot}/etc/openchami/configs/
-cp -r ochami-quadlets/containers/*     %{buildroot}/etc/containers/systemd/
-cp    ochami-quadlets/pg-init/*        %{buildroot}/etc/openchami/pg-init/
-cp    ochami-quadlets/.env.template    %{buildroot}/etc/openchami/configs/.env.template
+cp -r deploy/quadlets/configs/*        %{buildroot}/etc/openchami/configs/
+cp -r deploy/quadlets/containers/*     %{buildroot}/etc/containers/systemd/
+cp    deploy/quadlets/pg-init/*        %{buildroot}/etc/openchami/pg-init/
+cp    deploy/quadlets/.env.template    %{buildroot}/etc/openchami/configs/.env.template
 
 # Move the target file from containers/ into the systemd system directory
 mv %{buildroot}/etc/containers/systemd/openchami.target %{buildroot}/etc/systemd/system/openchami.target

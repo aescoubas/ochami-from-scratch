@@ -1,55 +1,36 @@
 # Architecture Overview
 
-## Source Of Truth
+## Service Images
 
-`nix/services/*.nix` defines the OpenCHAMI services. Those definitions control:
+OCI images are built from Dockerfiles in `images/<service>/Dockerfile` using
+buildah or docker. Each service has its own Dockerfile that defines the build
+and runtime layers.
 
-- image references
-- ports
-- environment variables
-- volumes
-- health checks
-- service dependencies
+## Deployment Artifacts
 
-Generated deployment artifacts must follow those service definitions. They are not
-hand-written.
+Deployment artifacts are directly maintained in `deploy/`:
 
-## Generated Artifacts
+- `deploy/compose/` -- Docker Compose files and config templates
+- `deploy/quadlets/` -- Podman quadlet `.container` files and configs
+- `deploy/helm/` -- Helm chart and values
 
-The repository currently exports these Nix-built artifacts:
+Profile env files under `profiles/*.env` (official, dev, cscs) control image
+references, registries, and version tags.
 
-- `docker-compose-yml` from `nix/generators/docker-compose.nix`
-- `docker-compose-yml-dev` for the cutting-edge profile
-- `quadlet-units` from `nix/generators/quadlets.nix`
-- `quadlet-units-dev` for the cutting-edge profile
-- `helm-values` from `nix/generators/helm-values.nix`
-- `helm-values-dev` for the cutting-edge profile
-- `deploy-profile` from `nix/deploy/profile.nix`
-- `deploy-profile-dev` for the cutting-edge profile
-- `boot-artifacts` from `nix/boot-artifacts.nix`
-- `boot-artifacts-nixos`, `boot-artifacts-ubuntu`, `boot-artifacts-opensuse`, and
-  `boot-artifacts-almalinux` for explicit test-node image builds
-- `lab-controller-vm` from the `nix/lab/controller.nix` module
-- `lab-boot-node-vm` from the `nix/lab/boot-node.nix` module
-
-`boot-artifacts` packages the PXE/iPXE kernel, initramfs, and kernel parameters used
-by the local Docker Compose and Quadlet runtime for the selected test-node image.
-The lab VM outputs turn the existing NixOS smoke-lab modules into explicit VM
-artifacts that can be reused as the portable Linux lab boundary.
+Boot artifacts (PXE/iPXE kernel, initramfs, kernel parameters) are used by the
+local Docker Compose and Quadlet runtime for the selected test-node image.
+The default test-node image is `almalinux`.
 
 ## Runtime Layers
 
-The unqualified flake outputs default to the `official` profile. Profile selection
-changes both the enabled stack definition and the tags applied to locally built
-OCI images, so generated artifacts and runtime image names stay aligned.
+The default profile is `official`. Profile selection changes the image tags and
+registry references used in deployment artifacts.
 
-- `nix/images/*.nix` builds the local OCI images used for OpenCHAMI-owned services and the
-  bundled Kea runtime.
-- the Docker Compose and Quadlet generators default those services to the
-  locally built `localhost/*` images
+- `images/<service>/Dockerfile` defines the OCI image builds for each service.
+- `deploy/compose/`, `deploy/quadlets/`, and `deploy/helm/` contain the deployment
+  artifacts for each method.
 - `scripts/ops/` contains the operational entry points for deploy, teardown, health
   checks, boot parameter registration, node registration, and libvirt test VM setup.
-- `ochami-helm/` contains the Helm chart that consumes generated values for Minikube.
 - `ochami/mcp/` provides the standalone MCP server.
 
 ## Local Compose PXE Path
@@ -64,12 +45,12 @@ That flow uses:
 
 - libvirt network `ochami-pxe-net`
 - libvirt bridge `virbr-ochami`
-- generated nginx and BSS config from the Nix deploy profile
-- generated boot artifacts mounted into the nginx container
+- nginx and BSS config from the deploy profile
+- boot artifacts mounted into the nginx container
 
 `TEST_NODE_IMAGE` selects which test-node payload is registered with BSS and
-served by nginx. Supported values are `nixos` (default), `ubuntu`, `opensuse`,
-and `almalinux`.
+served by nginx. Supported values are `almalinux` (default), `ubuntu`, and
+`opensuse`.
 
 See `docs/architecture/compose-pxe-lab.md` for the detailed boot path.
 See `docs/architecture/README.md` for the full architecture document and ADR index.

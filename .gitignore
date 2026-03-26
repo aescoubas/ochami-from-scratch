@@ -1,26 +1,20 @@
+# Boot artifacts (large binaries, downloaded or built separately)
 initramfs-lts
 rootfs.squashfs
 vmlinuz-lts
-images/
-!nix/images/
 boot_tmp/
 modules_tmp/
 usr_modules_tmp/
-coredhcp-values.yaml
-ochami-smd/
-ochami-bss/
-ochami-coresmd/
-ochami-cloud-init/
 
 # Hardware node inventory (user-specific)
 nodes.csv
 
 # Docker Compose runtime files (secrets, override)
-ochami-docker-compose/.env
-ochami-docker-compose/docker-compose.override.yml
+deploy/compose/.env
+deploy/compose/docker-compose.override.yml
 
-# Boot artifacts (large binaries, built separately)
-ochami-docker-compose/artifacts/
+# Boot artifacts cached by build-boot-artifacts.sh
+deploy/compose/artifacts/
 
 # Locally generated secrets used by deploy scripts
 .openchami-secrets.env
@@ -30,11 +24,15 @@ ochami-docker-compose/artifacts/
 
 # Libvirt VM test state
 libvirt/.state/
-scripts/mcp/__pycache__/
+
+# Python
 __pycache__/
 .pytest_cache/
 *.pyc
 *.egg-info/
+.venv/
+
+# Build output
 result
 .tmp/
 

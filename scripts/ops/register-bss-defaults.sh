@@ -5,14 +5,13 @@
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$(dirname "$SCRIPT_DIR")")"
 . "$SCRIPT_DIR/lib/common.sh"
-NIX_FLAKE_REF="${OPENCHAMI_NIX_FLAKE_REF:-$(nix_flake_ref "$PROJECT_ROOT")}"
 
 parse_common_args "$@"
 
 HOST="${HOST_IP:-192.168.100.1}"
 HTTP_PORT="${HTTP_PORT:-80}"
 BSS_PORT="${BSS_PORT:-27778}"
-TEST_NODE_IMAGE="${TEST_NODE_IMAGE:-nixos}"
+TEST_NODE_IMAGE="${TEST_NODE_IMAGE:-almalinux}"
 TEST_NODE_IMAGE="${OPENCHAMI_TEST_NODE_IMAGE:-$TEST_NODE_IMAGE}"
 
 BSS_URL="http://localhost:${BSS_PORT}/boot/v1/bootparameters"
@@ -25,12 +24,9 @@ else
   wait_for_url "$BSS_URL" 30 2
   BOOT_ARTIFACTS_PATH="${BOOT_ARTIFACTS_PATH:-}"
   if [ -z "$BOOT_ARTIFACTS_PATH" ]; then
-    BOOT_ARTIFACTS_OUTPUT="$(boot_artifacts_output_for_image "$TEST_NODE_IMAGE")"
-    log_info "building ${BOOT_ARTIFACTS_OUTPUT} with nix..."
-    BOOT_ARTIFACTS_PATH="$(
-      cd "$PROJECT_ROOT" && OPENCHAMI_TEST_NODE_IMAGE="$TEST_NODE_IMAGE" \
-        nix build --impure "${NIX_FLAKE_REF}#${BOOT_ARTIFACTS_OUTPUT}" --no-link --print-out-paths
-    )"
+    log_info "building boot artifacts for ${TEST_NODE_IMAGE}..."
+    "$SCRIPT_DIR/build-boot-artifacts.sh"
+    BOOT_ARTIFACTS_PATH="${PROJECT_ROOT}/.tmp/boot-artifacts"
   fi
   resolve_boot_image_metadata "$BOOT_ARTIFACTS_PATH" "$TEST_NODE_IMAGE"
   KERNEL_PARAMS_FILE="${BOOT_ARTIFACTS_PATH}/${BOOT_IMAGE_RELATIVE_DIR}/kernel-params"

@@ -1,77 +1,132 @@
 #!/usr/bin/env bash
-# build-images.sh — Build all OpenCHAMI OCI images via Nix and load into docker/podman.
+# build-images.sh — Build OpenCHAMI OCI images using buildah/docker/podman.
 #
-# Usage: ./build-images.sh [--runtime docker|podman] [--profile official|dev]
+# Usage:
+#   ./build-images.sh [--dry-run] [--profile official|dev|cscs] [service ...]
 #
-# Local source overrides:
-#   SMD_SRC=/path/to/smd
-#   BSS_SRC=/path/to/bss
-#   PCS_SRC=/path/to/power-control
-#   CLOUD_INIT_SRC=/path/to/cloud-init
-#   KEA_SYNC_SRC=/path/to/kea-sync
+# Examples:
+#   ./build-images.sh                         # build all images, official profile
+#   ./build-images.sh smd bss                 # build only smd and bss
+#   ./build-images.sh --profile dev           # build all with dev profile refs
+#   ./build-images.sh --dry-run               # show what would be built
+#
+# Environment:
+#   CONTAINER_RUNTIME   — force podman, docker, or buildah (default: auto-detect)
+#   OPENCHAMI_PROFILE   — profile name (default: official)
+#   SMD_SRC             — local source checkout for smd
+#   BSS_SRC             — local source checkout for bss
+#   PCS_SRC             — local source checkout for pcs
+#   CLOUD_INIT_SRC      — local source checkout for cloud-init
+#   KEA_SYNC_SRC        — local source checkout for kea-sync
+
+set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(dirname "$(dirname "$SCRIPT_DIR")")"
-WORKSPACE_ROOT="$(dirname "$(dirname "$PROJECT_ROOT")")"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+
+# Source shared utilities.
 . "$SCRIPT_DIR/lib/common.sh"
-NIX_FLAKE_REF="${OPENCHAMI_NIX_FLAKE_REF:-$(nix_flake_ref "$PROJECT_ROOT")}"
 
-RUNTIME="${CONTAINER_RUNTIME:-docker}"
+# --- Configuration ---
+
 PROFILE="${OPENCHAMI_PROFILE:-official}"
-EXPLICIT_KEA_SYNC_SRC="${KEA_SYNC_SRC:-}"
+PROFILE_FILE="${PROJECT_ROOT}/profiles/${PROFILE}.env"
+DRY_RUN="${DRY_RUN:-false}"
 
-# Parse arguments.
+# Services that build from source (have SOURCE_REPO / SOURCE_REF build args).
+# Maps the image directory name to the env-var prefix used for overrides.
+declare -A SOURCE_SERVICES=(
+  [smd]=SMD
+  [bss]=BSS
+  [pcs]=PCS
+  [cloud-init]=CLOUD_INIT
+  [kea-sync]=KEA_SYNC
+)
+
+# Positional arguments: services to build (empty = all).
+REQUESTED_SERVICES=()
+
+# --- Argument parsing ---
+
 while [ $# -gt 0 ]; do
   case "$1" in
-    --runtime)
-      RUNTIME="${2:-docker}"
-      shift 2
-      ;;
-    --runtime=*)
-      RUNTIME="${1#--runtime=}"
+    --dry-run)
+      DRY_RUN="true"
       shift
       ;;
     --profile)
       PROFILE="${2:-official}"
+      PROFILE_FILE="${PROJECT_ROOT}/profiles/${PROFILE}.env"
       shift 2
       ;;
     --profile=*)
       PROFILE="${1#--profile=}"
+      PROFILE_FILE="${PROJECT_ROOT}/profiles/${PROFILE}.env"
       shift
       ;;
+    --help|-h)
+      sed -n '2,/^$/{ s/^# \{0,1\}//; p }' "$0"
+      exit 0
+      ;;
+    -*)
+      log_error "unknown flag: $1"
+      exit 1
+      ;;
     *)
+      REQUESTED_SERVICES+=("$1")
       shift
       ;;
   esac
 done
 
-require_command nix "Nix is required to build OCI images"
-require_command "$RUNTIME" "$RUNTIME is required to load OCI images"
-require_command git "git is required to check out private OCI image sources"
+# --- Load profile ---
 
-KEA_SYNC_REPO="${KEA_SYNC_REPO:-https://github.com/aescoubas/kea-sync.git}"
-KEA_SYNC_CHECKOUT="${KEA_SYNC_CHECKOUT:-${WORKSPACE_ROOT}/services/kea-sync}"
-KEA_SYNC_MANAGED_CHECKOUT="false"
-OCI_IMAGES_OUTPUT="$(flake_output_for_profile "oci-images" "$PROFILE")"
+if [ ! -f "$PROFILE_FILE" ]; then
+  log_error "profile file not found: $PROFILE_FILE"
+  exit 1
+fi
 
-kea_sync_ref_for_profile() {
-  nix eval --raw --impure --expr "let profile = import ${PROJECT_ROOT}/nix/profiles/${PROFILE}.nix; in profile.refs.keaSync"
-}
+# shellcheck disable=SC1090
+. "$PROFILE_FILE"
 
-require_git_checkout() {
-  local service_name="$1"
-  local checkout_path="$2"
+log_info "loaded profile: ${PROFILE} (${PROFILE_FILE})"
 
-  if [ ! -d "$checkout_path" ]; then
-    log_error "${service_name} source override does not exist: ${checkout_path}"
-    return 1
+# --- Detect container runtime ---
+
+detect_runtime() {
+  if [ -n "${CONTAINER_RUNTIME:-}" ]; then
+    printf '%s' "$CONTAINER_RUNTIME"
+    return 0
   fi
 
-  if ! git -C "$checkout_path" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-    log_error "${service_name} source override is not a git checkout: ${checkout_path}"
-    return 1
+  local candidate
+  for candidate in podman buildah docker; do
+    if command_exists "$candidate"; then
+      printf '%s' "$candidate"
+      return 0
+    fi
+  done
+
+  log_error "no container runtime found (tried podman, buildah, docker)"
+  return 1
+}
+
+RUNTIME="$(detect_runtime)"
+require_command "$RUNTIME" "container runtime for building OCI images"
+
+# When the runtime is buildah, the build subcommand is "bud"; for
+# podman/docker it is "build".
+build_cmd() {
+  if [ "$RUNTIME" = "buildah" ]; then
+    "$RUNTIME" bud "$@"
+  else
+    "$RUNTIME" build "$@"
   fi
 }
+
+log_info "container runtime: ${RUNTIME}"
+
+# --- Helpers ---
 
 normalize_oci_tag() {
   local raw_tag="$1"
@@ -85,6 +140,8 @@ normalize_oci_tag() {
   printf '%s\n' "$normalized"
 }
 
+# Derive a descriptive ref string from a local git checkout, appending
+# "-dirty" when the work tree has uncommitted changes.
 checkout_ref_for_image_tag() {
   local checkout_path="$1"
   local ref
@@ -104,131 +161,146 @@ checkout_ref_for_image_tag() {
   printf '%s\n' "$ref"
 }
 
-set_local_checkout_image_tag() {
-  local service_name="$1"
-  local src_var_name="$2"
-  local tag_var_name="$3"
-  local checkout_path="${!src_var_name:-}"
-  local checkout_ref image_tag
+# --- Discover services ---
 
-  if [ -z "$checkout_path" ]; then
-    return 0
-  fi
-
-  require_git_checkout "$service_name" "$checkout_path" || return 1
-
-  checkout_ref="$(checkout_ref_for_image_tag "$checkout_path")"
-  image_tag="$(normalize_oci_tag "$checkout_ref")"
-  printf -v "$tag_var_name" '%s' "$image_tag"
-  export "$tag_var_name"
-
-  if [ "$image_tag" != "$checkout_ref" ]; then
-    log_info "using ${service_name} local checkout ${checkout_path} at ref ${checkout_ref} (OCI tag ${image_tag})"
-  else
-    log_info "using ${service_name} local checkout ${checkout_path} at ref ${checkout_ref}"
-  fi
+discover_services() {
+  local service_dir
+  for service_dir in "$PROJECT_ROOT"/images/*/; do
+    [ -f "${service_dir}Dockerfile" ] || continue
+    basename "$service_dir"
+  done
 }
 
-ensure_kea_sync_src() {
-  if [ -n "${KEA_SYNC_SRC:-}" ]; then
-    return 0
-  fi
+ALL_SERVICES=()
+while IFS= read -r svc; do
+  ALL_SERVICES+=("$svc")
+done < <(discover_services | sort)
 
-  if [ -d "${KEA_SYNC_CHECKOUT}/.git" ]; then
-    KEA_SYNC_SRC="${KEA_SYNC_CHECKOUT}"
-    KEA_SYNC_MANAGED_CHECKOUT="true"
-    return 0
-  fi
-
-  if [ -e "${KEA_SYNC_CHECKOUT}" ] && [ ! -d "${KEA_SYNC_CHECKOUT}/.git" ]; then
-    log_error "kea-sync checkout path exists but is not a git checkout: ${KEA_SYNC_CHECKOUT}"
-    return 1
-  fi
-
-  mkdir -p "$(dirname "${KEA_SYNC_CHECKOUT}")"
-  log_info "cloning kea-sync source from ${KEA_SYNC_REPO} into ${KEA_SYNC_CHECKOUT}"
-  git clone --depth 1 "${KEA_SYNC_REPO}" "${KEA_SYNC_CHECKOUT}"
-  KEA_SYNC_SRC="${KEA_SYNC_CHECKOUT}"
-  KEA_SYNC_MANAGED_CHECKOUT="true"
-}
-
-ensure_kea_sync_ref() {
-  local requested_ref="$1"
-  local requested_commit current_commit
-
-  if [ ! -d "${KEA_SYNC_SRC}/.git" ]; then
-    log_error "KEA_SYNC_SRC is not a git checkout: ${KEA_SYNC_SRC}"
-    return 1
-  fi
-
-  git -C "${KEA_SYNC_SRC}" fetch --tags origin "${requested_ref}" >/dev/null 2>&1 || true
-  requested_commit="$(git -C "${KEA_SYNC_SRC}" rev-parse "${requested_ref}^{commit}" 2>/dev/null || true)"
-  if [ -z "$requested_commit" ]; then
-    log_error "failed to resolve kea-sync ref '${requested_ref}' in ${KEA_SYNC_SRC}"
-    return 1
-  fi
-
-  current_commit="$(git -C "${KEA_SYNC_SRC}" rev-parse HEAD)"
-  if [ "$current_commit" = "$requested_commit" ]; then
-    return 0
-  fi
-
-  if [ "$KEA_SYNC_MANAGED_CHECKOUT" = "true" ]; then
-    log_info "checking out kea-sync ref ${requested_ref} in ${KEA_SYNC_SRC}"
-    git -C "${KEA_SYNC_SRC}" checkout --force "${requested_ref}" >/dev/null 2>&1
-    return 0
-  fi
-
-  log_error "KEA_SYNC_SRC (${KEA_SYNC_SRC}) is not at requested ref ${requested_ref}"
-  return 1
-}
-
-set_local_checkout_image_tag "smd" "SMD_SRC" "SMD_IMAGE_TAG" || exit 1
-set_local_checkout_image_tag "bss" "BSS_SRC" "BSS_IMAGE_TAG" || exit 1
-set_local_checkout_image_tag "pcs" "PCS_SRC" "PCS_IMAGE_TAG" || exit 1
-set_local_checkout_image_tag "cloud-init" "CLOUD_INIT_SRC" "CLOUD_INIT_IMAGE_TAG" || exit 1
-
-ensure_kea_sync_src || exit 1
-if [ -n "${EXPLICIT_KEA_SYNC_SRC:-}" ]; then
-  set_local_checkout_image_tag "kea-sync" "KEA_SYNC_SRC" "KEA_SYNC_IMAGE_TAG" || exit 1
-else
-  KEA_SYNC_REF="$(kea_sync_ref_for_profile)"
-  ensure_kea_sync_ref "${KEA_SYNC_REF}" || exit 1
-  KEA_SYNC_IMAGE_TAG="${KEA_SYNC_REF}"
-  export KEA_SYNC_IMAGE_TAG
-fi
-
-log_info "building ${OCI_IMAGES_OUTPUT} for profile=${PROFILE}..."
-IMAGE_BUNDLE_PATH="$(
-  SMD_SRC="${SMD_SRC:-}" \
-  SMD_IMAGE_TAG="${SMD_IMAGE_TAG:-}" \
-  BSS_SRC="${BSS_SRC:-}" \
-  BSS_IMAGE_TAG="${BSS_IMAGE_TAG:-}" \
-  PCS_SRC="${PCS_SRC:-}" \
-  PCS_IMAGE_TAG="${PCS_IMAGE_TAG:-}" \
-  CLOUD_INIT_SRC="${CLOUD_INIT_SRC:-}" \
-  CLOUD_INIT_IMAGE_TAG="${CLOUD_INIT_IMAGE_TAG:-}" \
-  KEA_SYNC_SRC="${KEA_SYNC_SRC}" \
-  KEA_SYNC_IMAGE_TAG="${KEA_SYNC_IMAGE_TAG:-}" \
-    nix build --impure "${NIX_FLAKE_REF}#${OCI_IMAGES_OUTPUT}" --no-link --print-out-paths 2>/dev/null
-)"
-
-if [ -z "$IMAGE_BUNDLE_PATH" ] || [ ! -d "$IMAGE_BUNDLE_PATH" ]; then
-  log_error "failed to build ${OCI_IMAGES_OUTPUT}"
+if [ ${#ALL_SERVICES[@]} -eq 0 ]; then
+  log_error "no services with Dockerfiles found under images/"
   exit 1
 fi
 
-FOUND_ARCHIVES=0
-for archive in "$IMAGE_BUNDLE_PATH"/*.tar.gz; do
-  [ -e "$archive" ] || continue
-  FOUND_ARCHIVES=1
-  log_info "loading $(basename "$archive") into $RUNTIME..."
-  "$RUNTIME" load < "$archive"
+# Validate requested services.
+if [ ${#REQUESTED_SERVICES[@]} -gt 0 ]; then
+  for req in "${REQUESTED_SERVICES[@]}"; do
+    found=false
+    for svc in "${ALL_SERVICES[@]}"; do
+      if [ "$req" = "$svc" ]; then
+        found=true
+        break
+      fi
+    done
+    if [ "$found" != "true" ]; then
+      log_error "unknown service: $req (available: ${ALL_SERVICES[*]})"
+      exit 1
+    fi
+  done
+  BUILD_SERVICES=("${REQUESTED_SERVICES[@]}")
+else
+  BUILD_SERVICES=("${ALL_SERVICES[@]}")
+fi
+
+log_info "services to build: ${BUILD_SERVICES[*]}"
+
+# --- Build loop ---
+
+BUILT_IMAGES=()
+FAILED_SERVICES=()
+
+for service in "${BUILD_SERVICES[@]}"; do
+  dockerfile="${PROJECT_ROOT}/images/${service}/Dockerfile"
+  build_context="${PROJECT_ROOT}/images/${service}/"
+
+  # Determine build args and image tag for this service.
+  build_args=()
+  tag="latest"
+
+  env_prefix="${SOURCE_SERVICES[$service]:-}"
+  if [ -n "$env_prefix" ]; then
+    # This is a source-built service with SOURCE_REPO / SOURCE_REF args.
+    ref_var="${env_prefix}_REF"
+    repo_var="${env_prefix}_REPO"
+    src_var="${env_prefix}_SRC"
+    source_ref="${!ref_var:-main}"
+    source_repo="${!repo_var:-}"
+    local_src="${!src_var:-}"
+
+    if [ -n "$local_src" ]; then
+      # Local source override. Validate the checkout, then derive the ref
+      # from the local git state. The Dockerfile still clones from the
+      # upstream repo URL, but we override SOURCE_REF to the commit SHA
+      # so the exact same code is built. The image is tagged with the
+      # local ref (branch, tag, or short SHA, plus -dirty if applicable).
+      if [ ! -d "$local_src" ]; then
+        log_error "${service}: local source does not exist: ${local_src}"
+        FAILED_SERVICES+=("$service")
+        continue
+      fi
+
+      if ! git -C "$local_src" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+        log_error "${service}: local source is not a git checkout: ${local_src}"
+        FAILED_SERVICES+=("$service")
+        continue
+      fi
+
+      local_ref="$(checkout_ref_for_image_tag "$local_src")"
+      # Use the full commit SHA so the Dockerfile can check it out from
+      # the upstream repo (assuming it has been pushed).
+      local_commit="$(git -C "$local_src" rev-parse HEAD)"
+      tag="$(normalize_oci_tag "$local_ref")"
+
+      build_args+=(--build-arg "SOURCE_REPO=${source_repo}")
+      build_args+=(--build-arg "SOURCE_REF=${local_commit}")
+      log_info "${service}: local override ${local_src} at ${local_ref}"
+    else
+      # Standard build: use the profile's repo and ref.
+      tag="$(normalize_oci_tag "$source_ref")"
+      build_args+=(--build-arg "SOURCE_REPO=${source_repo}")
+      build_args+=(--build-arg "SOURCE_REF=${source_ref}")
+    fi
+  fi
+
+  # Compute the full image name.
+  if [ -n "${IMAGE_REGISTRY:-}" ]; then
+    image_name="${IMAGE_REGISTRY}/${IMAGE_PREFIX:-}${service}:${tag}"
+  else
+    image_name="localhost/${IMAGE_PREFIX:-}${service}:${tag}"
+  fi
+
+  log_info "building ${image_name}"
+
+  if [ "$DRY_RUN" = "true" ]; then
+    log_info "[dry-run] ${RUNTIME} build -t ${image_name} -f ${dockerfile} ${build_args[*]:-} ${build_context}"
+    BUILT_IMAGES+=("$image_name")
+    continue
+  fi
+
+  if build_cmd -t "$image_name" -f "$dockerfile" "${build_args[@]}" "$build_context"; then
+    BUILT_IMAGES+=("$image_name")
+  else
+    log_error "failed to build ${service}"
+    FAILED_SERVICES+=("$service")
+  fi
 done
 
-if [ "$FOUND_ARCHIVES" -ne 1 ]; then
-  log_error "no OCI archives were produced by ${OCI_IMAGES_OUTPUT}"
+# --- Summary ---
+
+echo ""
+log_info "=== Build Summary ==="
+log_info "profile: ${PROFILE}"
+log_info "runtime: ${RUNTIME}"
+
+if [ ${#BUILT_IMAGES[@]} -gt 0 ]; then
+  log_info "built ${#BUILT_IMAGES[@]} image(s):"
+  for img in "${BUILT_IMAGES[@]}"; do
+    log_info "  ${img}"
+  done
+fi
+
+if [ ${#FAILED_SERVICES[@]} -gt 0 ]; then
+  log_error "failed ${#FAILED_SERVICES[@]} service(s): ${FAILED_SERVICES[*]}"
   exit 1
 fi
 
-log_info "all profile=${PROFILE} images built and loaded successfully"
+log_info "all images built successfully"

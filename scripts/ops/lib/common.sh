@@ -4,102 +4,6 @@
 
 set -euo pipefail
 
-# --- Host PATH bootstrap ---
-
-bootstrap_host_path() {
-  local host_os
-  host_os="$(uname -s)"
-
-  if [ "$host_os" != "Darwin" ]; then
-    return 0
-  fi
-
-  local dir
-  local -a path_candidates=(
-    "/opt/homebrew/opt/coreutils/libexec/gnubin"
-    "/opt/homebrew/opt/gettext/bin"
-    "/opt/homebrew/bin"
-    "/Applications/Docker.app/Contents/Resources/bin"
-    "/nix/var/nix/profiles/default/bin"
-    "${HOME}/.nix-profile/bin"
-    "/usr/local/opt/coreutils/libexec/gnubin"
-    "/usr/local/opt/gettext/bin"
-    "/usr/local/bin"
-  )
-
-  for dir in "${path_candidates[@]}"; do
-    if [ ! -d "$dir" ]; then
-      continue
-    fi
-
-    case ":$PATH:" in
-      *":$dir:"*)
-        ;;
-      *)
-        PATH="$dir:$PATH"
-        ;;
-    esac
-  done
-
-  export PATH
-}
-
-bootstrap_host_path
-
-# --- Nix bootstrap ---
-
-ensure_nix_flake_support() {
-  case "${NIX_CONFIG:-}" in
-    *"nix-command"*flakes*|*"flakes"*nix-command*)
-      return 0
-      ;;
-  esac
-
-  if [ -n "${NIX_CONFIG:-}" ]; then
-    NIX_CONFIG="experimental-features = nix-command flakes
-${NIX_CONFIG}"
-  else
-    NIX_CONFIG="experimental-features = nix-command flakes"
-  fi
-
-  export NIX_CONFIG
-}
-
-ensure_nix_flake_support
-
-nix_flake_ref() {
-  local root="${1:-${PROJECT_ROOT:-$PWD}}"
-  printf 'path:%s' "$root"
-}
-
-nix_ssh_store_url() {
-  local target="$1"
-  printf 'ssh://%s?trusted=1' "$target"
-}
-
-default_lab_vm_libvirt_uri() {
-  if [ "$(uname -s)" = "Darwin" ]; then
-    printf 'qemu:///session\n'
-    return 0
-  fi
-
-  printf 'qemu:///system\n'
-}
-
-libvirt_uri_is_session() {
-  case "$1" in
-    *:///session)
-      return 0
-      ;;
-  esac
-
-  return 1
-}
-
-nix_has_linux_builder() {
-  nix show-config 2>/dev/null | grep -Eq '(^|[[:space:]=])x86_64-linux([[:space:];,]|$)'
-}
-
 # --- Logging ---
 
 _log() {
@@ -128,39 +32,6 @@ require_command() {
     fi
     return 1
   fi
-}
-
-xml_escape() {
-  sed \
-    -e 's/&/\&amp;/g' \
-    -e "s/'/\&apos;/g" \
-    -e 's/"/\&quot;/g' \
-    -e 's/</\&lt;/g' \
-    -e 's/>/\&gt;/g'
-}
-
-qemu_system_bin_from_vm_runner() {
-  local runner="$1"
-
-  sed -n 's#^exec \([^ ]*qemu-system-x86_64\) .*#\1#p' "$runner" | head -n 1
-}
-
-qemu_img_bin_from_vm_runner() {
-  local runner="$1"
-  local qemu_bin
-
-  qemu_bin="$(qemu_system_bin_from_vm_runner "$runner")"
-  if [ -z "$qemu_bin" ]; then
-    return 1
-  fi
-
-  printf '%s/qemu-img\n' "$(dirname "$qemu_bin")"
-}
-
-mkfs_ext4_bin_from_vm_runner() {
-  local runner="$1"
-
-  sed -n 's#.* \(/[^ ]*mkfs\.ext4\) .*#\1#p' "$runner" | head -n 1
 }
 
 docker_compose_available() {
@@ -640,25 +511,16 @@ parse_common_args() {
   done
 }
 
-flake_output_for_profile() {
-  local base="$1"
-  local profile_name="${2:-${PROFILE:-official}}"
-
-  if [ "$profile_name" = "official" ]; then
-    printf '%s\n' "$base"
-    return 0
+resolve_image_ref() {
+  local service="$1"
+  local ref="$2"
+  local prefix="${IMAGE_PREFIX:-}"
+  local registry="${IMAGE_REGISTRY:-}"
+  if [ -n "$registry" ]; then
+    echo "${registry}/${prefix}${service}:${ref}"
+  else
+    echo "localhost/${prefix}${service}:${ref}"
   fi
-
-  printf '%s-%s\n' "$base" "$profile_name"
-}
-
-default_test_node_image() {
-  printf '%s\n' "${TEST_NODE_IMAGE:-${OPENCHAMI_TEST_NODE_IMAGE:-nixos}}"
-}
-
-boot_artifacts_output_for_image() {
-  local image="${1:-$(default_test_node_image)}"
-  printf 'boot-artifacts-%s\n' "$image"
 }
 
 resolve_boot_image_metadata() {

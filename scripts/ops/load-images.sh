@@ -8,8 +8,7 @@
 #   # Remote: load images into a remote host via SSH
 #   ./load-images.sh --remote user@host /path/to/oci-images-dir
 #
-# The image directory should contain .tar.gz OCI archives (as produced by
-# `nix build .#oci-images`).
+# The image directory should contain .tar.gz OCI archives.
 
 set -euo pipefail
 

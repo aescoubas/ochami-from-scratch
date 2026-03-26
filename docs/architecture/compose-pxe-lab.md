@@ -9,11 +9,10 @@ with libvirt VMs and validated from the guest serial console.
 
 - libvirt network: `ochami-pxe-net`
 - libvirt bridge: `virbr-ochami`
-- compose file: `ochami-docker-compose/docker-compose.yml` (committed, generated via `make generate-static`)
-- config templates: `ochami-docker-compose/configs/` (committed, `envsubst` at deploy time for secrets)
-- init scripts: `ochami-docker-compose/pg-init/` (committed)
-- generated boot artifact package: `nix build .#boot-artifacts` or
-  `nix build .#boot-artifacts-<image>`
+- compose file: `deploy/compose/docker-compose.yml`
+- config templates: `deploy/compose/configs/` (`envsubst` at deploy time for secrets)
+- init scripts: `deploy/compose/pg-init/`
+- boot artifacts: built by `scripts/ops/build-boot-artifacts.sh`
 
 ## What Deploy Does
 

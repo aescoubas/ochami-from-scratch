@@ -30,8 +30,8 @@ create_controller_vm() {
     return 0
   fi
 
-  log_info "controller VM creation requires a NixOS image or manual setup"
-  log_info "use: nix run .#lab-driver -- for NixOS-based VM testing"
+  log_info "controller VM creation is handled by the deployment method (compose, quadlets, etc.)"
+  log_info "use: make deploy METHOD=compose to deploy the stack on the host"
 }
 
 # --- Teardown ---
