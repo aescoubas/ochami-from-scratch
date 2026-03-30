@@ -5,7 +5,6 @@
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$(dirname "$SCRIPT_DIR")")"
 . "$SCRIPT_DIR/lib/common.sh"
-NIX_FLAKE_REF="${OPENCHAMI_NIX_FLAKE_REF:-$(nix_flake_ref "$PROJECT_ROOT")}"
 
 parse_common_args "$@"
 
@@ -19,7 +18,7 @@ KEA_PORT="${KEA_PORT:-67}"
 KEA_SYNC_PORT="${KEA_SYNC_PORT:-28080}"
 CHECK_KEA="${CHECK_KEA:-false}"
 PXE_INTERFACE="${PXE_INTERFACE:-virbr-ochami}"
-TEST_NODE_IMAGE="${TEST_NODE_IMAGE:-nixos}"
+TEST_NODE_IMAGE="${TEST_NODE_IMAGE:-almalinux}"
 TEST_NODE_IMAGE="${OPENCHAMI_TEST_NODE_IMAGE:-$TEST_NODE_IMAGE}"
 
 MAX_ATTEMPTS="${MAX_ATTEMPTS:-60}"
@@ -29,12 +28,9 @@ failed=0
 
 BOOT_ARTIFACTS_PATH="${BOOT_ARTIFACTS_PATH:-}"
 if [ -z "$BOOT_ARTIFACTS_PATH" ] && [ "$DRY_RUN" != "true" ]; then
-  BOOT_ARTIFACTS_OUTPUT="$(boot_artifacts_output_for_image "$TEST_NODE_IMAGE")"
-  log_info "building ${BOOT_ARTIFACTS_OUTPUT} to verify test node image ${TEST_NODE_IMAGE}"
-  BOOT_ARTIFACTS_PATH="$(
-    cd "$PROJECT_ROOT" && OPENCHAMI_TEST_NODE_IMAGE="$TEST_NODE_IMAGE" \
-      nix build --impure "${NIX_FLAKE_REF}#${BOOT_ARTIFACTS_OUTPUT}" --no-link --print-out-paths
-  )"
+  log_info "building boot artifacts for ${TEST_NODE_IMAGE}"
+  "$SCRIPT_DIR/build-boot-artifacts.sh"
+  BOOT_ARTIFACTS_PATH="${PROJECT_ROOT}/.tmp/boot-artifacts"
 fi
 
 if [ "$DRY_RUN" = "true" ]; then

@@ -1,0 +1,22 @@
+[Unit]
+Description=OpenCHAMI cloud-init
+After=smd.service
+Requires=smd.service
+
+[Container]
+Image=jfrog.svc.cscs.ch/docker/openchami/cscs-cloud-init:v1.4.0
+Network=host
+EnvironmentFile=/etc/openchami/openchami.env
+Exec=/bin/cloud-init-server --listen 0.0.0.0:27777 --smd-url https://localhost:27779 --cluster-name ochami --insecure
+HealthCmd=bash -c 'exec 3<>/dev/tcp/127.0.0.1/27777'
+HealthInterval=5s
+HealthTimeout=5s
+HealthRetries=30
+Notify=healthy
+
+[Service]
+Restart=on-failure
+TimeoutStartSec=300
+
+[Install]
+WantedBy=openchami.target

@@ -1,0 +1,24 @@
+[Unit]
+Description=OpenCHAMI pcs
+After=smd.service pcs-init.service
+Requires=smd.service pcs-init.service
+
+[Container]
+Image=jfrog.svc.cscs.ch/docker/openchami/cscs-pcs:main
+Network=host
+Environment=FAKE_VAULT_ENABLED=true
+Environment=HSMLOCK_ENABLED=true
+Environment=LOG_LEVEL=INFO
+Environment=SMS_SERVER=http://localhost:80
+Environment=STORAGE=POSTGRES
+Environment=TRS_IMPLEMENTATION=LOCAL
+Environment=VAULT_ENABLED=false
+EnvironmentFile=/etc/openchami/openchami.env
+Exec=/bin/bash -c "power-control --run-control --postgres-insecure --postgres-host localhost --postgres-port 15432 --postgres-user pcs-user --postgres-dbname pcsdb --postgres-password $PCS_DB_PASSWORD"
+
+[Service]
+Restart=on-failure
+TimeoutStartSec=300
+
+[Install]
+WantedBy=openchami.target

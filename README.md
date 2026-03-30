@@ -2,597 +2,739 @@
 
 This repository packages a local OpenCHAMI control plane around:
 
-- Nix-defined service metadata in `nix/services/*.nix`
-- Nix-generated deployment artifacts in `nix/generators/*.nix`
-- Nix-built OCI images in `nix/images/*.nix`
+- Dockerfiles for OCI image builds in `images/<service>/Dockerfile`
+- Directly-maintained deployment artifacts in `deploy/compose/`, `deploy/quadlets/`, `deploy/helm/`
+- Profile env files in `profiles/*.env`
 - Bash operational entry points in `scripts/ops/`
 
-The validated end-to-end local workflow is Docker Compose plus libvirt PXE boot:
+## Quick Start: Virtual Lab
 
-1. deploy the stack with `make deploy METHOD=compose`
-2. create a libvirt VM with `make create-test-vms COUNT=1`
-3. confirm the guest reaches its xname-derived serial login prompt
-
-There is no Python deployment CLI in this repository. The only Python application
-entry point is the standalone MCP server in `ochami/mcp/`.
-
-## What Is Generated
-
-`nix/services/*.nix` is the single source of truth for service definitions:
-
-- image references
-- ports
-- environment variables
-- volumes
-- dependencies
-- health checks
-
-Those definitions drive the generated deployment artifacts:
-
-- `nix build .#docker-compose-yml`
-- `nix build .#quadlet-units`
-- `nix build .#helm-values`
-- `nix build .#deploy-profile`
-- `nix build .#boot-artifacts`
-- `nix build .#boot-artifacts-nixos`
-- `nix build .#boot-artifacts-ubuntu`
-- `nix build .#boot-artifacts-opensuse`
-- `nix build .#boot-artifacts-almalinux`
-- `nix build .#lab-controller-vm`
-- `nix build .#lab-boot-node-vm`
-
-The runtime files under `ochami-docker-compose/` and `ochami-quadlets/` are
-generated outputs and rendered configs. They are not hand-maintained source files.
-
-The test-node boot image defaults to `nixos`. Supported values are:
-
-- `nixos`
-- `ubuntu`
-- `opensuse`
-- `almalinux`
-
-Select a different image by passing `TEST_NODE_IMAGE=<name>` to the relevant
-`make` target.
-
-## Prerequisites
-
-Most deployment-oriented functionality is Linux-only.
-
-For the validated Docker Compose PXE path, the host needs:
-
-- `nix`
-- `docker` plus `docker compose`
-- `virsh`, `virt-install`, and `qemu-img`
-- `curl`, `jq`, `envsubst`, `ss`, `ip`, and `timeout`
-- passwordless `sudo` for libvirt network and bridge preparation
-
-Check the compose prerequisites with:
+The fastest way to get a complete OpenCHAMI environment is the virtual lab. It
+creates an AlmaLinux 9 server VM running the full stack via RPM + podman
+quadlets, then boots PXE client VMs from it:
 
 ```bash
-make check METHOD=compose
-sudo -n true
+make lab
 ```
 
-`nix develop` is useful for Python/package work, but it does not replace the host
-requirements above. In particular, Docker, libvirt, and `envsubst` are expected to
-exist on the host.
+This runs end-to-end: builds the RPM and OCI images, provisions the server VM,
+loads images, starts services, and creates PXE boot client VMs.
 
-The operational scripts export `NIX_CONFIG=experimental-features = nix-command flakes`
-and use `path:` flake references automatically, so they work from a live working
-tree even when flakes are not enabled in the host's persistent Nix config.
-
-### macOS bootstrap
-
-macOS can cover the local development and generation workflow, and it is the
-target host for the controller-VM path described below. The validated host-native
-PXE/libvirt deployment path above is still Linux-only. If you want to work from
-macOS anyway, install the toolchain with:
+Individual steps:
 
 ```bash
-sh <(curl --proto '=https' --tlsv1.2 -L https://nixos.org/nix/install) --daemon
-brew install jq gettext coreutils iproute2mac qemu libvirt virt-manager
-brew install --cask docker-desktop
+make lab-server            # Build RPM + images, create AlmaLinux VM, start services
+make lab-clients COUNT=2   # Create 2 PXE boot client VMs
+make lab-status            # Show VM states and service health
+make lab-destroy           # Tear everything down
 ```
 
-`envsubst` comes from Homebrew `gettext`, and `timeout` comes from Homebrew
-`coreutils`. Add both to your shell `PATH`:
+The lab architecture:
+
+```text
+Host (your laptop)
++-- libvirt
+    +-- ochami-lab-server (AlmaLinux 9)
+    |   +-- NIC 1: default network (SSH from host)
+    |   +-- NIC 2: ochami-lab-net (192.168.200.0/24, DHCP/PXE)
+    |   +-- RPM installed, OCI images in podman
+    |   +-- openchami.target running
+    |
+    +-- ochami-lab-client-0 (PXE boot from server)
+    +-- ochami-lab-client-1 (PXE boot from server)
+```
+
+Prerequisites: `virsh`, `virt-install`, `qemu-img`, `podman`, `make`, `curl`,
+`ssh`. The lab script handles everything else.
+
+After `make lab-server`, connect to the server:
 
 ```bash
-echo 'export PATH="$(brew --prefix gettext)/bin:$(brew --prefix coreutils)/libexec/gnubin:$PATH"' >> ~/.zprofile
-source ~/.zprofile
+ssh -i ~/.local/state/openchami/lab/ssh/id_ed25519 almalinux@<server-ip>
 ```
 
-The operational scripts also prepend the common Homebrew and Nix locations on
-Darwin, so non-interactive shells such as `ssh macbook 'make ...'` can
-find `nix`, `envsubst`, `ip`, `ss`, and `timeout` without relying on shell rc
-files.
-
-After Docker Desktop finishes installing, start it once so the Docker daemon and
-`docker compose` are available in your shell.
-
-On macOS, the current split is:
-
-- use `nix build`, `nix develop`, and `make test` natively
-- use `make deploy METHOD=lab-vm` plus `make create-test-vms METHOD=lab-vm COUNT=1` for the portable controller-plus-compute VM workflow
-- keep `make deploy METHOD=compose` for Linux hosts only
-
-On Linux, `lab-vm` defines and starts the controller through libvirt on
-`qemu:///system` by default, so it is visible with:
+Watch a client PXE boot:
 
 ```bash
-virsh --connect qemu:///system list
+sudo virsh console ochami-lab-client-0
 ```
 
-On macOS, `lab-vm` now uses libvirt session domains on `qemu:///session`.
-Both `openchami-controller` and `ochami-test-node-*` appear in `virsh list`,
-and the macOS compute path still uses the controller VM's BSS-generated kernel,
-initrd, and kernel arguments over user networking instead of relying on raw PXE
-broadcasts between guests:
-
-```bash
-virsh list
-virsh console openchami-controller
-virsh console ochami-test-node-0-x1000c0s0b0n0
-```
-
-Even with Homebrew `iproute2mac`, the operational scripts still rely on Linux
-bridge and libvirt network behavior that macOS does not provide directly.
-`make check METHOD=compose` intentionally fails on macOS unless you opt into the
-unsupported path with `OPENCHAMI_ALLOW_UNSUPPORTED_DARWIN=1`.
-
-## Quick Start
-
-### From Scratch: Docker Compose PXE
-
-Start from the repository root.
-
-Check prerequisites:
-
-```bash
-make check METHOD=compose
-```
-
-If you want a clean compose state first:
-
-```bash
-make teardown METHOD=compose
-```
-
-This is recommended after interrupted or failed compose runs, because stale compose
-volumes can preserve Postgres and Kea state.
-
-Deploy the stack:
-
-```bash
-make deploy METHOD=compose
-```
-
-To switch the test-node boot image for the compose PXE path:
-
-```bash
-make deploy METHOD=compose TEST_NODE_IMAGE=ubuntu
-make create-test-vms COUNT=1 TEST_NODE_IMAGE=ubuntu
-```
-
-The same selector supports `opensuse`, `almalinux`, and `nixos` (default).
-
-To build one Go service from a local checkout while keeping the rest of the
-selected profile unchanged, pass the source path as a `make` variable:
-
-```bash
-make deploy METHOD=compose PROFILE=dev BSS_SRC=/path/to/bss
-```
-
-The default stack profile is `official`. That profile pins locally built images to
-the upstream refs:
-
-- `smd:v2.19.2`
-- `bss:v1.32.2`
-- `cloud-init:v1.4.0`
-- `pcs:main`
-- `kea-sync:main`
-- `http-server:latest`
-- `tftp:latest`
-
-To opt into the moving `dev` profile instead:
-
-```bash
-make deploy METHOD=compose PROFILE=dev
-```
-
-This compose path:
-
-- ensures the secrets file exists at `.tmp/openchami-secrets.env`
-- builds and loads local OCI images for OpenCHAMI services plus the bundled Kea runtime
-- uses committed `ochami-docker-compose/docker-compose.yml` (or regenerates via nix if absent)
-- runs `envsubst` on config templates in `ochami-docker-compose/configs/` to inject secrets
-- ensures the libvirt PXE network `ochami-pxe-net` exists on bridge `virbr-ochami`
-- temporarily pauses conflicting libvirt DHCP networks while PXE is active
-- registers default BSS boot parameters from the selected `boot-artifacts-*` package
-
-Create and register a test VM:
-
-```bash
-make create-test-vms COUNT=1
-```
-
-If existing `ochami-test-node-*` domains are already defined, use a fresh index:
-
-```bash
-scripts/ops/create-test-vms.sh --count 1 --start-index 2
-```
-
-On the Linux compose/libvirt path, `create-test-vms` also starts one
-`sushy-tools` Redfish endpoint per VM on a deterministic loopback address in
-`127.84.0.0/16`. Those per-VM BMC addresses are registered in SMD with default
-credentials `admin` / `password`, so PCS can drive libvirt power operations
-through Redfish. On the compose path, `make deploy` stores the same
-`LIBVIRT_BMC_USER` and `LIBVIRT_BMC_PASSWORD` values in
-`.tmp/openchami-secrets.env`, and `create-test-vms` plus PCS both consume those
-settings unless you override them in the environment. Additional compose VMs
-use one node per BMC slot, so the default xnames are `x1000c0s0b0n0`,
-`x1000c0s0b1n0`, `x1000c0s0b2n0`, and so on. This per-VM BMC flow is not yet
-wired into `METHOD=lab-vm`. The libvirt domain names also include the xname, so
-the first VM appears as `ochami-test-node-0-x1000c0s0b0n0` in `virsh list`, and
-the guest login shell prompt uses that xname directly.
-
-Inspect the guest console:
-
-```bash
-sudo virsh --connect qemu:///system console ochami-test-node-0-x1000c0s0b0n0
-```
-
-Inside the guest, verify the OpenCHAMI-provided kernel args:
-
-```bash
-cat /proc/cmdline
-```
-
-The successful path is:
-
-- the console reaches a login prompt for the node xname, such as `x1000c0s0b0n0 login:`
-- `/proc/cmdline` includes values such as `xname=...`, `nid=...`,
-  `bss_referral_token=...`, and `ds=nocloud-net;s=192.168.100.1/`
-
-Exit the serial console with `Ctrl+]`.
-
-### Teardown
-
-Tear down the compose deployment with:
-
-```bash
-make teardown METHOD=compose
-```
-
-That removes the compose containers and volumes, removes the temporary PXE bridge
-carrier helper if one was attached, and restores any libvirt DHCP networks paused
-during deploy.
-
-It does not remove libvirt test VMs or their qcow2 disks.
-
-To remove a test VM manually:
-
-```bash
-sudo virsh --connect qemu:///system destroy ochami-test-node-0-x1000c0s0b0n0 || true
-sudo virsh --connect qemu:///system undefine ochami-test-node-0-x1000c0s0b0n0
-sudo rm -f /var/lib/libvirt/images/ochami/ochami-test-node-0-x1000c0s0b0n0.qcow2
-```
-
-### Controller VM Lab
-
-Build and run the portable controller VM with:
-
-```bash
-make deploy METHOD=lab-vm
-```
-
-That path uses the same `TEST_NODE_IMAGE` selector for compute-node boot
-artifacts:
-
-```bash
-make deploy METHOD=lab-vm TEST_NODE_IMAGE=opensuse
-make create-test-vms METHOD=lab-vm COUNT=1 TEST_NODE_IMAGE=opensuse
-```
-
-On Linux, that path builds the controller guest from the NixOS lab modules,
-defines `openchami-controller` through libvirt on `qemu:///system`, starts the
-domain, and forwards these host ports by default:
-
-- `127.0.0.1:28000` to the guest HTTP server for `boot.ipxe`
-- `127.0.0.1:10022` to the guest SSH service
-- `127.0.0.1:29778` to the guest BSS API
-- `127.0.0.1:28800` to the guest Kea control socket
-- `127.0.0.1:29779` to the guest SMD API
-
-Inspect the running controller domain with:
-
-```bash
-virsh --connect qemu:///system list
-virsh --connect qemu:///system dominfo openchami-controller
-virsh console openchami-controller
-```
-
-On macOS, the same command defines `openchami-controller` through the libvirt
-session daemon on `qemu:///session`, using the Nix-built x86_64 QEMU binary and
-SLIRP host-forwards for the controller endpoints:
-
-```bash
-virsh list
-virsh dominfo openchami-controller
-virsh console openchami-controller
-```
-
-The deploy health check waits for:
-
-```bash
-curl -fsS http://127.0.0.1:28000/boot.ipxe
-```
-
-Stop the controller VM with:
-
-```bash
-make teardown METHOD=lab-vm
-```
-
-On Linux, you can also attach libvirt compute VMs to the controller's isolated
-PXE network and boot them from the controller guest:
-
-```bash
-make create-test-vms METHOD=lab-vm COUNT=1
-virsh --connect qemu:///system console ochami-test-node-0-x1000c0s0b0n0
-```
-
-That path reuses the `openchami-lab-net` libvirt network, registers the node
-against the controller guest's SMD API through the forwarded localhost port,
-and waits for the controller-hosted BSS bootscript before starting the VM.
-
-On macOS, the same command defines a libvirt session domain that boots from the
-controller VM's BSS-generated kernel, initrd, and kernel arguments over user
-networking:
-
-```bash
-make create-test-vms METHOD=lab-vm COUNT=1
-virsh list
-virsh console ochami-test-node-0-x1000c0s0b0n0
-```
-
-The expected success path is the same: the console reaches the xname-derived
-login prompt, and `/proc/cmdline` inside the guest shows the controller-generated `xname`,
-`nid`, `bss_referral_token`, and `ds=nocloud-net;s=http://10.0.2.2:28000/cloud-init/`
-arguments. The translated iPXE script and extracted kernel arguments are cached
-under `.tmp/lab-vm/compute/boot/<domain>/` for inspection, and the captured
-serial transcript is written to `.tmp/lab-vm/compute/logs/ochami-test-node-0-x1000c0s0b0n0.serial.log`.
-
-Relevant overrides:
-
-- `LAB_VM_CONTROLLER_HTTP_PORT`
-- `LAB_VM_CONTROLLER_SSH_PORT`
-- `LAB_VM_CONTROLLER_BSS_PORT`
-- `LAB_VM_CONTROLLER_KEA_CTRL_PORT`
-- `LAB_VM_CONTROLLER_SMD_PORT`
-- `LAB_VM_STATE_DIR`
-- `LAB_VM_LIBVIRT_URI`
-- `LAB_VM_CONTROLLER_DOMAIN`
-- `OPENCHAMI_LAB_VM_BUILD_HOST`
-- `OPENCHAMI_LAB_VM_BUILD_REPO_PATH`
-- `OPENCHAMI_LAB_VM_BUILD_SSH_OPTS`
-
-On Linux, the default `LAB_VM_STATE_DIR` is `~/.local/state/openchami/lab-vm`
-so libvirt-owned state files stay out of the git worktree. On non-Linux hosts,
-the default remains `.tmp/lab-vm` under the repository root.
-
-On macOS, expect the first `lab-vm` deploy to pull a large Linux guest closure into
-the local Nix store before the VM can boot. After that initial cache warm-up, repeat
-deploys are much faster.
-
-If that realization cannot be satisfied entirely from binary caches, the macOS host
-needs either an `x86_64-linux` Nix builder or a Linux build host for this repo.
-Set `OPENCHAMI_LAB_VM_BUILD_HOST=user@linux-host` and, if needed,
-`OPENCHAMI_LAB_VM_BUILD_REPO_PATH=/path/to/ochami-from-scratch` so the Mac can warm
-the Linux guest closure from that machine before defining the local libvirt session
-domains. When using that fallback on macOS, passwordless `sudo` is also required so the
-local Nix store can import the remote closure as a trusted user. Without one of those
-Linux-backed paths, `make deploy METHOD=lab-vm` can fail during the Linux guest build
-even though the local VM lifecycle is libvirt-managed.
+## Deployment Methods
+
+| Method | Use Case | Command |
+|--------|----------|---------|
+| **Virtual Lab** | End-to-end testing with RPM on AlmaLinux VM | `make lab` |
+| **Quadlets/RPM** | Production RHEL systems | `make rpm` then `systemctl start openchami.target` |
+
+## Profiles
+
+Profile env files under `profiles/*.env` control image references, registries,
+and version tags.
+
+| Profile | Image Prefix | Registry | Refs |
+|---------|-------------|----------|------|
+| `official` (default) | none | `localhost` | Pinned releases (smd:v2.19.2, bss:v1.32.2, cloud-init:v1.4.0) |
+| `dev` | none | `localhost` | All services track `main` |
+| `cscs` | `cscs-` | `jfrog.svc.cscs.ch/docker/openchami` | Same as official |
 
 ## Secrets And Config Rendering
 
-The compose and quadlet flows use two layers of generation:
-
-1. Nix generates the deployment artifacts and config templates.
-2. The operational scripts render runtime config files with secrets from a secrets
-   file via `envsubst`.
-
-That second step is required because generated config files such as the Kea config
-intentionally keep placeholders like `$KEA_DB_PASSWORD` until deploy time.
+The compose and quadlet flows render runtime config files with secrets from a
+secrets file via `envsubst`. Config templates keep placeholders like
+`$KEA_DB_PASSWORD` until deploy time.
 
 Default secrets locations:
 
 - Docker Compose: `.tmp/openchami-secrets.env`
-- Quadlets: `/etc/openchami/secrets.env`
+- Quadlets / RPM: `/etc/openchami/openchami.env`
 
 Override the path with `OPENCHAMI_SECRETS=/path/to/secrets.env`.
 
 ## Local Image Builds
 
-Build the local OCI images explicitly with:
+```bash
+make build-images                                    # Official profile
+make build-images PROFILE=dev                        # Dev profile
+make build-images PROFILE=dev SMD_SRC=/path/to/smd   # Local source override
+```
+
+Images are built using Dockerfiles in `images/<service>/Dockerfile` via buildah
+or docker. Supported source overrides: `SMD_SRC`, `BSS_SRC`, `PCS_SRC`,
+`CLOUD_INIT_SRC`, `KEA_SYNC_SRC`.
+
+## RPM Deployment
+
+Build the RPM:
+
+```bash
+make rpm                   # Official profile
+make rpm PROFILE=cscs      # CSCS JFrog profile
+```
+
+Install on AlmaLinux / RHEL / Fedora:
+
+```bash
+sudo dnf install ./openchami-*.noarch.rpm
+```
+
+The RPM `%post` scriptlet runs `bootstrap.sh` which creates
+`/etc/openchami/artifacts/`, generates random database passwords in
+`/etc/openchami/openchami.env`, and reloads systemd.
+
+Images must be available in podman before starting:
 
 ```bash
 make build-images
+# To load on a remote host:
+./scripts/ops/load-images.sh --remote user@host --ssh-key ~/.ssh/key /path/to/archives
 ```
 
-Use `PROFILE=dev` if you want the cutting-edge stack instead of the default
-`official` profile:
+Start:
 
 ```bash
-make build-images PROFILE=dev
+sudo systemctl start openchami.target
 ```
 
-To override a specific Go service from a local checkout, pass the source path on
-the `make` command line:
+## CSCS JFrog Workflow
 
 ```bash
-make build-images PROFILE=dev SMD_SRC=/path/to/smd
-make build-images PROFILE=dev BSS_SRC=/path/to/bss
-make build-images PROFILE=dev PCS_SRC=/path/to/power-control
-make build-images PROFILE=dev CLOUD_INIT_SRC=/path/to/cloud-init
+# Build CSCS-prefixed images
+make build-images PROFILE=cscs
+
+# Push to JFrog
+./scripts/ops/push-images.sh --registry jfrog.svc.cscs.ch/docker/openchami --prefix cscs-
+
+# Build RPM with JFrog image references
+make rpm PROFILE=cscs
 ```
 
-`make deploy` accepts the same override variables and forwards them into the
-image build step before the stack starts:
-
-```bash
-make deploy METHOD=compose PROFILE=dev SMD_SRC=/path/to/smd
-```
-
-Or call the script directly:
-
-```bash
-scripts/ops/build-images.sh
-scripts/ops/build-images.sh --runtime podman
-```
-
-The Docker Compose and quadlet paths now build a local Kea image from Nixpkgs.
-The Go service images can also consume local checkouts, and the `kea-sync`
-image is built from an external checkout. The build script will:
-
-- use `SMD_SRC`, `BSS_SRC`, `PCS_SRC`, and `CLOUD_INIT_SRC` if you set them
-- derive an OCI-safe image tag from the current git ref of each local checkout
-- use `KEA_SYNC_SRC` if you set it
-- otherwise reuse `../services/kea-sync` if it is already a git checkout
-- otherwise clone `https://github.com/aescoubas/kea-sync.git` into that location
-
-Relevant overrides:
-
-- `SMD_SRC`
-- `BSS_SRC`
-- `PCS_SRC`
-- `CLOUD_INIT_SRC`
-- `KEA_SYNC_SRC`
-- `KEA_SYNC_CHECKOUT`
-- `KEA_SYNC_REPO`
-- `OPENCHAMI_PROFILE`
-
-## Other Workflows
-
-### Quadlets
-
-Generate and activate the systemd/Podman profile:
-
-```bash
-make deploy METHOD=quadlets
-make teardown METHOD=quadlets
-```
-
-The quadlet deploy path also uses the Nix `deploy-profile` output and runtime
-config rendering.
-
-### Minikube
-
-Generate Helm values and deploy the chart:
-
-```bash
-make deploy METHOD=minikube
-make teardown METHOD=minikube
-```
-
-The Helm chart lives in `ochami-helm/`, and the generated values are produced by
-`nix/generators/helm-values.nix`.
-
-### MCP Server
-
-Run the standalone MCP server with:
-
-```bash
-nix run .#mcp -- --mode read-only
-nix run .#mcp -- --mode read-write --enable-writes
-```
-
-### NixOS VM Lab
-
-Run the interactive NixOS VM lab:
-
-```bash
-nix run .#lab-driver
-```
-
-Build the controller and boot-node VM artifacts explicitly with:
-
-```bash
-make build-lab-controller-vm
-make build-lab-boot-node-vm
-```
-
-The flake also exports the Linux guest system closures directly:
-
-```bash
-nix build path:.#lab-controller-system
-nix build path:.#lab-boot-node-system
-```
-
-The controller VM path is the intended portability boundary for Ubuntu and macOS:
-keep the fast Ubuntu host-native compose/libvirt workflow, but move the portable
-lab boundary into a Linux VM instead of trying to reproduce Linux PXE host
-behavior on Darwin directly.
-
-The interactive lab smoke test remains Linux-only. The standalone controller and
-boot-node VM artifacts are the basis of the portable `lab-vm` workflow.
+The RPM quadlets reference `jfrog.svc.cscs.ch/...` so podman pulls
+automatically on `systemctl start openchami.target`.
 
 ## Development And Verification
 
-Enter the development shell:
-
 ```bash
-nix develop
-```
-
-Build the default package:
-
-```bash
-nix build
-```
-
-Run the required local verification commands:
-
-```bash
-make test
-nix flake check
-nix build .#docker-compose-yml
-nix build .#quadlet-units
-nix build .#deploy-profile
-```
-
-Additional useful targets:
-
-```bash
-make generate
-make generate-images
-make test-vm
-make test-vm-ubuntu
-make test-vm-fedora
-make test-vm-destroy
+make test           # Run pytest suite
+make build-images   # Build all OCI images
+make lab-status     # Check lab VM health
 ```
 
 ## Repository Layout
 
 ```text
-nix/
-  services/              Service definitions and shared defaults
-  generators/            Docker Compose, Quadlets, and Helm values generators
-  images/                OCI image build definitions
-  deploy/                Deploy profile generator
-  lab/                   NixOS VM lab definitions
-  tests/                 NixOS lab smoke test
-scripts/ops/             Operational scripts for deploy, teardown, health, and VM setup
+images/                  Dockerfiles for OCI image builds
+deploy/
+  compose/               Docker Compose files and config templates
+  quadlets/              Podman quadlet .container files and configs
+  helm/                  Helm chart and values
+profiles/                Profile env files (official.env, dev.env, cscs.env)
+scripts/ops/             Operational scripts
+  lab.sh                 Virtual test lab lifecycle
+  deploy.sh              Deployment orchestrator
+  build-images.sh        OCI image builder (buildah/docker)
+  build-boot-artifacts.sh  PXE boot artifact downloader
+  create-test-vms.sh     Compose PXE test VM creator
+  create-demo-vm.sh      Single demo VM creator
 ochami/mcp/              Standalone MCP server
-ochami-docker-compose/   Generated compose runtime files and rendered configs
-ochami-quadlets/         Generated quadlet runtime files and rendered configs
-ochami-helm/             Helm chart and runtime assets
-libvirt/                 Libvirt VM integration helpers
+tests/                   Pytest suite
 docs/architecture/       Architecture notes and ADRs
 docs/plans/              Roadmap and planning documents
-tests/                   Pytest suite
 ```
+
+## Quickstart: RPM + RHEL Host
+
+This walkthrough deploys OpenCHAMI on a bare RHEL/AlmaLinux host using the RPM
+package with CSCS JFrog images, then registers a bare-metal node for PXE boot.
+
+### Prerequisites
+
+- RHEL 9 (or AlmaLinux/Fedora) host with `podman` and `jq` installed
+- Network connectivity to `jfrog.svc.cscs.ch` (for pulling OCI images)
+- Network connectivity (routed or L2) to the bare-metal node's BMC/NIC
+
+### 1. Build and install the RPM
+
+On your build machine:
+
+```bash
+make rpm-clean && make rpm
+scp openchami-0.1.0-1.noarch.rpm <rhel-host>:~/
+```
+
+On the RHEL host:
+
+```bash
+sudo dnf install -y ~/openchami-*.noarch.rpm
+```
+
+If upgrading from a previous package name (`ochami-from-scratch`), remove it
+first: `sudo dnf remove ochami-from-scratch`.
+
+The `%post` scriptlet creates `/etc/openchami/artifacts/`, generates random
+database passwords in `/etc/openchami/openchami.env`, and reloads systemd.
+
+### 2. Start the stack
+
+```bash
+sudo systemctl start openchami.target
+```
+
+Podman pulls all OCI images from JFrog on first start. Verify:
+
+```bash
+systemctl list-dependencies openchami.target
+```
+
+All init services (`bss-init`, `smd-init`, `kea-init`) should show ○ (completed)
+and all runtime services should show ● (running).
+
+### 3. Open firewall ports
+
+RHEL/AlmaLinux enables `firewalld` by default. The PXE boot chain requires
+several ports to be reachable from the node. Without these, the node gets a DHCP
+lease (Kea uses raw sockets that bypass the firewall) but cannot TFTP-download
+iPXE or reach any HTTP service — causing a silent timeout after DHCP.
+
+```bash
+sudo firewall-cmd --add-service=tftp --permanent        # TFTP (port 69/udp, iPXE firmware)
+sudo firewall-cmd --add-port=69/udp --permanent          # explicit UDP rule for TFTP data
+sudo firewall-cmd --add-port=80/tcp --permanent           # HTTP (nginx: kernel, initrd, boot.ipxe)
+sudo firewall-cmd --add-port=27777/tcp --permanent        # cloud-init metadata service
+sudo firewall-cmd --add-port=27778/tcp --permanent        # BSS (boot script service)
+sudo firewall-cmd --add-port=27779/tcp --permanent        # SMD (state management database)
+sudo firewall-cmd --add-port=28007/tcp --permanent        # PCS (power control service)
+sudo firewall-cmd --reload
+```
+
+Verify:
+
+```bash
+sudo firewall-cmd --list-all
+# Should show: services: ... tftp
+# Should show: ports: 69/udp 80/tcp 27777/tcp 27778/tcp 27779/tcp 28007/tcp
+```
+
+### 4. Install iPXE boot firmware
+
+The TFTP server ships with an empty root directory. PXE-booting nodes need iPXE
+firmware (`ipxe.efi` for UEFI, `undionly.kpxe` for legacy BIOS) to chainload
+into the BSS boot script. Install iPXE and copy the binaries:
+
+```bash
+sudo dnf install -y ipxe-bootimgs-x86
+sudo mkdir -p /etc/openchami/tftpboot
+sudo cp /usr/share/ipxe/ipxe-x86_64.efi  /etc/openchami/tftpboot/ipxe.efi
+sudo cp /usr/share/ipxe/undionly.kpxe     /etc/openchami/tftpboot/undionly.kpxe
+```
+
+The TFTP quadlet mounts `/etc/openchami/tftpboot` into the container at
+`/srv/tftp`. Verify the files are served:
+
+```bash
+curl -sf tftp://localhost/ipxe.efi -o /dev/null && echo OK
+```
+
+### 5. Build and push the boot image
+
+The HTTP server needs a kernel and root filesystem to serve to PXE-booting
+nodes. Boot images are built using `mkosi` in the
+[openchami-image-building](../../operations/openchami-image-building) repository,
+which produces a minimal openSUSE Leap 15.6 system as a compressed cpio archive.
+
+On your build machine (requires `mkosi` and `zstd`):
+
+```bash
+cd operations/openchami-image-building
+
+# Build the openSUSE Leap cpio image
+make build-leap-live
+
+# Push to the RHEL host and register BSS boot parameters
+make push HOST=<RHEL_HOST> MAC=<PXE_MAC>
+```
+
+Or push manually:
+
+```bash
+SSH_USER=root ./scripts/push-to-openchami.sh <RHEL_HOST> <PXE_MAC>
+```
+
+This pushes two files to `/etc/openchami/artifacts/opensuse/` on the server:
+
+```text
+/etc/openchami/artifacts/opensuse/
+├── vmlinuz                       (14 MB, kernel)
+└── opensuse-leap-live.cpio.zst   (190 MB, compressed rootfs)
+```
+
+Verify they are served:
+
+```bash
+curl -sf -o /dev/null -w "%{http_code}" http://localhost:80/artifacts/opensuse/vmlinuz
+# Should return 200
+curl -sf -o /dev/null -w "%{http_code}" http://localhost:80/artifacts/opensuse/opensuse-leap-live.cpio.zst
+# Should return 200
+```
+
+The image boots directly into RAM — the kernel unpacks the cpio as the root
+filesystem with systemd as init. No dracut, no squashfs, no network fetch
+during boot. Default root password: `openchami`.
+
+### 6. Register the node in SMD
+
+Register the node's **PXE NIC** ethernet interface (MAC + IP) and component.
+
+**Important:** Use the MAC address of the node's PXE NIC, not the BMC MAC. The
+BMC typically has a static IP on a management network and is not involved in PXE
+boot. The PXE NIC MAC is what appears in DHCP DISCOVER packets — check Kea logs
+(`journalctl -u kea.service`) if unsure which MAC the node is using.
+
+The IP address must fall within the Kea DHCP subnet configured in step 8 so that
+kea-sync can create a DHCP reservation. It should be on the same L2 network as
+the RHEL host's interface.
+
+Replace `<XNAME>`, `<PXE_MAC>`, and `<NODE_IP>` with your values:
+
+```bash
+# Register the ethernet interface
+curl -skf -X POST https://localhost:27779/hsm/v2/Inventory/EthernetInterfaces \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "ComponentID": "<XNAME>",
+    "Description": "PXE NIC",
+    "MACAddress": "<PXE_MAC>",
+    "IPAddresses": [{"IPAddress": "<NODE_IP>", "Network": "HMN"}]
+  }'
+
+# Register the component
+curl -skf -X POST https://localhost:27779/hsm/v2/State/Components \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "Components": [{
+      "ID": "<XNAME>",
+      "State": "Ready",
+      "NetType": "Sling",
+      "Arch": "X86",
+      "Role": "Compute"
+    }]
+  }'
+```
+
+Verify:
+
+```bash
+curl -kfs https://localhost:27779/hsm/v2/State/Components/<XNAME> | jq .
+curl -kfs https://localhost:27779/hsm/v2/Inventory/EthernetInterfaces | jq .
+```
+
+### 7. Register boot parameters in BSS
+
+If you used `make push` in step 5, BSS is already configured. Otherwise,
+register manually. Replace `<SERVER_IP>` with the RHEL host's IP and `<PXE_MAC>`
+with the PXE NIC MAC:
+
+```bash
+curl -sf -X PUT http://localhost:27778/boot/v1/bootparameters \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "macs": ["<PXE_MAC>"],
+    "kernel": "http://<SERVER_IP>:80/artifacts/opensuse/vmlinuz",
+    "initrd": "http://<SERVER_IP>:80/artifacts/opensuse/opensuse-leap-live.cpio.zst",
+    "params": "ip=dhcp console=ttyS0,115200n8 console=tty0"
+  }'
+```
+
+iPXE downloads the kernel and the cpio archive (as initrd). The kernel unpacks
+the cpio directly into RAM and boots systemd — no intermediate dracut or
+network fetch step.
+
+Verify the boot script BSS will serve to this MAC:
+
+```bash
+curl -sf "http://localhost:27778/boot/v1/bootscript?mac=<PXE_MAC>&arch=x86_64"
+```
+
+This should return an iPXE script with `kernel` and `initrd` lines pointing to
+your server.
+
+### 8. Verify kea-sync created the DHCP reservation
+
+Kea-sync polls SMD every 10 seconds and creates DHCP host reservations in Kea
+for nodes whose IP falls within a configured Kea subnet. Check that it picked up
+the node:
+
+```bash
+journalctl -u kea-sync.service --no-pager -n 5
+```
+
+Look for `desired=1 managed=1` in the sync output. Then confirm the reservation
+in Kea:
+
+```bash
+curl -s http://localhost:8000/ \
+  -H 'Content-Type: application/json' \
+  -d '{"command": "reservation-get-all", "service": ["dhcp4"], "arguments": {"subnet-id": 1}}' \
+  | jq .
+```
+
+You should see a reservation with the node's PXE MAC, IP, and hostname.
+
+If `desired=0`, the node's IP does not fall within any Kea subnet — check that
+the Kea subnet (step 9) matches the network registered in SMD (step 6).
+
+### 9. Network configuration
+
+Several configuration files contain network-specific values that must match your
+environment. The RPM ships defaults for a lab network; for bare-metal deployments
+you must update these **before** starting the stack (or rebuild the RPM).
+
+**Kea DHCP** (`deploy/quadlets/configs/kea-dhcp4.conf`):
+
+The `subnet4` entry must match the **L2 network of the PXE NIC**, which is the
+same network as the RHEL host's interface. This is not necessarily the BMC
+management network. Kea matches incoming DHCP packets to subnets based on the
+interface they arrive on — if the subnet doesn't match, Kea logs
+`failed to select a subnet for incoming packet` and the node never gets an IP.
+
+Key fields:
+
+- **`subnet4[].subnet`** — L2 network of the RHEL host interface (e.g.
+  `148.187.1.64/28`). Run `ip -4 addr show` on the RHEL host to find this.
+- **`subnet4[].pools`** — DHCP pool range within that subnet (exclude the host
+  IP and gateway)
+- **`subnet4[].option-data` routers** — the subnet's default gateway
+- **`subnet4[].next-server`** — RHEL host IP (tells PXE firmware where to TFTP)
+- **`client-classes` iPXE boot-file-name** — BSS URL:
+  `http://<SERVER_IP>:27778/boot/v1/bootscript?mac=${mac}`
+
+**BSS** (`deploy/quadlets/containers/bss.container`):
+
+- **`BSS_ADVERTISE_ADDRESS`** — RHEL host's routable IP
+- **`BSS_IPXE_SERVER`** — RHEL host's routable IP
+
+**iPXE fallback** (`deploy/quadlets/configs/boot.ipxe`):
+
+- **`base-url`** — `http://<SERVER_IP>:80`
+
+After editing, either rebuild the RPM or copy the files directly and restart:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl restart kea.service bss.service
+```
+
+### Boot chain summary
+
+```text
+1. Node powers on, PXE firmware sends DHCP DISCOVER
+2. Kea responds with:
+   - IP lease from the subnet pool
+   - next-server = RHEL host IP (for TFTP)
+   - boot-file-name = ipxe.efi (UEFI) or undionly.kpxe (BIOS)
+3. PXE firmware TFTP-downloads iPXE from the RHEL host
+4. iPXE starts, sends a second DHCP request (identified by option 77 "iPXE")
+5. Kea matches the iPXE client class, responds with:
+   - boot-file-name = http://<SERVER_IP>:27778/boot/v1/bootscript?mac=<MAC>
+6. iPXE fetches the boot script from BSS
+7. BSS returns an iPXE script with kernel + initrd (cpio) URLs
+8. iPXE downloads kernel (14 MB) + cpio rootfs (190 MB) over HTTP
+9. Kernel unpacks the cpio into RAM, finds /init (systemd)
+10. systemd starts → live openSUSE Leap system running entirely in RAM
+```
+
+### 10. Power management (PCS + Redfish)
+
+PCS (Power Control Service) manages node power state through the BMC's Redfish
+API. PCS uses a "fake vault" mode where BMC credentials are stored in the
+secrets environment file rather than HashiCorp Vault.
+
+#### a. Add BMC credentials to the secrets file
+
+Append the Redfish username and password to the secrets file. These credentials
+must match an account on the BMC (Lenovo XCC, iDRAC, iLO, etc.):
+
+```bash
+cat >> /etc/openchami/openchami.env << 'EOF'
+PCS_FAKE_VAULT_REDFISH_USER=openchami
+PCS_FAKE_VAULT_REDFISH_PASSWORD=Openchami0!
+EOF
+```
+
+Then restart PCS so it picks up the new credentials:
+
+```bash
+sudo systemctl restart pcs.service
+```
+
+#### b. Register the BMC Redfish endpoint in SMD
+
+Register the BMC with its management IP. The `ID` is the BMC xname (the node
+xname without the trailing `nN`). `RediscoverOnUpdate` tells SMD to
+automatically crawl the Redfish tree and populate ComponentEndpoints:
+
+```bash
+curl -skf -X POST https://localhost:27779/hsm/v2/Inventory/RedfishEndpoints \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "ID": "<BMC_XNAME>",
+    "FQDN": "<BMC_IP>",
+    "RediscoverOnUpdate": true,
+    "User": "<BMC_USER>",
+    "Password": "<BMC_PASSWORD>"
+  }'
+```
+
+Example with `x1000c0s0b0` as the BMC xname:
+
+```bash
+curl -skf -X POST https://localhost:27779/hsm/v2/Inventory/RedfishEndpoints \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "ID": "x1000c0s0b0",
+    "FQDN": "148.187.104.15",
+    "RediscoverOnUpdate": true,
+    "User": "openchami",
+    "Password": "Openchami0!"
+  }'
+```
+
+#### c. Wait for SMD discovery and verify
+
+SMD discovers the BMC's Redfish tree asynchronously. Poll until
+`LastDiscoveryStatus` shows `DiscoverOK`:
+
+```bash
+curl -sk https://localhost:27779/hsm/v2/Inventory/RedfishEndpoints/<BMC_XNAME> \
+  | jq '.DiscoveryInfo'
+```
+
+Expected output:
+
+```json
+{
+  "LastDiscoveryAttempt": "2026-03-30T14:28:52.416183Z",
+  "LastDiscoveryStatus": "DiscoverOK",
+  "RedfishVersion": "1.0.2"
+}
+```
+
+If discovery fails with `HTTPsGetFailed`, check:
+
+- **Credentials:** Test them directly against the BMC:
+  `curl -sk -u '<USER>:<PASS>' https://<BMC_IP>/redfish/v1/Systems/`
+- **Network:** Ensure the RHEL host can reach the BMC IP on port 443
+- **Session auth:** Some BMCs (e.g. Lenovo XCC) only support session-based
+  auth, not HTTP Basic Auth. SMD handles this automatically — a 401 on direct
+  curl with `-u` doesn't necessarily mean discovery will fail.
+
+Verify that SMD populated the node's ComponentEndpoint with Redfish actions:
+
+```bash
+curl -sk https://localhost:27779/hsm/v2/Inventory/ComponentEndpoints?id=<XNAME> | jq .
+```
+
+#### d. Verify PCS power status
+
+PCS polls SMD every 30 seconds to refresh its internal component map. After
+discovery completes, wait up to 60 seconds then query:
+
+```bash
+curl -s http://localhost:28007/v1/power-status?xname=<XNAME> | jq .
+```
+
+Expected output:
+
+```json
+{
+  "status": [
+    {
+      "xname": "x1000c0s0b0n0",
+      "powerState": "on",
+      "managementState": "available",
+      "supportedPowerTransitions": [
+        "On", "Soft-Off", "Off", "Soft-Restart",
+        "Force-Off", "Init", "Hard-Restart"
+      ]
+    }
+  ]
+}
+```
+
+If the response shows `"Component not found in component map."`, either
+discovery hasn't completed or PCS hasn't polled yet. Check PCS logs:
+
+```bash
+journalctl -u pcs.service --no-pager -n 20
+```
+
+Common issues:
+
+- **"Missing/empty creds"**: `PCS_FAKE_VAULT_REDFISH_USER` /
+  `PCS_FAKE_VAULT_REDFISH_PASSWORD` are not set in the env file. Add them and
+  restart PCS.
+- **Postgres connection refused on port 5432**: The PCS quadlet `Exec` line
+  is not passing `--postgres-port 15432` correctly. Check that the command
+  string is properly quoted in `pcs.container`.
+
+#### e. Power operations
+
+PCS exposes power transitions via POST to `/v1/transitions`. The response
+includes a `transitionID` to track progress.
+
+Supported transitions (tested against Lenovo XCC / Redfish v1.0.2):
+
+| Transition | Status |
+|------------|--------|
+| On | OK |
+| Soft-Off | OK |
+| Off | NOT TESTED |
+| Soft-Restart | NOT TESTED |
+| Force-Off | NOT TESTED |
+| Init | NOT TESTED |
+| Hard-Restart | NOT TESTED |
+
+**Graceful shutdown (Soft-Off):**
+
+```bash
+curl -s -X POST http://localhost:28007/v1/transitions \
+  -H 'Content-Type: application/json' \
+  -d '{"operation": "Soft-Off", "location": [{"xname": "<XNAME>"}]}' | jq .
+```
+
+**Power on:**
+
+```bash
+curl -s -X POST http://localhost:28007/v1/transitions \
+  -H 'Content-Type: application/json' \
+  -d '{"operation": "On", "location": [{"xname": "<XNAME>"}]}' | jq .
+```
+
+**Force power off:**
+
+```bash
+curl -s -X POST http://localhost:28007/v1/transitions \
+  -H 'Content-Type: application/json' \
+  -d '{"operation": "Force-Off", "location": [{"xname": "<XNAME>"}]}' | jq .
+```
+
+**Graceful restart (Soft-Restart):**
+
+```bash
+curl -s -X POST http://localhost:28007/v1/transitions \
+  -H 'Content-Type: application/json' \
+  -d '{"operation": "Soft-Restart", "location": [{"xname": "<XNAME>"}]}' | jq .
+```
+
+**Check transition status:**
+
+```bash
+curl -s http://localhost:28007/v1/transitions/<TRANSITION_ID> | jq .
+```
+
+The transition moves through `in-progress` → `completed`. The `tasks` array
+shows per-node status:
+
+```json
+{
+  "transitionID": "d4ea37c6-0f42-4b80-a9bf-ebea9ea1bfb6",
+  "operation": "Soft-Off",
+  "transitionStatus": "completed",
+  "taskCounts": { "total": 1, "succeeded": 1, "failed": 0 },
+  "tasks": [
+    {
+      "xname": "x1000c0s0b0n0",
+      "taskStatus": "succeeded",
+      "taskStatusDescription": "Transition confirmed, gracefulshutdown"
+    }
+  ]
+}
+```
+
+### Updating a node
+
+SMD and BSS data is stored in PostgreSQL and survives service restarts. However,
+`bss-init` re-runs migrations on each RPM install, which resets the BSS database.
+After an RPM reinstall, re-register boot parameters (step 7). SMD data persists.
+
+### Troubleshooting
+
+**DHCP: "failed to select a subnet for incoming packet"**
+
+Kea's subnet doesn't match the interface the DHCP packet arrived on. The subnet
+must cover the RHEL host's interface network, not the BMC management network.
+Check `ip -4 addr show` and update `kea-dhcp4.conf` accordingly.
+
+**TFTP timeout / iPXE not loading**
+
+The TFTP server root (`/srv/tftp` in the container, `/etc/openchami/tftpboot` on
+the host) is empty. Install `ipxe-bootimgs-x86` and copy the firmware files as
+described in step 3.
+
+**BSS returns chain URL with wrong IP**
+
+BSS uses `BSS_ADVERTISE_ADDRESS` from `bss.container` to generate chain URLs. If
+the boot script contains `192.168.100.1` or a wrong IP, update this environment
+variable and restart BSS.
+
+**kea-sync shows desired=0**
+
+The node's IP (registered in SMD) doesn't fall within any Kea subnet. The IP in
+SMD's EthernetInterface must be within the Kea `subnet4` range.
+
+**Node gets IP but never fetches boot script**
+
+The two-stage PXE chain requires TFTP. Check that: (1) iPXE binaries exist in
+the TFTP root, (2) `next-server` in kea-dhcp4.conf points to the RHEL host IP,
+(3) `boot-file-name` in the BIOS/UEFI client class matches the filename in TFTP,
+(4) the firewall allows ports 69/udp, 80/tcp, and 27778/tcp (see step 3).
+
+**Firewall blocking TFTP/HTTP after DHCP succeeds**
+
+DHCP works even with the firewall up because Kea uses raw sockets. But TFTP
+(port 69/udp) and HTTP (ports 80, 27778) are regular services and are blocked by
+`firewalld` unless explicitly opened. The symptom is the node gets an IP from Kea
+but times out trying to download iPXE. Run `sudo firewall-cmd --list-all` to
+check, and see step 3 for the required rules.
 
 ## Architecture Notes
 
@@ -602,4 +744,5 @@ Architecture documentation and ADRs live under `docs/architecture/`:
 - `docs/architecture/overview.md`
 - `docs/architecture/compose-pxe-lab.md`
 
-Do not create a top-level `ARCHITECTURE/` directory.
+
+

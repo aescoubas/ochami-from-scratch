@@ -1,0 +1,15 @@
+[Unit]
+Description=OpenCHAMI tftp
+
+[Container]
+Image=jfrog.svc.cscs.ch/docker/openchami/cscs-tftp:latest
+Network=host
+EnvironmentFile=/etc/openchami/openchami.env
+Volume=/etc/openchami/tftpboot:/srv/tftp:ro
+
+[Service]
+Restart=on-failure
+TimeoutStartSec=300
+
+[Install]
+WantedBy=openchami.target

@@ -1,0 +1,23 @@
+[Unit]
+Description=OpenCHAMI http-server
+
+[Container]
+Image=jfrog.svc.cscs.ch/docker/openchami/cscs-http-server:latest
+Network=host
+EnvironmentFile=/etc/openchami/openchami.env
+Volume=/etc/openchami/artifacts:/usr/share/nginx/html/artifacts:ro
+Volume=/etc/openchami/configs/nginx.conf:/etc/nginx/nginx.conf:ro
+Volume=/etc/openchami/configs/nginx-default.conf:/etc/nginx/conf.d/default.conf:ro
+Volume=/etc/openchami/configs/boot.ipxe:/usr/share/nginx/html/boot.ipxe:ro
+HealthCmd=bash -ec ': >/dev/tcp/127.0.0.1/80'
+HealthInterval=5s
+HealthTimeout=5s
+HealthRetries=30
+Notify=healthy
+
+[Service]
+Restart=on-failure
+TimeoutStartSec=300
+
+[Install]
+WantedBy=openchami.target

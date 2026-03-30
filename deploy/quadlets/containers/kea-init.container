@@ -1,0 +1,20 @@
+[Unit]
+Description=OpenCHAMI kea-init
+After=postgres.service
+Requires=postgres.service
+
+[Container]
+Image=docker.io/jonasal/kea-admin:3.1.4
+Network=host
+EnvironmentFile=/etc/openchami/openchami.env
+Entrypoint=/bin/bash
+Exec=-c "kea-admin db-init pgsql -h localhost -P 15432 -u kea-user -p $KEA_DB_PASSWORD -n kea"
+
+[Service]
+Restart=no
+TimeoutStartSec=120
+SuccessExitStatus=2
+StartLimitBurst=0
+
+[Install]
+WantedBy=openchami.target

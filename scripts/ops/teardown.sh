@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # teardown.sh — Tear down OpenCHAMI services by deployment method.
-# Usage: ./teardown.sh --method compose|lab-vm|quadlets|minikube [--dry-run]
+# Usage: ./teardown.sh --method compose|quadlets|minikube [--dry-run]
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$SCRIPT_DIR/lib/common.sh"
@@ -9,7 +9,7 @@ METHOD=""
 parse_common_args "$@"
 
 if [ -z "$METHOD" ]; then
-  log_error "usage: $0 --method compose|lab-vm|quadlets|minikube [--profile official|dev] [--dry-run]"
+  log_error "usage: $0 --method compose|quadlets|minikube [--profile official|dev] [--dry-run]"
   exit 1
 fi
 
@@ -22,7 +22,7 @@ case "$METHOD" in
   compose|docker-compose)
     log_info "tearing down docker-compose deployment..."
     PROJECT_ROOT="$(dirname "$(dirname "$SCRIPT_DIR")")"
-    COMPOSE_DIR="${COMPOSE_DIR:-${PROJECT_ROOT}/ochami-docker-compose}"
+    COMPOSE_DIR="${COMPOSE_DIR:-${PROJECT_ROOT}/deploy/compose}"
     COMPOSE_FILE="${COMPOSE_DIR}/docker-compose.yml"
     CONFIG_DIR="${COMPOSE_DIR}/configs"
     SECRETS_FILE="${OPENCHAMI_SECRETS:-${PROJECT_ROOT}/.tmp/openchami-secrets.env}"
@@ -55,11 +55,6 @@ case "$METHOD" in
     rm -rf "${COMPOSE_DIR}/artifacts" 2>/dev/null || sudo rm -rf "${COMPOSE_DIR}/artifacts"
     remove_bridge_carrier_dummy
     restore_conflicting_dhcp_networks "$LIBVIRT_NET_STATE_FILE"
-    ;;
-
-  lab-vm)
-    log_info "tearing down lab-vm deployment..."
-    "$SCRIPT_DIR/lab-vm.sh" stop $DRY_RUN_FLAG
     ;;
 
   quadlets)

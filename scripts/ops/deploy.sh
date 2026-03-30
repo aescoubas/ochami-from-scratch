@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # deploy.sh — Top-level deployment orchestrator for OpenCHAMI.
-# Usage: ./deploy.sh --method compose|lab-vm|quadlets|minikube [--dry-run]
+# Usage: ./deploy.sh --method compose|quadlets|minikube [--dry-run]
 #
 # Steps:
 #   1. Check dependencies
@@ -13,13 +13,12 @@
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$(dirname "$SCRIPT_DIR")")"
 . "$SCRIPT_DIR/lib/common.sh"
-NIX_FLAKE_REF="${OPENCHAMI_NIX_FLAKE_REF:-$(nix_flake_ref "$PROJECT_ROOT")}"
 
 METHOD=""
 parse_common_args "$@"
 
 if [ -z "$METHOD" ]; then
-  log_error "usage: $0 --method compose|lab-vm|quadlets|minikube [--profile official|dev] [--dry-run]"
+  log_error "usage: $0 --method compose|quadlets|minikube [--profile official|dev] [--dry-run]"
   exit 1
 fi
 
@@ -32,10 +31,18 @@ LIBVIRT_NETWORK_NAME="${LIBVIRT_NETWORK_NAME:-ochami-pxe-net}"
 HOST_IP="${HOST_IP:-192.168.100.1}"
 PXE_CIDR="${PXE_CIDR:-24}"
 LIBVIRT_NET_STATE_FILE="${PROJECT_ROOT}/.tmp/libvirt-networks.paused"
-TEST_NODE_IMAGE="${TEST_NODE_IMAGE:-nixos}"
+TEST_NODE_IMAGE="${TEST_NODE_IMAGE:-almalinux}"
 TEST_NODE_IMAGE="${OPENCHAMI_TEST_NODE_IMAGE:-$TEST_NODE_IMAGE}"
 BOOT_ARTIFACTS_PATH="${BOOT_ARTIFACTS_PATH:-}"
 export OPENCHAMI_TEST_NODE_IMAGE="$TEST_NODE_IMAGE"
+
+# Source deployment profile.
+PROFILE_ENV="${PROJECT_ROOT}/profiles/${PROFILE}.env"
+if [ -f "$PROFILE_ENV" ]; then
+  log_info "loading profile: $PROFILE_ENV"
+  # shellcheck disable=SC1090
+  . "$PROFILE_ENV"
+fi
 
 CHECK_KEA=false
 case "$METHOD" in
@@ -53,17 +60,12 @@ case "$METHOD" in
   compose|docker-compose)
     DEFAULT_SECRETS_FILE="${PROJECT_ROOT}/.tmp/openchami-secrets.env"
     ;;
-  lab-vm)
-    DEFAULT_SECRETS_FILE=""
-    ;;
   *)
     DEFAULT_SECRETS_FILE="/etc/openchami/secrets.env"
     ;;
 esac
 SECRETS_FILE="${OPENCHAMI_SECRETS:-$DEFAULT_SECRETS_FILE}"
-if [ "$METHOD" = "lab-vm" ]; then
-  log_info "step 2/6: skipping secrets (not applicable for lab-vm)"
-elif [ "$DRY_RUN" != "true" ]; then
+if [ "$DRY_RUN" != "true" ]; then
   log_info "step 2/6: ensuring secrets at $SECRETS_FILE..."
   ensure_secrets_file "$SECRETS_FILE"
 fi
@@ -87,16 +89,15 @@ case "$METHOD" in
     ;;
 esac
 
-# Build boot artifacts early so they are available for compose volume mounts.
-if [ "$METHOD" != "lab-vm" ] && [ "$DRY_RUN" != "true" ] && [ -z "$BOOT_ARTIFACTS_PATH" ]; then
-  BOOT_ARTIFACTS_OUTPUT="$(boot_artifacts_output_for_image "$TEST_NODE_IMAGE")"
-  log_info "preparing ${BOOT_ARTIFACTS_OUTPUT} for test node image ${TEST_NODE_IMAGE}..."
+# Step 3.5: Build boot artifacts early so they are available for compose volume mounts.
+if [ "$DRY_RUN" != "true" ] && [ -z "$BOOT_ARTIFACTS_PATH" ]; then
+  log_info "step 3.5/6: building boot artifacts for test node image ${TEST_NODE_IMAGE}..."
   BOOT_ARTIFACTS_PATH="$(
     OPENCHAMI_TEST_NODE_IMAGE="$TEST_NODE_IMAGE" \
-      nix build --impure "${NIX_FLAKE_REF}#${BOOT_ARTIFACTS_OUTPUT}" --no-link --print-out-paths 2>/dev/null
+      "$SCRIPT_DIR/build-boot-artifacts.sh" 2>/dev/null
   )"
   if [ -z "$BOOT_ARTIFACTS_PATH" ] || [ ! -d "$BOOT_ARTIFACTS_PATH" ]; then
-    log_error "failed to build ${BOOT_ARTIFACTS_OUTPUT}"
+    log_error "failed to build boot artifacts"
     exit 1
   fi
 fi
@@ -105,34 +106,19 @@ fi
 log_info "step 4/6: starting services (method=$METHOD)..."
 case "$METHOD" in
   compose|docker-compose)
-    COMPOSE_DIR="${COMPOSE_DIR:-${PROJECT_ROOT}/ochami-docker-compose}"
+    COMPOSE_DIR="${COMPOSE_DIR:-${PROJECT_ROOT}/deploy/compose}"
     COMPOSE_FILE="${COMPOSE_DIR}/docker-compose.yml"
     CONFIG_DIR="${COMPOSE_DIR}/configs"
     ensure_libvirt_network "$LIBVIRT_NETWORK_NAME" "$PXE_INTERFACE" "$HOST_IP" "$PXE_CIDR"
     disable_conflicting_dhcp_networks "$PXE_INTERFACE" "$LIBVIRT_NET_STATE_FILE"
     ensure_bridge_carrier "$PXE_INTERFACE"
 
-    # Use committed static artifacts if present; regenerate via nix otherwise.
     if [ -f "$COMPOSE_FILE" ] && [ -d "$CONFIG_DIR" ]; then
-      log_info "using committed docker-compose artifacts from $COMPOSE_DIR"
+      log_info "using docker-compose artifacts from $COMPOSE_DIR"
     else
-      log_info "generating docker-compose directory via nix..."
-      COMPOSE_OUTPUT="$(flake_output_for_profile "docker-compose-yml" "$PROFILE")"
-      GENERATED="$(
-        OPENCHAMI_TEST_NODE_IMAGE="$TEST_NODE_IMAGE" \
-          nix build --impure "${NIX_FLAKE_REF}#${COMPOSE_OUTPUT}" --no-link --print-out-paths 2>/dev/null
-      )"
-      if [ -z "$GENERATED" ] || [ ! -d "$GENERATED" ]; then
-        log_error "failed to generate ${COMPOSE_OUTPUT}"
-        exit 1
-      fi
-      mkdir -p "$COMPOSE_DIR"
-      cp "$GENERATED"/docker-compose.yml "$COMPOSE_FILE"
-      cp -r "$GENERATED"/configs "$CONFIG_DIR"
-      cp -r "$GENERATED"/pg-init "$COMPOSE_DIR/pg-init"
-      [ -f "$GENERATED/.env.template" ] && cp "$GENERATED/.env.template" "$COMPOSE_DIR/.env.template"
-      chmod -R u+w "$COMPOSE_DIR"
-      log_info "docker-compose artifacts generated at $COMPOSE_DIR"
+      log_error "docker-compose artifacts not found at $COMPOSE_DIR"
+      log_error "ensure deploy/compose/docker-compose.yml and deploy/compose/configs/ exist"
+      exit 1
     fi
 
     # Render config templates with secrets into a staging directory, then swap
@@ -170,22 +156,14 @@ case "$METHOD" in
     docker_compose -f "$COMPOSE_FILE" --env-file "$SECRETS_FILE" up -d --wait --wait-timeout "${COMPOSE_WAIT_TIMEOUT:-120}"
     ;;
 
-  lab-vm)
-    "$SCRIPT_DIR/lab-vm.sh" start $DRY_RUN_FLAG
-    ;;
-
   quadlets)
     PROFILE_DIR="${PROFILE_DIR:-}"
     if [ -z "$PROFILE_DIR" ]; then
-      log_info "building deploy profile with nix..."
-      DEPLOY_PROFILE_OUTPUT="$(flake_output_for_profile "deploy-profile" "$PROFILE")"
-      PROFILE_DIR="$(
-        OPENCHAMI_TEST_NODE_IMAGE="$TEST_NODE_IMAGE" \
-          nix build --impure "${NIX_FLAKE_REF}#${DEPLOY_PROFILE_OUTPUT}" --no-link --print-out-paths 2>/dev/null
-      )"
+      log_error "PROFILE_DIR must be set for quadlet deployments"
+      exit 1
     fi
-    if [ -z "$PROFILE_DIR" ] || [ ! -d "$PROFILE_DIR" ]; then
-      log_error "deploy profile not found. Run: nix build .#$(flake_output_for_profile "deploy-profile" "$PROFILE")"
+    if [ ! -d "$PROFILE_DIR" ]; then
+      log_error "deploy profile not found at $PROFILE_DIR"
       exit 1
     fi
     # Place boot artifacts for quadlets containers.
@@ -200,7 +178,7 @@ case "$METHOD" in
   minikube)
     RELEASE="${HELM_RELEASE:-ochami}"
     NAMESPACE="${HELM_NAMESPACE:-default}"
-    CHART_DIR="${CHART_DIR:-$(dirname "$SCRIPT_DIR")/ochami-helm}"
+    CHART_DIR="${CHART_DIR:-$(dirname "$SCRIPT_DIR")/deploy/helm}"
     VALUES="${VALUES_FILE:-$CHART_DIR/values.yaml}"
     run_cmd helm upgrade --install "$RELEASE" "$CHART_DIR" \
       -n "$NAMESPACE" \
@@ -221,27 +199,13 @@ esac
 
 # Step 5: Health check
 log_info "step 5/6: running health checks..."
-case "$METHOD" in
-  lab-vm)
-    "$SCRIPT_DIR/lab-vm.sh" health $DRY_RUN_FLAG
-    ;;
-  *)
-    CHECK_KEA="$CHECK_KEA" TEST_NODE_IMAGE="$TEST_NODE_IMAGE" BOOT_ARTIFACTS_PATH="$BOOT_ARTIFACTS_PATH" \
-      PXE_INTERFACE="$PXE_INTERFACE" COMPOSE_FILE="${COMPOSE_FILE:-}" SECRETS_FILE="$SECRETS_FILE" \
-      "$SCRIPT_DIR/health-check.sh" $DRY_RUN_FLAG
-    ;;
-esac
+CHECK_KEA="$CHECK_KEA" TEST_NODE_IMAGE="$TEST_NODE_IMAGE" BOOT_ARTIFACTS_PATH="$BOOT_ARTIFACTS_PATH" \
+  PXE_INTERFACE="$PXE_INTERFACE" COMPOSE_FILE="${COMPOSE_FILE:-}" SECRETS_FILE="$SECRETS_FILE" \
+  "$SCRIPT_DIR/health-check.sh" $DRY_RUN_FLAG
 
 # Step 6: Register BSS defaults
 log_info "step 6/6: registering BSS defaults..."
-case "$METHOD" in
-  lab-vm)
-    log_info "skipping BSS default registration (not applicable for lab-vm)"
-    ;;
-  *)
-    TEST_NODE_IMAGE="$TEST_NODE_IMAGE" BOOT_ARTIFACTS_PATH="$BOOT_ARTIFACTS_PATH" \
-      "$SCRIPT_DIR/register-bss-defaults.sh" $DRY_RUN_FLAG
-    ;;
-esac
+TEST_NODE_IMAGE="$TEST_NODE_IMAGE" BOOT_ARTIFACTS_PATH="$BOOT_ARTIFACTS_PATH" \
+  "$SCRIPT_DIR/register-bss-defaults.sh" $DRY_RUN_FLAG
 
 log_info "deployment complete (method=$METHOD profile=$PROFILE test-node-image=$TEST_NODE_IMAGE)"
