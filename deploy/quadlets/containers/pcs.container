@@ -13,10 +13,8 @@ Environment=SMS_SERVER=http://localhost:80
 Environment=STORAGE=POSTGRES
 Environment=TRS_IMPLEMENTATION=LOCAL
 Environment=VAULT_ENABLED=false
-Environment=PCS_FAKE_VAULT_REDFISH_PASSWORD=${PCS_FAKE_VAULT_REDFISH_PASSWORD}
-Environment=PCS_FAKE_VAULT_REDFISH_USER=${PCS_FAKE_VAULT_REDFISH_USER}
 EnvironmentFile=/etc/openchami/openchami.env
-Exec=/bin/bash -c power-control --run-control --postgres-insecure --postgres-host localhost --postgres-port 15432 --postgres-user pcs-user --postgres-dbname pcsdb --postgres-password $PCS_DB_PASSWORD
+Exec=/bin/bash -c "power-control --run-control --postgres-insecure --postgres-host localhost --postgres-port 15432 --postgres-user pcs-user --postgres-dbname pcsdb --postgres-password $PCS_DB_PASSWORD"
 
 [Service]
 Restart=on-failure

@@ -242,6 +242,7 @@ sudo firewall-cmd --add-port=80/tcp --permanent           # HTTP (nginx: kernel,
 sudo firewall-cmd --add-port=27777/tcp --permanent        # cloud-init metadata service
 sudo firewall-cmd --add-port=27778/tcp --permanent        # BSS (boot script service)
 sudo firewall-cmd --add-port=27779/tcp --permanent        # SMD (state management database)
+sudo firewall-cmd --add-port=28007/tcp --permanent        # PCS (power control service)
 sudo firewall-cmd --reload
 ```
 
@@ -250,7 +251,7 @@ Verify:
 ```bash
 sudo firewall-cmd --list-all
 # Should show: services: ... tftp
-# Should show: ports: 69/udp 80/tcp 27777/tcp 27778/tcp 27779/tcp
+# Should show: ports: 69/udp 80/tcp 27777/tcp 27778/tcp 27779/tcp 28007/tcp
 ```
 
 ### 4. Install iPXE boot firmware
@@ -479,6 +480,214 @@ sudo systemctl restart kea.service bss.service
 8. iPXE downloads kernel (14 MB) + cpio rootfs (190 MB) over HTTP
 9. Kernel unpacks the cpio into RAM, finds /init (systemd)
 10. systemd starts → live openSUSE Leap system running entirely in RAM
+```
+
+### 10. Power management (PCS + Redfish)
+
+PCS (Power Control Service) manages node power state through the BMC's Redfish
+API. PCS uses a "fake vault" mode where BMC credentials are stored in the
+secrets environment file rather than HashiCorp Vault.
+
+#### a. Add BMC credentials to the secrets file
+
+Append the Redfish username and password to the secrets file. These credentials
+must match an account on the BMC (Lenovo XCC, iDRAC, iLO, etc.):
+
+```bash
+cat >> /etc/openchami/openchami.env << 'EOF'
+PCS_FAKE_VAULT_REDFISH_USER=openchami
+PCS_FAKE_VAULT_REDFISH_PASSWORD=Openchami0!
+EOF
+```
+
+Then restart PCS so it picks up the new credentials:
+
+```bash
+sudo systemctl restart pcs.service
+```
+
+#### b. Register the BMC Redfish endpoint in SMD
+
+Register the BMC with its management IP. The `ID` is the BMC xname (the node
+xname without the trailing `nN`). `RediscoverOnUpdate` tells SMD to
+automatically crawl the Redfish tree and populate ComponentEndpoints:
+
+```bash
+curl -skf -X POST https://localhost:27779/hsm/v2/Inventory/RedfishEndpoints \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "ID": "<BMC_XNAME>",
+    "FQDN": "<BMC_IP>",
+    "RediscoverOnUpdate": true,
+    "User": "<BMC_USER>",
+    "Password": "<BMC_PASSWORD>"
+  }'
+```
+
+Example with `x1000c0s0b0` as the BMC xname:
+
+```bash
+curl -skf -X POST https://localhost:27779/hsm/v2/Inventory/RedfishEndpoints \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "ID": "x1000c0s0b0",
+    "FQDN": "148.187.104.15",
+    "RediscoverOnUpdate": true,
+    "User": "openchami",
+    "Password": "Openchami0!"
+  }'
+```
+
+#### c. Wait for SMD discovery and verify
+
+SMD discovers the BMC's Redfish tree asynchronously. Poll until
+`LastDiscoveryStatus` shows `DiscoverOK`:
+
+```bash
+curl -sk https://localhost:27779/hsm/v2/Inventory/RedfishEndpoints/<BMC_XNAME> \
+  | jq '.DiscoveryInfo'
+```
+
+Expected output:
+
+```json
+{
+  "LastDiscoveryAttempt": "2026-03-30T14:28:52.416183Z",
+  "LastDiscoveryStatus": "DiscoverOK",
+  "RedfishVersion": "1.0.2"
+}
+```
+
+If discovery fails with `HTTPsGetFailed`, check:
+
+- **Credentials:** Test them directly against the BMC:
+  `curl -sk -u '<USER>:<PASS>' https://<BMC_IP>/redfish/v1/Systems/`
+- **Network:** Ensure the RHEL host can reach the BMC IP on port 443
+- **Session auth:** Some BMCs (e.g. Lenovo XCC) only support session-based
+  auth, not HTTP Basic Auth. SMD handles this automatically — a 401 on direct
+  curl with `-u` doesn't necessarily mean discovery will fail.
+
+Verify that SMD populated the node's ComponentEndpoint with Redfish actions:
+
+```bash
+curl -sk https://localhost:27779/hsm/v2/Inventory/ComponentEndpoints?id=<XNAME> | jq .
+```
+
+#### d. Verify PCS power status
+
+PCS polls SMD every 30 seconds to refresh its internal component map. After
+discovery completes, wait up to 60 seconds then query:
+
+```bash
+curl -s http://localhost:28007/v1/power-status?xname=<XNAME> | jq .
+```
+
+Expected output:
+
+```json
+{
+  "status": [
+    {
+      "xname": "x1000c0s0b0n0",
+      "powerState": "on",
+      "managementState": "available",
+      "supportedPowerTransitions": [
+        "On", "Soft-Off", "Off", "Soft-Restart",
+        "Force-Off", "Init", "Hard-Restart"
+      ]
+    }
+  ]
+}
+```
+
+If the response shows `"Component not found in component map."`, either
+discovery hasn't completed or PCS hasn't polled yet. Check PCS logs:
+
+```bash
+journalctl -u pcs.service --no-pager -n 20
+```
+
+Common issues:
+
+- **"Missing/empty creds"**: `PCS_FAKE_VAULT_REDFISH_USER` /
+  `PCS_FAKE_VAULT_REDFISH_PASSWORD` are not set in the env file. Add them and
+  restart PCS.
+- **Postgres connection refused on port 5432**: The PCS quadlet `Exec` line
+  is not passing `--postgres-port 15432` correctly. Check that the command
+  string is properly quoted in `pcs.container`.
+
+#### e. Power operations
+
+PCS exposes power transitions via POST to `/v1/transitions`. The response
+includes a `transitionID` to track progress.
+
+Supported transitions (tested against Lenovo XCC / Redfish v1.0.2):
+
+| Transition | Status |
+|------------|--------|
+| On | OK |
+| Soft-Off | OK |
+| Off | NOT TESTED |
+| Soft-Restart | NOT TESTED |
+| Force-Off | NOT TESTED |
+| Init | NOT TESTED |
+| Hard-Restart | NOT TESTED |
+
+**Graceful shutdown (Soft-Off):**
+
+```bash
+curl -s -X POST http://localhost:28007/v1/transitions \
+  -H 'Content-Type: application/json' \
+  -d '{"operation": "Soft-Off", "location": [{"xname": "<XNAME>"}]}' | jq .
+```
+
+**Power on:**
+
+```bash
+curl -s -X POST http://localhost:28007/v1/transitions \
+  -H 'Content-Type: application/json' \
+  -d '{"operation": "On", "location": [{"xname": "<XNAME>"}]}' | jq .
+```
+
+**Force power off:**
+
+```bash
+curl -s -X POST http://localhost:28007/v1/transitions \
+  -H 'Content-Type: application/json' \
+  -d '{"operation": "Force-Off", "location": [{"xname": "<XNAME>"}]}' | jq .
+```
+
+**Graceful restart (Soft-Restart):**
+
+```bash
+curl -s -X POST http://localhost:28007/v1/transitions \
+  -H 'Content-Type: application/json' \
+  -d '{"operation": "Soft-Restart", "location": [{"xname": "<XNAME>"}]}' | jq .
+```
+
+**Check transition status:**
+
+```bash
+curl -s http://localhost:28007/v1/transitions/<TRANSITION_ID> | jq .
+```
+
+The transition moves through `in-progress` → `completed`. The `tasks` array
+shows per-node status:
+
+```json
+{
+  "transitionID": "d4ea37c6-0f42-4b80-a9bf-ebea9ea1bfb6",
+  "operation": "Soft-Off",
+  "transitionStatus": "completed",
+  "taskCounts": { "total": 1, "succeeded": 1, "failed": 0 },
+  "tasks": [
+    {
+      "xname": "x1000c0s0b0n0",
+      "taskStatus": "succeeded",
+      "taskStatusDescription": "Transition confirmed, gracefulshutdown"
+    }
+  ]
+}
 ```
 
 ### Updating a node
