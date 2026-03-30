@@ -33,8 +33,9 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 LAB_NETWORK_NAME="${LAB_NETWORK_NAME:-ochami-lab-net}"
 LAB_NETWORK_BRIDGE="${LAB_NETWORK_BRIDGE:-virbr-lab}"
-LAB_NETWORK_IP="${LAB_NETWORK_IP:-192.168.200.1}"
+LAB_NETWORK_GATEWAY="${LAB_NETWORK_GATEWAY:-192.168.200.1}"
 LAB_NETWORK_CIDR="${LAB_NETWORK_CIDR:-24}"
+SERVER_LAB_IP="${SERVER_LAB_IP:-192.168.200.2}"
 LAB_STATE_DIR="${LAB_STATE_DIR:-${HOME}/.local/state/openchami/lab}"
 
 SERVER_VM_NAME="${SERVER_VM_NAME:-ochami-lab-server}"
@@ -45,7 +46,7 @@ SERVER_VM_USER="${SERVER_VM_USER:-almalinux}"
 SERVER_VM_PASSWORD="${SERVER_VM_PASSWORD:-ochami}"
 
 CLIENT_VM_PREFIX="${CLIENT_VM_PREFIX:-ochami-lab-client}"
-CLIENT_VM_MEMORY="${CLIENT_VM_MEMORY:-2048}"
+CLIENT_VM_MEMORY="${CLIENT_VM_MEMORY:-4096}"
 CLIENT_VM_VCPUS="${CLIENT_VM_VCPUS:-2}"
 CLIENT_VM_DISK_SIZE="${CLIENT_VM_DISK_SIZE:-20G}"
 CLIENT_COUNT="${CLIENT_COUNT:-2}"
@@ -211,7 +212,7 @@ write_files:
 
       [ipv4]
       method=manual
-      addresses=${LAB_NETWORK_IP}/${LAB_NETWORK_CIDR}
+      addresses=${SERVER_LAB_IP}/${LAB_NETWORK_CIDR}
 
       [ipv6]
       method=disabled
@@ -276,8 +277,11 @@ build_and_install_rpm() {
   log_info "copying RPM to VM..."
   scp_to "$ip" "$rpm_path" "~/ochami-from-scratch.rpm"
 
+  log_info "waiting for cloud-init to finish (avoids DNF cache race)..."
+  ssh_cmd "$ip" "sudo cloud-init status --wait >/dev/null 2>&1 || true"
+
   log_info "installing RPM..."
-  ssh_cmd "$ip" "sudo dnf install -y ~/ochami-from-scratch.rpm"
+  ssh_cmd "$ip" "sudo dnf clean packages && sudo dnf install -y ~/ochami-from-scratch.rpm"
 }
 
 build_and_load_images() {
@@ -310,6 +314,51 @@ build_and_load_images() {
     --remote "$SERVER_VM_USER@$ip" \
     --ssh-key "$SSH_KEY_PATH" \
     "$export_dir"
+}
+
+configure_server_for_lab() {
+  local ip="$1"
+  # Derive the subnet prefix from SERVER_LAB_IP (e.g., 192.168.200.2 → 192.168.200)
+  local lab_prefix
+  lab_prefix="${SERVER_LAB_IP%.*}"
+
+  log_info "patching quadlet configs for lab network (server=$SERVER_LAB_IP, subnet=$lab_prefix.0/$LAB_NETWORK_CIDR)..."
+  ssh_cmd "$ip" "bash -s" <<REMOTE_SCRIPT
+set -euo pipefail
+
+# Patch BSS container: advertise/iPXE server addresses
+sudo sed -i 's/192\\.168\\.100\\.1/$SERVER_LAB_IP/g' /etc/containers/systemd/bss.container
+
+# Patch kea config: server IP (.1 → server), then subnet prefix for pools
+if [ -f /etc/openchami/configs/kea-dhcp4.conf ]; then
+  sudo sed -i 's/192\\.168\\.100\\.1/$SERVER_LAB_IP/g' /etc/openchami/configs/kea-dhcp4.conf
+  sudo sed -i 's/192\\.168\\.100/$lab_prefix/g' /etc/openchami/configs/kea-dhcp4.conf
+  # Fix subnet declaration: after replacing .1→SERVER_LAB_IP, subnet field has wrong host part
+  sudo sed -i 's|"subnet":"$lab_prefix\.[0-9]*/|"subnet":"$lab_prefix.0/|g' /etc/openchami/configs/kea-dhcp4.conf
+fi
+
+# Patch boot.ipxe if present
+if [ -f /etc/openchami/configs/boot.ipxe ]; then
+  sudo sed -i 's/192\\.168\\.100\\.1/$SERVER_LAB_IP/g' /etc/openchami/configs/boot.ipxe
+fi
+
+sudo systemctl daemon-reload
+
+# Enable NAT so client VMs on the lab network can reach the internet
+# (needed for distro installers to download packages from upstream repos).
+sudo sysctl -w net.ipv4.ip_forward=1 >/dev/null
+sudo iptables -t nat -C POSTROUTING -s ${lab_prefix}.0/${LAB_NETWORK_CIDR} -o eth0 -j MASQUERADE 2>/dev/null || \
+  sudo iptables -t nat -A POSTROUTING -s ${lab_prefix}.0/${LAB_NETWORK_CIDR} -o eth0 -j MASQUERADE
+sudo iptables -C FORWARD -i eth1 -o eth0 -j ACCEPT 2>/dev/null || \
+  sudo iptables -A FORWARD -i eth1 -o eth0 -j ACCEPT
+sudo iptables -C FORWARD -i eth0 -o eth1 -m state --state RELATED,ESTABLISHED -j ACCEPT 2>/dev/null || \
+  sudo iptables -A FORWARD -i eth0 -o eth1 -m state --state RELATED,ESTABLISHED -j ACCEPT
+
+# Persist IP forwarding across reboots
+echo 'net.ipv4.ip_forward = 1' | sudo tee /etc/sysctl.d/90-openchami-nat.conf >/dev/null
+REMOTE_SCRIPT
+
+  log_info "lab network configuration applied"
 }
 
 start_server_services() {
@@ -347,21 +396,32 @@ build_and_transfer_boot_artifacts() {
 
   log_info "transferring boot artifacts to VM..."
   ssh_cmd "$ip" "sudo mkdir -p /etc/openchami/artifacts"
-  # Use a tarball to preserve directory structure
-  tar -cf - -C "$artifacts_dir" . \
+  # Transfer boot files (kernel, initrd, kernel-params) from the nested
+  # artifacts/ subdirectory so they land directly under /etc/openchami/artifacts/
+  # (avoids double-nesting: /etc/openchami/artifacts/artifacts/...).
+  tar -cf - -C "$artifacts_dir/artifacts" . \
     | ssh -i "$SSH_KEY_PATH" $SSH_OPTS "$SERVER_VM_USER@$ip" \
         "sudo tar -xf - -C /etc/openchami/artifacts/"
+  # Transfer metadata.json to BOOT_ARTIFACTS_PATH (/etc/openchami) so
+  # register-bss-defaults.sh can find it at $BOOT_ARTIFACTS_PATH/metadata.json.
+  scp_to "$ip" "$artifacts_dir/metadata.json" "/tmp/boot-metadata.json"
+  ssh_cmd "$ip" "sudo mv /tmp/boot-metadata.json /etc/openchami/metadata.json"
   log_info "boot artifacts transferred"
 }
 
 register_server_bss_defaults() {
   local ip="$1"
 
-  log_info "registering BSS defaults on VM..."
-  ssh_cmd "$ip" "sudo /usr/libexec/openchami/register-bss-defaults.sh" || {
+  log_info "registering BSS defaults on VM (HOST_IP=$SERVER_LAB_IP)..."
+  # BOOT_ARTIFACTS_PATH tells register-bss-defaults.sh where the artifacts
+  # already live on the VM so it skips calling build-boot-artifacts.sh
+  # (which is not installed on the VM).
+  # BOOT_ARTIFACTS_PATH is set to /etc/openchami because the metadata's
+  # relativeDir is "artifacts/almalinux", and boot files live under
+  # /etc/openchami/artifacts/almalinux/ (the http-server volume mount root).
+  ssh_cmd "$ip" "sudo HOST_IP=$SERVER_LAB_IP BOOT_ARTIFACTS_PATH=/etc/openchami /usr/libexec/openchami/register-bss-defaults.sh" || {
     log_warn "register-bss-defaults.sh not found or failed; attempting manual registration"
-    # Fall back to running the local script via SSH
-    ssh_cmd "$ip" "bash -s" < "$SCRIPT_DIR/register-bss-defaults.sh" || {
+    ssh_cmd "$ip" "HOST_IP=$SERVER_LAB_IP BOOT_ARTIFACTS_PATH=/etc/openchami bash -s" < "$SCRIPT_DIR/register-bss-defaults.sh" || {
       log_warn "BSS default registration failed"
     }
   }
@@ -383,7 +443,7 @@ print_server_summary() {
   SSH:        ssh -i $SSH_KEY_PATH $SERVER_VM_USER@$ip
   Console:    virsh console $SERVER_VM_NAME
 
-  Lab network: $LAB_NETWORK_NAME ($LAB_NETWORK_IP/$LAB_NETWORK_CIDR)
+  Lab network: $LAB_NETWORK_NAME (gateway=$LAB_NETWORK_GATEWAY, server=$SERVER_LAB_IP/$LAB_NETWORK_CIDR)
 
   Services (via SSH tunnel or from VM):
     SMD         https://localhost:27779/hsm/v2/service/ready
@@ -409,7 +469,7 @@ lab_server() {
   ensure_ssh_key
 
   # 1. Ensure lab network (no DHCP -- the server VM provides DHCP)
-  ensure_libvirt_network "$LAB_NETWORK_NAME" "$LAB_NETWORK_BRIDGE" "$LAB_NETWORK_IP" "$LAB_NETWORK_CIDR"
+  ensure_libvirt_network "$LAB_NETWORK_NAME" "$LAB_NETWORK_BRIDGE" "$LAB_NETWORK_GATEWAY" "$LAB_NETWORK_CIDR"
   ensure_bridge_carrier "$LAB_NETWORK_BRIDGE"
 
   # 2-4. Download image, create disk, generate cloud-init
@@ -430,16 +490,19 @@ lab_server() {
   # 8-9. Build, export, and load OCI images
   build_and_load_images "$server_ip"
 
-  # 10. Start services
+  # 10. Patch configs for lab network (192.168.100.x → SERVER_LAB_IP subnet)
+  configure_server_for_lab "$server_ip"
+
+  # 11. Start services
   start_server_services "$server_ip"
 
-  # 11. Build and transfer boot artifacts
+  # 12. Build and transfer boot artifacts
   build_and_transfer_boot_artifacts "$server_ip"
 
-  # 12. Register BSS defaults
+  # 13. Register BSS defaults
   register_server_bss_defaults "$server_ip"
 
-  # 13. Print summary
+  # 14. Print summary
   print_server_summary "$server_ip"
 }
 
@@ -525,6 +588,7 @@ lab_clients() {
         --memory "$CLIENT_VM_MEMORY" \
         --vcpus "$CLIENT_VM_VCPUS" \
         --cpu host-passthrough \
+        --pxe \
         --disk "path=$disk_path,format=qcow2,bus=virtio" \
         --network "network=$LAB_NETWORK_NAME,model=virtio,mac=$mac" \
         --boot network,hd \
@@ -592,7 +656,7 @@ EOF
   Watch a client console:
     virsh console ${CLIENT_VM_PREFIX}-0
 
-  Clients PXE boot from the server at $LAB_NETWORK_IP.
+  Clients PXE boot from the server at $SERVER_LAB_IP.
 
 ============================================================
 EOF

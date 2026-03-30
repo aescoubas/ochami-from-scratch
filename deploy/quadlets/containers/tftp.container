@@ -2,9 +2,10 @@
 Description=OpenCHAMI tftp
 
 [Container]
-Image=localhost/tftp:latest
+Image=jfrog.svc.cscs.ch/docker/openchami/cscs-tftp:latest
 Network=host
 EnvironmentFile=/etc/openchami/openchami.env
+Volume=/etc/openchami/tftpboot:/srv/tftp:ro
 
 [Service]
 Restart=on-failure

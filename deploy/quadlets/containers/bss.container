@@ -4,9 +4,9 @@ After=smd.service bss-init.service
 Requires=smd.service bss-init.service
 
 [Container]
-Image=localhost/bss:v1.32.2
+Image=jfrog.svc.cscs.ch/docker/openchami/cscs-bss:v1.32.2
 Network=host
-Environment=BSS_ADVERTISE_ADDRESS=192.168.100.1
+Environment=BSS_ADVERTISE_ADDRESS=148.187.1.68
 Environment=BSS_CHAIN_PROTO=http
 Environment=BSS_DBHOST=localhost
 Environment=BSS_DBNAME=bssdb
@@ -16,10 +16,10 @@ Environment=BSS_DBUSER=bss-user
 Environment=BSS_DEBUG=true
 Environment=BSS_ENDPOINT=localhost
 Environment=BSS_INSECURE=true
-Environment=BSS_IPXE_SERVER=192.168.100.1
+Environment=BSS_IPXE_SERVER=148.187.1.68
 Environment=BSS_JWKS_URL=
 Environment=HSM_URL=https://localhost:27779
-Environment=NFD_URL=http://192.168.100.1:80/hmi/v1/subscribe
+Environment=NFD_URL=http://148.187.1.68:80/hmi/v1/subscribe
 Environment=BSS_DBPASS=${BSS_DBPASS}
 EnvironmentFile=/etc/openchami/openchami.env
 HealthCmd=curl -sf http://localhost:27778/boot/v1/bootparameters

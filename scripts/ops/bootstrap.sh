@@ -53,7 +53,22 @@ EOF
   log "secrets written to $ENV_FILE"
 fi
 
-# --- 3. Reload systemd so quadlet units are visible ---
+# --- 3. Render config templates with secrets ---
+CONFIGS_DIR="/etc/openchami/configs"
+if [ -f "$ENV_FILE" ] && [ -d "$CONFIGS_DIR" ]; then
+  # shellcheck disable=SC1090
+  set -a; . "$ENV_FILE"; set +a
+  for conf in "$CONFIGS_DIR"/*.conf; do
+    [ -f "$conf" ] || continue
+    if grep -q '\$KEA_DB_PASSWORD\|\$POSTGRES_PASSWORD\|\$SMD_DB_PASSWORD\|\$BSS_DB_PASSWORD\|\$PCS_DB_PASSWORD' "$conf" 2>/dev/null; then
+      envsubst '$KEA_DB_PASSWORD $POSTGRES_PASSWORD $SMD_DB_PASSWORD $BSS_DB_PASSWORD $PCS_DB_PASSWORD $STORK_DB_PASSWORD' < "$conf" > "$conf.rendered"
+      mv "$conf.rendered" "$conf"
+      log "rendered secrets in $(basename "$conf")"
+    fi
+  done
+fi
+
+# --- 4. Reload systemd so quadlet units are visible ---
 systemctl daemon-reload
 log "systemd daemon reloaded"
 

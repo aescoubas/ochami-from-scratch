@@ -4,11 +4,11 @@ After=kea-init.service
 Requires=kea-init.service
 
 [Container]
-Image=localhost/kea:3.0.2
+Image=docker.io/jonasal/kea-dhcp4:3.1.4
 Network=host
 EnvironmentFile=/etc/openchami/openchami.env
 Volume=/etc/openchami/configs/kea-dhcp4.conf:/etc/kea/kea-dhcp4.conf:ro
-Exec=/usr/sbin/kea-dhcp4 -c /etc/kea/kea-dhcp4.conf
+Exec=-c /etc/kea/kea-dhcp4.conf -X
 AddCapability=NET_RAW
 AddCapability=NET_ADMIN
 HealthCmd=bash -ec ': >/dev/tcp/127.0.0.1/8000'

@@ -4,7 +4,7 @@ After=smd.service pcs-init.service
 Requires=smd.service pcs-init.service
 
 [Container]
-Image=localhost/pcs:main
+Image=jfrog.svc.cscs.ch/docker/openchami/cscs-pcs:main
 Network=host
 Environment=FAKE_VAULT_ENABLED=true
 Environment=HSMLOCK_ENABLED=true

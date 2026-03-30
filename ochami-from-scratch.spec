@@ -1,4 +1,4 @@
-Name:           ochami-from-scratch
+Name:           openchami
 Version:        %{version}
 Release:        %{rel}
 Summary:        OpenCHAMI from-scratch deployment RPM package

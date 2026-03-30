@@ -90,38 +90,36 @@ register-bss-defaults:
 
 # --- RPM packaging ---
 
-GIT     ?= $(shell command -v git 2>/dev/null)
-TAG     ?= $(shell $(GIT) describe --tags --always --abbrev=0)
-RPM_VERSION ?= $(patsubst v%,%,$(TAG))
+RPM_VERSION ?= 0.1.0
 RPM_RELEASE ?= 1
 
 # Build the RPM package
-rpm: ochami-from-scratch-$(RPM_VERSION)-$(RPM_RELEASE).noarch.rpm
+rpm: openchami-$(RPM_VERSION)-$(RPM_RELEASE).noarch.rpm
 
 $(HOME)/rpmbuild:
 	mkdir -p $(HOME)/rpmbuild/{BUILD,RPMS,SOURCES,SPECS,SRPMS}
 
-$(HOME)/rpmbuild/SPECS/ochami-from-scratch.spec: ochami-from-scratch.spec $(HOME)/rpmbuild
+$(HOME)/rpmbuild/SPECS/openchami.spec: ochami-from-scratch.spec $(HOME)/rpmbuild
 	mkdir -p $(HOME)/rpmbuild/SPECS
 	cp $< $@
 
 RPM_SOURCES = ochami-from-scratch.spec $(wildcard deploy/quadlets/**/*) $(wildcard scripts/ops/*) $(wildcard scripts/ops/lib/*)
 
-$(HOME)/rpmbuild/SOURCES/ochami-from-scratch-$(RPM_VERSION).tar.gz: $(HOME)/rpmbuild $(RPM_SOURCES)
+$(HOME)/rpmbuild/SOURCES/openchami-$(RPM_VERSION).tar.gz: $(HOME)/rpmbuild $(RPM_SOURCES)
 	mkdir -p $(HOME)/rpmbuild/SOURCES
-	rm -f $(HOME)/rpmbuild/SOURCES/ochami-from-scratch-$(RPM_VERSION).tar.gz
-	tar czvf $@ --transform 's,^,ochami-from-scratch-$(RPM_VERSION)/,' \
+	rm -f $(HOME)/rpmbuild/SOURCES/openchami-$(RPM_VERSION).tar.gz
+	tar czvf $@ --transform 's,^,openchami-$(RPM_VERSION)/,' \
 		ochami-from-scratch.spec \
 		deploy/quadlets/ \
 		scripts/ops/
 
-$(HOME)/rpmbuild/RPMS/noarch/ochami-from-scratch-$(RPM_VERSION)-$(RPM_RELEASE).noarch.rpm: $(HOME)/rpmbuild/SPECS/ochami-from-scratch.spec $(HOME)/rpmbuild/SOURCES/ochami-from-scratch-$(RPM_VERSION).tar.gz
-	rpmbuild -ba $(HOME)/rpmbuild/SPECS/ochami-from-scratch.spec --define 'version $(RPM_VERSION)' --define 'rel $(RPM_RELEASE)'
+$(HOME)/rpmbuild/RPMS/noarch/openchami-$(RPM_VERSION)-$(RPM_RELEASE).noarch.rpm: $(HOME)/rpmbuild/SPECS/openchami.spec $(HOME)/rpmbuild/SOURCES/openchami-$(RPM_VERSION).tar.gz
+	rpmbuild -ba $(HOME)/rpmbuild/SPECS/openchami.spec --define 'version $(RPM_VERSION)' --define 'rel $(RPM_RELEASE)'
 
-ochami-from-scratch-$(RPM_VERSION)-$(RPM_RELEASE).noarch.rpm: $(HOME)/rpmbuild/RPMS/noarch/ochami-from-scratch-$(RPM_VERSION)-$(RPM_RELEASE).noarch.rpm
+openchami-$(RPM_VERSION)-$(RPM_RELEASE).noarch.rpm: $(HOME)/rpmbuild/RPMS/noarch/openchami-$(RPM_VERSION)-$(RPM_RELEASE).noarch.rpm
 	cp $< $@
 
 # Clean RPM build artifacts
 rpm-clean:
 	rm -rf $(HOME)/rpmbuild
-	rm -f ochami-from-scratch-*.noarch.rpm
+	rm -f openchami-*.noarch.rpm

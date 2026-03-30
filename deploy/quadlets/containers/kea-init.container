@@ -4,15 +4,17 @@ After=postgres.service
 Requires=postgres.service
 
 [Container]
-Image=localhost/kea:3.0.2
+Image=docker.io/jonasal/kea-admin:3.1.4
 Network=host
 EnvironmentFile=/etc/openchami/openchami.env
-Exec=/bin/bash -c /usr/sbin/kea-admin db-init pgsql -h localhost -P 15432 -u kea-user -p $KEA_DB_PASSWORD -n kea
+Entrypoint=/bin/bash
+Exec=-c "kea-admin db-init pgsql -h localhost -P 15432 -u kea-user -p $KEA_DB_PASSWORD -n kea"
 
 [Service]
 Restart=no
 TimeoutStartSec=120
 SuccessExitStatus=2
+StartLimitBurst=0
 
 [Install]
 WantedBy=openchami.target

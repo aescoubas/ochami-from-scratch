@@ -2,7 +2,7 @@
 Description=OpenCHAMI http-server
 
 [Container]
-Image=localhost/http-server:latest
+Image=jfrog.svc.cscs.ch/docker/openchami/cscs-http-server:latest
 Network=host
 EnvironmentFile=/etc/openchami/openchami.env
 Volume=/etc/openchami/artifacts:/usr/share/nginx/html/artifacts:ro

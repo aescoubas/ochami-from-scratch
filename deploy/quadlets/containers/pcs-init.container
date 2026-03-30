@@ -4,9 +4,11 @@ After=postgres.service
 Requires=postgres.service
 
 [Container]
-Image=localhost/pcs:main
+Image=jfrog.svc.cscs.ch/docker/openchami/cscs-pcs:main
 Network=host
 Environment=POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+Environment=VAULT_ENABLED=false
+Environment=FAKE_VAULT_ENABLED=true
 EnvironmentFile=/etc/openchami/openchami.env
 Exec=/bin/bash -c power-control init-postgres --postgres-insecure --postgres-host localhost --postgres-port 15432 --postgres-user pcs-user --postgres-dbname pcsdb --postgres-password $PCS_DB_PASSWORD
 
