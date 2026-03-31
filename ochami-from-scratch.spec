@@ -7,8 +7,6 @@ License:        MIT
 URL:            https://github.com/aescoubas/ochami-from-scratch
 Source0:        %{name}-%{version}.tar.gz
 
-BuildArch:      noarch
-
 Requires:       podman
 Requires:       jq
 Requires:       curl
@@ -25,7 +23,7 @@ ochami-from-scratch OpenCHAMI deployment.
 %setup -q
 
 %build
-# nothing to build
+# CLI binary is pre-built and included in the source tarball
 
 %install
 # 1) Install config, unit, and script files
@@ -33,6 +31,10 @@ mkdir -p %{buildroot}/etc/openchami/configs \
          %{buildroot}/etc/openchami/pg-init \
          %{buildroot}/etc/containers/systemd \
          %{buildroot}/etc/systemd/system \
+         %{buildroot}/usr/local/bin \
+         %{buildroot}/usr/share/bash-completion/completions \
+         %{buildroot}/usr/share/fish/vendor_completions.d \
+         %{buildroot}/usr/share/zsh/site-functions \
          %{buildroot}/usr/libexec/openchami \
          %{buildroot}/usr/libexec/openchami/lib
 
@@ -55,6 +57,12 @@ cp scripts/ops/bootstrap.sh            %{buildroot}/usr/libexec/openchami/
 cp scripts/ops/load-images.sh          %{buildroot}/usr/libexec/openchami/
 cp scripts/ops/lib/common.sh           %{buildroot}/usr/libexec/openchami/lib/
 
+# Install ochami CLI binary and shell completions
+install -m755 ochami-cli/ochami   %{buildroot}/usr/local/bin/ochami
+install -m644 ochami-cli/completions/ochami.bash %{buildroot}/usr/share/bash-completion/completions/ochami
+install -m644 ochami-cli/completions/ochami.fish %{buildroot}/usr/share/fish/vendor_completions.d/ochami.fish
+install -m644 ochami-cli/completions/ochami.zsh  %{buildroot}/usr/share/zsh/site-functions/_ochami
+
 chmod +x %{buildroot}/usr/libexec/openchami/*.sh
 chmod +x %{buildroot}/etc/openchami/pg-init/*.sh
 
@@ -73,6 +81,10 @@ chmod +x %{buildroot}/etc/openchami/pg-init/*.sh
 /usr/libexec/openchami/bootstrap.sh
 /usr/libexec/openchami/load-images.sh
 /usr/libexec/openchami/lib/common.sh
+/usr/local/bin/ochami
+/usr/share/bash-completion/completions/ochami
+/usr/share/fish/vendor_completions.d/ochami.fish
+/usr/share/zsh/site-functions/_ochami
 
 %post
 # bootstrap: generate secrets, create dirs, reload systemd

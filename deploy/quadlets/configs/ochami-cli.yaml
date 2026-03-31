@@ -1,0 +1,24 @@
+# OpenCHAMI CLI configuration for local quadlet deployment.
+# Installed by the openchami RPM to /etc/ochami/config.yaml.
+#
+# Services run on the host network (Network=host in quadlets), so all
+# endpoints are localhost with their default ports.
+
+log:
+  level: warning
+  format: basic
+
+default-cluster: local
+
+clusters:
+    - name: local
+      cluster:
+        enable-auth: false
+        smd:
+          uri: https://localhost:27779/hsm/v2
+        bss:
+          uri: http://localhost:27778/boot/v1
+        cloud-init:
+          uri: http://localhost:27777/cloud-init
+        pcs:
+          uri: http://localhost:28007

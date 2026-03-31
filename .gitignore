@@ -37,4 +37,5 @@ result
 .tmp/
 
 # RPM build artifacts
-*.noarch.rpm
+*.rpm
+.rpm-staging/

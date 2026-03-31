@@ -68,7 +68,20 @@ if [ -f "$ENV_FILE" ] && [ -d "$CONFIGS_DIR" ]; then
   done
 fi
 
-# --- 4. Reload systemd so quadlet units are visible ---
+# --- 4. Install ochami CLI config if missing ---
+CLI_CONFIG="/etc/ochami/config.yaml"
+CLI_CONFIG_TEMPLATE="/etc/openchami/configs/ochami-cli.yaml"
+if [ -f "$CLI_CONFIG" ]; then
+  log "$CLI_CONFIG already exists, skipping CLI config install"
+elif [ -f "$CLI_CONFIG_TEMPLATE" ]; then
+  mkdir -p "$(dirname "$CLI_CONFIG")"
+  cp "$CLI_CONFIG_TEMPLATE" "$CLI_CONFIG"
+  log "installed ochami CLI config to $CLI_CONFIG"
+else
+  log "CLI config template not found at $CLI_CONFIG_TEMPLATE, skipping"
+fi
+
+# --- 5. Reload systemd so quadlet units are visible ---
 systemctl daemon-reload
 log "systemd daemon reloaded"
 

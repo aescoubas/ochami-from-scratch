@@ -1,7 +1,7 @@
 .PHONY: test deploy teardown check build-images build-boot-artifacts create-test-vms
 .PHONY: health-check register-nodes register-bss-defaults
 .PHONY: lab lab-server lab-clients lab-destroy lab-status
-.PHONY: rpm rpm-clean
+.PHONY: rpm rpm-clean build-cli
 
 # --- Configuration ---
 
@@ -92,9 +92,13 @@ register-bss-defaults:
 
 RPM_VERSION ?= 0.1.0
 RPM_RELEASE ?= 1
+RPM_ARCH := $(shell uname -m)
+
+# Path to the ochami-cli source (sibling submodule)
+OCHAMI_CLI_SRC ?= $(realpath ../../shared/ochami-cli)
 
 # Build the RPM package
-rpm: openchami-$(RPM_VERSION)-$(RPM_RELEASE).noarch.rpm
+rpm: openchami-$(RPM_VERSION)-$(RPM_RELEASE).$(RPM_ARCH).rpm
 
 $(HOME)/rpmbuild:
 	mkdir -p $(HOME)/rpmbuild/{BUILD,RPMS,SOURCES,SPECS,SRPMS}
@@ -103,23 +107,38 @@ $(HOME)/rpmbuild/SPECS/openchami.spec: ochami-from-scratch.spec $(HOME)/rpmbuild
 	mkdir -p $(HOME)/rpmbuild/SPECS
 	cp $< $@
 
+# Build the ochami CLI binary and completions
+.PHONY: build-cli
+build-cli:
+	$(MAKE) -C $(OCHAMI_CLI_SRC) clean 2>/dev/null || true
+	$(MAKE) -C $(OCHAMI_CLI_SRC)
+	$(MAKE) -C $(OCHAMI_CLI_SRC) completions
+
 RPM_SOURCES = ochami-from-scratch.spec $(wildcard deploy/quadlets/**/*) $(wildcard scripts/ops/*) $(wildcard scripts/ops/lib/*)
 
-$(HOME)/rpmbuild/SOURCES/openchami-$(RPM_VERSION).tar.gz: $(HOME)/rpmbuild $(RPM_SOURCES)
+$(HOME)/rpmbuild/SOURCES/openchami-$(RPM_VERSION).tar.gz: $(HOME)/rpmbuild $(RPM_SOURCES) build-cli
 	mkdir -p $(HOME)/rpmbuild/SOURCES
+	rm -rf .rpm-staging
+	mkdir -p .rpm-staging/ochami-cli/completions
+	cp $(OCHAMI_CLI_SRC)/ochami .rpm-staging/ochami-cli/ochami
+	cp $(OCHAMI_CLI_SRC)/completions/ochami.bash .rpm-staging/ochami-cli/completions/
+	cp $(OCHAMI_CLI_SRC)/completions/ochami.fish .rpm-staging/ochami-cli/completions/
+	cp $(OCHAMI_CLI_SRC)/completions/ochami.zsh  .rpm-staging/ochami-cli/completions/
 	rm -f $(HOME)/rpmbuild/SOURCES/openchami-$(RPM_VERSION).tar.gz
 	tar czvf $@ --transform 's,^,openchami-$(RPM_VERSION)/,' \
 		ochami-from-scratch.spec \
 		deploy/quadlets/ \
-		scripts/ops/
+		scripts/ops/ \
+		-C .rpm-staging ochami-cli/
+	rm -rf .rpm-staging
 
-$(HOME)/rpmbuild/RPMS/noarch/openchami-$(RPM_VERSION)-$(RPM_RELEASE).noarch.rpm: $(HOME)/rpmbuild/SPECS/openchami.spec $(HOME)/rpmbuild/SOURCES/openchami-$(RPM_VERSION).tar.gz
+$(HOME)/rpmbuild/RPMS/$(RPM_ARCH)/openchami-$(RPM_VERSION)-$(RPM_RELEASE).$(RPM_ARCH).rpm: $(HOME)/rpmbuild/SPECS/openchami.spec $(HOME)/rpmbuild/SOURCES/openchami-$(RPM_VERSION).tar.gz
 	rpmbuild -ba $(HOME)/rpmbuild/SPECS/openchami.spec --define 'version $(RPM_VERSION)' --define 'rel $(RPM_RELEASE)'
 
-openchami-$(RPM_VERSION)-$(RPM_RELEASE).noarch.rpm: $(HOME)/rpmbuild/RPMS/noarch/openchami-$(RPM_VERSION)-$(RPM_RELEASE).noarch.rpm
+openchami-$(RPM_VERSION)-$(RPM_RELEASE).$(RPM_ARCH).rpm: $(HOME)/rpmbuild/RPMS/$(RPM_ARCH)/openchami-$(RPM_VERSION)-$(RPM_RELEASE).$(RPM_ARCH).rpm
 	cp $< $@
 
 # Clean RPM build artifacts
 rpm-clean:
-	rm -rf $(HOME)/rpmbuild
-	rm -f openchami-*.noarch.rpm
+	rm -rf $(HOME)/rpmbuild .rpm-staging
+	rm -f openchami-*.rpm
