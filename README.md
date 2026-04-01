@@ -278,13 +278,13 @@ curl -sf tftp://localhost/ipxe.efi -o /dev/null && echo OK
 
 The HTTP server needs a kernel and root filesystem to serve to PXE-booting
 nodes. Boot images are built using `mkosi` in the
-[openchami-image-building](../../operations/openchami-image-building) repository,
+[openchami-image-building](../../image-building/openchami-image-building) repository,
 which produces a minimal openSUSE Leap 15.6 system as a compressed cpio archive.
 
 On your build machine (requires `mkosi` and `zstd`):
 
 ```bash
-cd operations/openchami-image-building
+cd image-building/openchami-image-building
 
 # Build the openSUSE Leap cpio image
 make build-leap-live
@@ -317,8 +317,9 @@ curl -sf -o /dev/null -w "%{http_code}" http://localhost:80/artifacts/opensuse/o
 ```
 
 The image boots directly into RAM — the kernel unpacks the cpio as the root
-filesystem with systemd as init. No dracut, no squashfs, no network fetch
-during boot. Default root password: `openchami`.
+filesystem with systemd as init. NetworkManager handles DHCP in userspace
+(wicked is disabled via preset). Cloud-init then contacts the metadata
+service for per-node configuration. Default root password: `openchami`.
 
 ### 6. Register the node in SMD
 
@@ -380,13 +381,13 @@ curl -sf -X PUT http://localhost:27778/boot/v1/bootparameters \
     "macs": ["<PXE_MAC>"],
     "kernel": "http://<SERVER_IP>:80/artifacts/opensuse/vmlinuz",
     "initrd": "http://<SERVER_IP>:80/artifacts/opensuse/opensuse-leap-live.cpio.zst",
-    "params": "ip=dhcp console=ttyS0,115200n8 console=tty0"
+    "params": "console=ttyS0,115200n8 console=tty0"
   }'
 ```
 
 iPXE downloads the kernel and the cpio archive (as initrd). The kernel unpacks
-the cpio directly into RAM and boots systemd — no intermediate dracut or
-network fetch step.
+the cpio directly into RAM and boots systemd. NetworkManager brings up the
+network via DHCP, then cloud-init fetches per-node configuration.
 
 Verify the boot script BSS will serve to this MAC:
 
@@ -477,9 +478,11 @@ sudo systemctl restart kea.service bss.service
    - boot-file-name = http://<SERVER_IP>:27778/boot/v1/bootscript?mac=<MAC>
 6. iPXE fetches the boot script from BSS
 7. BSS returns an iPXE script with kernel + initrd (cpio) URLs
-8. iPXE downloads kernel (14 MB) + cpio rootfs (190 MB) over HTTP
+8. iPXE downloads kernel (14 MB) + cpio rootfs (244 MB) over HTTP
 9. Kernel unpacks the cpio into RAM, finds /init (systemd)
-10. systemd starts → live openSUSE Leap system running entirely in RAM
+10. systemd starts → NetworkManager requests DHCP lease
+11. cloud-init contacts metadata service → sets hostname, DNS, packages
+12. live openSUSE Leap system running entirely in RAM
 ```
 
 ### 10. Configure cloud-init metadata

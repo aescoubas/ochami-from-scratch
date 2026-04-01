@@ -8,6 +8,7 @@
 *   **Virtual test lab:** `scripts/ops/lab.sh` (AlmaLinux server VM + PXE client VMs via libvirt)
 *   **RPM packaging:** `ochami-from-scratch.spec` + `Makefile` rpm targets (package name: `openchami`)
 *   **MCP server:** `ochami/mcp/` (standalone Python, stdlib only)
+*   **Cloud-init config:** `cloud-init/` (cluster defaults, compute group cloud-config pushed to metadata service)
 *   **Docs:** `README.md`, `AGENTS.md`, `docs/architecture/`, `docs/plans/ROADMAP.md`
 *   **Tests:** `tests/` (pytest via `make test`)
 
@@ -22,7 +23,8 @@
 *   The **Docker Compose PXE path** (`make deploy METHOD=compose`) runs services on the host with libvirt network `ochami-pxe-net`, bridge `virbr-ochami`, and `scripts/ops/create-test-vms.sh` for test VM bootstrap.
 *   Local OCI image builds are orchestrated by `scripts/ops/build-images.sh`; `make build-images` and `make deploy` accept `SMD_SRC`, `BSS_SRC`, `PCS_SRC`, `CLOUD_INIT_SRC`, and `KEA_SYNC_SRC` to build specific services from local checkouts.
 *   `make teardown METHOD=compose` removes compose containers and volumes and restores paused libvirt DHCP networks, but it does **not** delete libvirt test VMs or their qcow2 disks.
-*   **Boot images** for PXE nodes are built in the sibling `operations/openchami-image-building` repository using `mkosi`. It produces a compressed cpio archive (openSUSE Leap) that the kernel unpacks directly into RAM. The push script deploys artifacts to the OpenCHAMI HTTP server and registers BSS boot parameters.
+*   **Boot images** for PXE nodes are built in the sibling `image-building/openchami-image-building` repository using `mkosi`. It produces a compressed cpio archive (openSUSE Leap 15.6) that the kernel unpacks directly into RAM. NetworkManager handles DHCP in userspace (wicked is disabled via systemd preset). Cloud-init contacts the metadata service for per-node configuration (hostname, DNS, packages). The push script deploys artifacts to the OpenCHAMI HTTP server and registers BSS boot parameters.
+*   **Cloud-init configuration** lives in `cloud-init/` and is pushed to the in-memory metadata service (port 27777) via its admin API. Data must be repopulated after any service restart. The compute group cloud-config handles DNS override via NetworkManager, zypper GPG key auto-import, and package installation.
 *   Architecture overviews and ADRs belong under `docs/architecture/`, not a top-level `ARCHITECTURE/` directory.
 *   The MCP server (`ochami/mcp/`) is self-contained with zero external dependencies (stdlib only).
 *   There is no Python CLI -- the only Python entry point is `ochami-mcp`.
