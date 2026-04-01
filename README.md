@@ -482,7 +482,60 @@ sudo systemctl restart kea.service bss.service
 10. systemd starts → live openSUSE Leap system running entirely in RAM
 ```
 
-### 10. Power management (PCS + Redfish)
+### 10. Configure cloud-init metadata
+
+The cloud-init metadata service (port 27777) provides per-node configuration to
+nodes at boot. It uses in-memory storage, so data must be repopulated after any
+service restart. Configuration files live in `cloud-init/`.
+
+#### a. Set cluster defaults
+
+```bash
+curl -X POST http://localhost:27777/admin/cluster-defaults \
+  -H 'Content-Type: application/json' \
+  -d @cloud-init/cluster-defaults.json
+```
+
+#### b. Create the compute group
+
+The compute group cloud-config (`cloud-init/compute.yaml`) configures DNS,
+auto-imports zypper GPG keys, and installs packages. Edit it to match your
+environment before pushing.
+
+```bash
+CLOUD_CONFIG=$(base64 -w0 < cloud-init/compute.yaml)
+curl -X POST http://localhost:27777/admin/groups \
+  -H 'Content-Type: application/json' \
+  -d "{\"name\": \"compute\", \"description\": \"Compute nodes\", \"data\": {}, \"file\": {\"content\": \"${CLOUD_CONFIG}\", \"encoding\": \"base64\"}}"
+```
+
+To update an existing group, use PUT instead of POST:
+
+```bash
+curl -X PUT http://localhost:27777/admin/groups/compute \
+  -H 'Content-Type: application/json' \
+  -d "{\"name\": \"compute\", \"description\": \"Compute nodes\", \"data\": {}, \"file\": {\"content\": \"${CLOUD_CONFIG}\", \"encoding\": \"base64\"}}"
+```
+
+#### c. Set per-node hostname
+
+```bash
+curl -X PUT http://localhost:27777/admin/instance-info/<XNAME> \
+  -H 'Content-Type: application/json' \
+  -d '{"local-hostname": "<HOSTNAME>", "hostname": "<HOSTNAME>"}'
+```
+
+#### d. Verify
+
+Use the impersonation endpoint to see exactly what a node will receive:
+
+```bash
+curl -s http://localhost:27777/admin/impersonation/<XNAME>/meta-data
+curl -s http://localhost:27777/admin/impersonation/<XNAME>/vendor-data
+curl -s http://localhost:27777/admin/impersonation/<XNAME>/compute.yaml
+```
+
+### 11. Power management (PCS + Redfish)
 
 PCS (Power Control Service) manages node power state through the BMC's Redfish
 API. PCS uses a "fake vault" mode where BMC credentials are stored in the

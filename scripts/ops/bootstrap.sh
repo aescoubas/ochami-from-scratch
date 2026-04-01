@@ -53,6 +53,17 @@ EOF
   log "secrets written to $ENV_FILE"
 fi
 
+# Append OPENCHAMI_BASE_IP if not already set (used by cloud-init --base-url)
+if ! grep -q '^OPENCHAMI_BASE_IP=' "$ENV_FILE" 2>/dev/null; then
+  BASE_IP="$(hostname -I | awk '{print $1}')"
+  if [ -n "$BASE_IP" ]; then
+    echo "OPENCHAMI_BASE_IP=${BASE_IP}" >> "$ENV_FILE"
+    log "set OPENCHAMI_BASE_IP=$BASE_IP"
+  else
+    log "WARNING: could not determine host IP, OPENCHAMI_BASE_IP not set"
+  fi
+fi
+
 # --- 3. Render config templates with secrets ---
 CONFIGS_DIR="/etc/openchami/configs"
 if [ -f "$ENV_FILE" ] && [ -d "$CONFIGS_DIR" ]; then
