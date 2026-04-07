@@ -1,4 +1,5 @@
 [Unit]
+PartOf=openchami.target
 Description=OpenCHAMI bss
 After=smd.service bss-init.service
 Requires=smd.service bss-init.service

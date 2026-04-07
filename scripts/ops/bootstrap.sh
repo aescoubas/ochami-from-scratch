@@ -17,8 +17,9 @@ ARTIFACTS_DIR="/etc/openchami/artifacts"
 log() { echo "[bootstrap] $*"; }
 
 # --- 1. Create required directories ---
-mkdir -p "$ARTIFACTS_DIR"
-log "ensured $ARTIFACTS_DIR exists"
+TFTPBOOT_DIR="/etc/openchami/tftpboot"
+mkdir -p "$ARTIFACTS_DIR" "$TFTPBOOT_DIR"
+log "ensured $ARTIFACTS_DIR and $TFTPBOOT_DIR exist"
 
 # --- 2. Generate secrets env file if missing ---
 if [ -f "$ENV_FILE" ]; then

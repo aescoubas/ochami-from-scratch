@@ -1,4 +1,5 @@
 [Unit]
+PartOf=openchami.target
 Description=OpenCHAMI kea-sync
 After=smd.service kea-init.service kea.service http-server.service
 Requires=smd.service kea-init.service kea.service http-server.service

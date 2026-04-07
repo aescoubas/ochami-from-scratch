@@ -90,6 +90,28 @@ chmod +x %{buildroot}/etc/openchami/pg-init/*.sh
 # bootstrap: generate secrets, create dirs, reload systemd
 /usr/libexec/openchami/bootstrap.sh
 
+%preun
+# Stop all services, remove containers, images, and volumes
+systemctl stop openchami.target 2>/dev/null || true
+
+# Remove stopped containers created by quadlets (named systemd-*)
+for c in $(podman ps -a --format '{{.Names}}' 2>/dev/null | grep '^systemd-'); do
+  podman rm -f "$c" 2>/dev/null || true
+done
+
+# Remove images referenced by installed quadlet files
+for img in $(grep -h '^Image=' /etc/containers/systemd/*.container 2>/dev/null | cut -d= -f2 | sort -u); do
+  podman rmi "$img" 2>/dev/null || true
+done
+
+# Remove named volumes referenced by installed quadlet files
+for vol in $(grep -h '^Volume=' /etc/containers/systemd/*.container 2>/dev/null | cut -d= -f2 | grep -v '^/' | cut -d: -f1 | sort -u); do
+  podman volume rm "$vol" 2>/dev/null || true
+done
+
+# Remove config and state directories
+rm -rf /etc/openchami
+
 %postun
 # reload systemd on uninstall
 systemctl daemon-reload

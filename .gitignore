@@ -39,3 +39,4 @@ result
 # RPM build artifacts
 *.rpm
 .rpm-staging/
+.ochami-cli/

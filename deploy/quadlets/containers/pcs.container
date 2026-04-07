@@ -1,4 +1,5 @@
 [Unit]
+PartOf=openchami.target
 Description=OpenCHAMI pcs
 After=smd.service pcs-init.service
 Requires=smd.service pcs-init.service
@@ -8,6 +9,8 @@ Image=jfrog.svc.cscs.ch/docker/openchami/cscs-pcs:main
 Network=host
 Environment=FAKE_VAULT_ENABLED=true
 Environment=HSMLOCK_ENABLED=true
+Environment=PCS_FAKE_VAULT_REDFISH_USER=openchami
+Environment=PCS_FAKE_VAULT_REDFISH_PASSWORD=openchami
 Environment=LOG_LEVEL=INFO
 Environment=SMS_SERVER=http://localhost:80
 Environment=STORAGE=POSTGRES

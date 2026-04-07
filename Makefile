@@ -94,8 +94,10 @@ RPM_VERSION ?= 0.1.0
 RPM_RELEASE ?= 1
 RPM_ARCH := $(shell uname -m)
 
-# Path to the ochami-cli source (sibling submodule)
-OCHAMI_CLI_SRC ?= $(realpath ../../shared/ochami-cli)
+# Path to the ochami-cli source — cloned locally on first use.
+# Override OCHAMI_CLI_SRC to point at your own checkout if desired.
+OCHAMI_CLI_REPO ?= https://github.com/OpenCHAMI/ochami.git
+OCHAMI_CLI_SRC ?= $(CURDIR)/.ochami-cli
 
 # Build the RPM package
 rpm: openchami-$(RPM_VERSION)-$(RPM_RELEASE).$(RPM_ARCH).rpm
@@ -107,9 +109,13 @@ $(HOME)/rpmbuild/SPECS/openchami.spec: ochami-from-scratch.spec $(HOME)/rpmbuild
 	mkdir -p $(HOME)/rpmbuild/SPECS
 	cp $< $@
 
+# Clone ochami-cli for standalone checkouts (no-op when using superproject)
+$(CURDIR)/.ochami-cli:
+	git clone $(OCHAMI_CLI_REPO) $@
+
 # Build the ochami CLI binary and completions
 .PHONY: build-cli
-build-cli:
+build-cli: | $(OCHAMI_CLI_SRC)
 	$(MAKE) -C $(OCHAMI_CLI_SRC) clean 2>/dev/null || true
 	$(MAKE) -C $(OCHAMI_CLI_SRC)
 	$(MAKE) -C $(OCHAMI_CLI_SRC) completions
