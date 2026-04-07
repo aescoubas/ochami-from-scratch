@@ -1,5 +1,5 @@
 .PHONY: test deploy teardown check build-images build-boot-artifacts create-test-vms
-.PHONY: health-check register-nodes register-bss-defaults
+.PHONY: health-check register-nodes register-bss-defaults push-boot-artifacts
 .PHONY: lab lab-server lab-clients lab-destroy lab-status
 .PHONY: rpm rpm-clean build-cli
 
@@ -80,13 +80,25 @@ lab-status:
 health-check:
 	scripts/ops/health-check.sh
 
-# Register nodes with SMD
+# Register a node with SMD
+# Usage: make register-nodes XNAME=x1000c0s0b0n0 MAC=02:00:00:00:00:01 IP=192.168.100.101 [BMC_IP=10.0.0.101]
+XNAME ?=
+MAC ?=
+IP ?=
+BMC_IP ?=
 register-nodes:
-	scripts/ops/register-nodes.sh
+	scripts/ops/register-nodes.sh --xname $(XNAME) --mac $(MAC) --ip $(IP) $(if $(BMC_IP),--bmc-ip $(BMC_IP))
 
-# Register BSS boot defaults
+# Register BSS boot defaults (or per-MAC with MAC= )
 register-bss-defaults:
-	scripts/ops/register-bss-defaults.sh
+	scripts/ops/register-bss-defaults.sh $(if $(MAC),--mac $(MAC))
+
+# Push pre-built boot artifacts to a remote OpenCHAMI server
+# Usage: make push-boot-artifacts HOST=server ARTIFACTS_DIR=/path/to/artifacts [IMAGE_NAME=opensuse]
+ARTIFACTS_DIR ?=
+IMAGE_NAME ?=
+push-boot-artifacts:
+	scripts/ops/push-boot-artifacts.sh --host $(HOST) --artifacts-dir $(ARTIFACTS_DIR) $(if $(IMAGE_NAME),--image-name $(IMAGE_NAME))
 
 # --- RPM packaging ---
 

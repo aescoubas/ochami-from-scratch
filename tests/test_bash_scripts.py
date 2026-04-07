@@ -16,6 +16,7 @@ class TestScriptsExist:
         "create-test-vms.sh",
         "register-nodes.sh",
         "register-bss-defaults.sh",
+        "push-boot-artifacts.sh",
         "health-check.sh",
         "teardown.sh",
         "lab-setup.sh",
@@ -84,7 +85,8 @@ class TestScriptStructure:
     def test_scripts_source_common(self):
         """All operational scripts should source lib/common.sh."""
         for name in ["check-deps.sh", "create-test-vms.sh", "health-check.sh", "teardown.sh",
-                      "deploy.sh", "register-nodes.sh", "register-bss-defaults.sh"]:
+                      "deploy.sh", "register-nodes.sh", "register-bss-defaults.sh",
+                      "push-boot-artifacts.sh"]:
             content = self._read_script(name)
             assert "common.sh" in content, f"{name} should source common.sh"
 
@@ -145,7 +147,9 @@ class TestScriptStructure:
         assert "SMD_PORT" in content
         assert "REDFISH_BMC_USER" in content
         assert "REDFISH_BMC_PASSWORD" in content
-        assert "bmc_xname" in content
+        assert "--xname" in content
+        assert "--mac" in content
+        assert "--ip" in content
 
     def test_deploy_uses_compose_artifacts(self):
         content = self._read_script("deploy.sh")
@@ -198,7 +202,7 @@ class TestScriptStructure:
         assert 'KEA_SYNC_PORT="${KEA_SYNC_PORT:-28080}"' in content
         assert 'NETBOOT_CONSOLE_READY_PATTERN="${NETBOOT_CONSOLE_READY_PATTERN:-}"' in content
         assert "xname,mac,ip,bmc_ip,bmc_xname,domain" in content
-        assert "xname,mac,ip,bmc_ip,bmc_xname" in content
+        assert "register-nodes.sh" in content
 
     def test_lab_setup_uses_ochami_libvirt_names(self):
         content = self._read_script("lab-setup.sh")

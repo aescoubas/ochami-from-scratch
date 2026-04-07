@@ -6,9 +6,6 @@ boot_tmp/
 modules_tmp/
 usr_modules_tmp/
 
-# Hardware node inventory (user-specific)
-nodes.csv
-
 # Docker Compose runtime files (secrets, override)
 deploy/compose/.env
 deploy/compose/docker-compose.override.yml

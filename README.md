@@ -114,12 +114,12 @@ make rpm PROFILE=cscs      # CSCS JFrog profile
 Install on AlmaLinux / RHEL / Fedora:
 
 ```bash
-sudo dnf install ./openchami-*.noarch.rpm
+sudo rpm -ivh ./openchami-*.x86_64.rpm
 ```
 
 The RPM `%post` scriptlet runs `bootstrap.sh` which creates
-`/etc/openchami/artifacts/`, generates random database passwords in
-`/etc/openchami/openchami.env`, and reloads systemd.
+`/etc/openchami/artifacts/` and `/etc/openchami/tftpboot/`, generates random
+database passwords in `/etc/openchami/openchami.env`, and reloads systemd.
 
 Images must be available in podman before starting:
 
@@ -173,6 +173,9 @@ scripts/ops/             Operational scripts
   deploy.sh              Deployment orchestrator
   build-images.sh        OCI image builder (buildah/docker)
   build-boot-artifacts.sh  PXE boot artifact downloader
+  push-boot-artifacts.sh   Push boot artifacts to remote server
+  register-nodes.sh      Register a node with SMD
+  register-bss-defaults.sh  Register BSS boot parameters
   create-test-vms.sh     Compose PXE test VM creator
   create-demo-vm.sh      Single demo VM creator
 ochami/mcp/              Standalone MCP server
@@ -198,20 +201,21 @@ On your build machine:
 
 ```bash
 make rpm-clean && make rpm
-scp openchami-0.1.0-1.noarch.rpm <rhel-host>:~/
+scp openchami-0.1.0-1.x86_64.rpm <rhel-host>:~/
 ```
 
 On the RHEL host:
 
 ```bash
-sudo dnf install -y ~/openchami-*.noarch.rpm
+sudo rpm -ivh ~/openchami-*.x86_64.rpm
 ```
 
 If upgrading from a previous package name (`ochami-from-scratch`), remove it
-first: `sudo dnf remove ochami-from-scratch`.
+first: `sudo rpm -e ochami-from-scratch`.
 
-The `%post` scriptlet creates `/etc/openchami/artifacts/`, generates random
-database passwords in `/etc/openchami/openchami.env`, and reloads systemd.
+The `%post` scriptlet creates `/etc/openchami/artifacts/` and
+`/etc/openchami/tftpboot/`, generates random database passwords in
+`/etc/openchami/openchami.env`, and reloads systemd.
 
 ### 2. Start the stack
 
@@ -262,7 +266,6 @@ into the BSS boot script. Install iPXE and copy the binaries:
 
 ```bash
 sudo dnf install -y ipxe-bootimgs-x86
-sudo mkdir -p /etc/openchami/tftpboot
 sudo cp /usr/share/ipxe/ipxe-x86_64.efi  /etc/openchami/tftpboot/ipxe.efi
 sudo cp /usr/share/ipxe/undionly.kpxe     /etc/openchami/tftpboot/undionly.kpxe
 ```
@@ -278,33 +281,44 @@ curl -sf tftp://localhost/ipxe.efi -o /dev/null && echo OK
 
 The HTTP server needs a kernel and root filesystem to serve to PXE-booting
 nodes. Boot images are built using `mkosi` in the
-[openchami-image-building](../../image-building/openchami-image-building) repository,
-which produces a minimal openSUSE Leap 15.6 system as a compressed cpio archive.
+[openchami-image-building](https://github.com/aescoubas/openchami-image-building)
+repository, which produces a minimal openSUSE Leap 15.6 system as a compressed
+cpio archive.
 
 On your build machine (requires `mkosi` and `zstd`):
 
 ```bash
-cd image-building/openchami-image-building
+cd openchami-image-building
 
 # Build the openSUSE Leap cpio image
 make build-leap-live
-
-# Push to the RHEL host and register BSS boot parameters
-make push HOST=<RHEL_HOST> MAC=<PXE_MAC>
 ```
 
-Or push manually:
+Then push the artifacts to the RHEL host using `push-boot-artifacts.sh` from
+this repository:
 
 ```bash
-SSH_USER=root ./scripts/push-to-openchami.sh <RHEL_HOST> <PXE_MAC>
+# From ochami-from-scratch/
+make push-boot-artifacts HOST=<RHEL_HOST> \
+  ARTIFACTS_DIR=<path-to>/openchami-image-building/mkosi/opensuse-leap-live/mkosi.output \
+  IMAGE_NAME=opensuse
 ```
 
-This pushes two files to `/etc/openchami/artifacts/opensuse/` on the server:
+Or call the script directly:
+
+```bash
+SSH_USER=root scripts/ops/push-boot-artifacts.sh \
+  --host <RHEL_HOST> \
+  --artifacts-dir <path-to>/openchami-image-building/mkosi/opensuse-leap-live/mkosi.output \
+  --image-name opensuse
+```
+
+This rsyncs the artifacts to `/etc/openchami/artifacts/opensuse/` on the server:
 
 ```text
 /etc/openchami/artifacts/opensuse/
 ├── vmlinuz                       (14 MB, kernel)
-└── opensuse-leap-live.cpio.zst   (190 MB, compressed rootfs)
+└── opensuse-leap-live.cpio.zst   (244 MB, compressed rootfs)
 ```
 
 Verify they are served:
@@ -334,32 +348,21 @@ The IP address must fall within the Kea DHCP subnet configured in step 8 so that
 kea-sync can create a DHCP reservation. It should be on the same L2 network as
 the RHEL host's interface.
 
-Replace `<XNAME>`, `<PXE_MAC>`, and `<NODE_IP>` with your values:
+Using the `register-nodes.sh` script:
 
 ```bash
-# Register the ethernet interface
-curl -skf -X POST https://localhost:27779/hsm/v2/Inventory/EthernetInterfaces \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "ComponentID": "<XNAME>",
-    "Description": "PXE NIC",
-    "MACAddress": "<PXE_MAC>",
-    "IPAddresses": [{"IPAddress": "<NODE_IP>", "Network": "HMN"}]
-  }'
-
-# Register the component
-curl -skf -X POST https://localhost:27779/hsm/v2/State/Components \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "Components": [{
-      "ID": "<XNAME>",
-      "State": "Ready",
-      "NetType": "Sling",
-      "Arch": "X86",
-      "Role": "Compute"
-    }]
-  }'
+scripts/ops/register-nodes.sh \
+  --xname <XNAME> --mac <PXE_MAC> --ip <NODE_IP> --bmc-ip <BMC_IP>
 ```
+
+Or via Make:
+
+```bash
+make register-nodes XNAME=<XNAME> MAC=<PXE_MAC> IP=<NODE_IP> BMC_IP=<BMC_IP>
+```
+
+The script registers the ethernet interface, component, and BMC Redfish endpoint
+in SMD. Omit `--bmc-ip` if there is no BMC.
 
 Verify:
 
@@ -370,24 +373,27 @@ curl -kfs https://localhost:27779/hsm/v2/Inventory/EthernetInterfaces | jq .
 
 ### 7. Register boot parameters in BSS
 
-If you used `make push` in step 5, BSS is already configured. Otherwise,
-register manually. Replace `<SERVER_IP>` with the RHEL host's IP and `<PXE_MAC>`
-with the PXE NIC MAC:
+Register boot parameters for a specific MAC address using
+`register-bss-defaults.sh`:
 
 ```bash
-curl -sf -X PUT http://localhost:27778/boot/v1/bootparameters \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "macs": ["<PXE_MAC>"],
-    "kernel": "http://<SERVER_IP>:80/artifacts/opensuse/vmlinuz",
-    "initrd": "http://<SERVER_IP>:80/artifacts/opensuse/opensuse-leap-live.cpio.zst",
-    "params": "console=ttyS0,115200n8 console=tty0"
-  }'
+scripts/ops/register-bss-defaults.sh \
+  --mac <PXE_MAC> \
+  --image-name opensuse \
+  --kernel vmlinuz \
+  --initrd opensuse-leap-live.cpio.zst \
+  --kernel-params "console=ttyS0,115200n8 console=tty0"
 ```
 
-iPXE downloads the kernel and the cpio archive (as initrd). The kernel unpacks
-the cpio directly into RAM and boots systemd. NetworkManager brings up the
-network via DHCP, then cloud-init fetches per-node configuration.
+Or via Make:
+
+```bash
+make register-bss-defaults MAC=<PXE_MAC>
+```
+
+The script constructs artifact URLs using the server's IP
+(`HOST_IP` env var, defaults to `192.168.100.1`) and registers them with BSS.
+Without `--mac`, it registers a "Default" fallback entry instead.
 
 Verify the boot script BSS will serve to this MAC:
 
@@ -544,21 +550,18 @@ PCS (Power Control Service) manages node power state through the BMC's Redfish
 API. PCS uses a "fake vault" mode where BMC credentials are stored in the
 secrets environment file rather than HashiCorp Vault.
 
-#### a. Add BMC credentials to the secrets file
+#### a. BMC credentials
 
-Append the Redfish username and password to the secrets file. These credentials
-must match an account on the BMC (Lenovo XCC, iDRAC, iLO, etc.):
+The PCS quadlet (`pcs.container`) ships with default fake-vault Redfish
+credentials (`PCS_FAKE_VAULT_REDFISH_USER=openchami`,
+`PCS_FAKE_VAULT_REDFISH_PASSWORD=openchami`). These are the credentials PCS uses
+when talking to the BMC's Redfish API.
 
-```bash
-cat >> /etc/openchami/openchami.env << 'EOF'
-PCS_FAKE_VAULT_REDFISH_USER=openchami
-PCS_FAKE_VAULT_REDFISH_PASSWORD=Openchami0!
-EOF
-```
-
-Then restart PCS so it picks up the new credentials:
+To change them, edit `/etc/containers/systemd/pcs.container` and update the
+`Environment=PCS_FAKE_VAULT_REDFISH_*` lines, then restart:
 
 ```bash
+sudo systemctl daemon-reload
 sudo systemctl restart pcs.service
 ```
 
@@ -666,8 +669,8 @@ journalctl -u pcs.service --no-pager -n 20
 Common issues:
 
 - **"Missing/empty creds"**: `PCS_FAKE_VAULT_REDFISH_USER` /
-  `PCS_FAKE_VAULT_REDFISH_PASSWORD` are not set in the env file. Add them and
-  restart PCS.
+  `PCS_FAKE_VAULT_REDFISH_PASSWORD` are not set in `pcs.container`. The RPM
+  ships with defaults; if you removed them, add them back and restart PCS.
 - **Postgres connection refused on port 5432**: The PCS quadlet `Exec` line
   is not passing `--postgres-port 15432` correctly. Check that the command
   string is properly quoted in `pcs.container`.

@@ -706,10 +706,15 @@ prepare_runtime() {
 }
 
 register_nodes() {
-  REDFISH_BMC_USER="$LIBVIRT_BMC_USER" \
-  REDFISH_BMC_PASSWORD="$LIBVIRT_BMC_PASSWORD" \
-  SMD_HOST="$SMD_HOST" SMD_PORT="$SMD_PORT" \
-    "$SCRIPT_DIR/register-nodes.sh" --nodes-csv "$registration_csv" $DRY_RUN_FLAG
+  for idx in "${!xnames[@]}"; do
+    REDFISH_BMC_USER="$LIBVIRT_BMC_USER" \
+    REDFISH_BMC_PASSWORD="$LIBVIRT_BMC_PASSWORD" \
+    SMD_HOST="$SMD_HOST" SMD_PORT="$SMD_PORT" \
+      "$SCRIPT_DIR/register-nodes.sh" \
+        --xname "${xnames[$idx]}" --mac "${macs[$idx]}" --ip "${ips[$idx]}" \
+        --bmc-ip "${bmc_ips[$idx]}" --bmc-xname "${bmc_xnames[$idx]}" \
+        $DRY_RUN_FLAG
+  done
 }
 
 reconcile_dhcp_runtime() {
@@ -770,17 +775,6 @@ for offset in $(seq 0 $((COUNT - 1))); do
   bmc_ips+=("$bmc_ip")
   bmc_xnames+=("$bmc_xname")
 done
-
-registration_csv="$(mktemp)"
-trap 'rm -f "$registration_csv"' EXIT
-
-{
-  printf 'xname,mac,ip,bmc_ip,bmc_xname\n'
-  for idx in "${!xnames[@]}"; do
-    printf '%s,%s,%s,%s,%s\n' \
-      "${xnames[$idx]}" "${macs[$idx]}" "${ips[$idx]}" "${bmc_ips[$idx]}" "${bmc_xnames[$idx]}"
-  done
-} > "$registration_csv"
 
 register_nodes
 if compose_method_uses_libvirt_bmc; then

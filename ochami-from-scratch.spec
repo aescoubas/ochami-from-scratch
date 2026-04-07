@@ -53,6 +53,7 @@ cp scripts/ops/health-check.sh         %{buildroot}/usr/libexec/openchami/
 cp scripts/ops/check-deps.sh           %{buildroot}/usr/libexec/openchami/
 cp scripts/ops/register-nodes.sh       %{buildroot}/usr/libexec/openchami/
 cp scripts/ops/register-bss-defaults.sh %{buildroot}/usr/libexec/openchami/
+cp scripts/ops/push-boot-artifacts.sh  %{buildroot}/usr/libexec/openchami/
 cp scripts/ops/bootstrap.sh            %{buildroot}/usr/libexec/openchami/
 cp scripts/ops/load-images.sh          %{buildroot}/usr/libexec/openchami/
 cp scripts/ops/lib/common.sh           %{buildroot}/usr/libexec/openchami/lib/
@@ -78,6 +79,7 @@ chmod +x %{buildroot}/etc/openchami/pg-init/*.sh
 /usr/libexec/openchami/check-deps.sh
 /usr/libexec/openchami/register-nodes.sh
 /usr/libexec/openchami/register-bss-defaults.sh
+/usr/libexec/openchami/push-boot-artifacts.sh
 /usr/libexec/openchami/bootstrap.sh
 /usr/libexec/openchami/load-images.sh
 /usr/libexec/openchami/lib/common.sh
