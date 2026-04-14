@@ -118,8 +118,9 @@ sudo rpm -ivh ./openchami-*.x86_64.rpm
 ```
 
 The RPM `%post` scriptlet runs `bootstrap.sh` which creates
-`/etc/openchami/artifacts/` and `/etc/openchami/tftpboot/`, generates random
-database passwords in `/etc/openchami/openchami.env`, and reloads systemd.
+`/etc/openchami/artifacts/`, `/etc/openchami/artifacts/rustfs-{data,logs}/`,
+and `/etc/openchami/tftpboot/`, generates random database and RustFS
+credentials in `/etc/openchami/openchami.env`, and reloads systemd.
 
 Images must be available in podman before starting:
 
@@ -201,7 +202,7 @@ On your build machine:
 
 ```bash
 make rpm-clean && make rpm
-scp openchami-0.1.0-1.x86_64.rpm <rhel-host>:~/
+scp openchami-0.1.1-1.x86_64.rpm <rhel-host>:~/
 ```
 
 On the RHEL host:
@@ -213,8 +214,9 @@ sudo rpm -ivh ~/openchami-*.x86_64.rpm
 If upgrading from a previous package name (`ochami-from-scratch`), remove it
 first: `sudo rpm -e ochami-from-scratch`.
 
-The `%post` scriptlet creates `/etc/openchami/artifacts/` and
-`/etc/openchami/tftpboot/`, generates random database passwords in
+The `%post` scriptlet creates `/etc/openchami/artifacts/`,
+`/etc/openchami/artifacts/rustfs-{data,logs}/`, and
+`/etc/openchami/tftpboot/`, generates random database and RustFS credentials in
 `/etc/openchami/openchami.env`, and reloads systemd.
 
 ### 2. Start the stack
@@ -232,6 +234,14 @@ systemctl list-dependencies openchami.target
 All init services (`bss-init`, `smd-init`, `kea-init`) should show ○ (completed)
 and all runtime services should show ● (running).
 
+Verify the artifact endpoints:
+
+```bash
+curl -sf http://localhost:80/boot.ipxe -o /dev/null && echo "http-server OK"
+curl -sf http://localhost:9000/health -o /dev/null && echo "rustfs S3 OK"
+curl -sf http://localhost:9001/rustfs/console/health -o /dev/null && echo "rustfs console OK"
+```
+
 ### 3. Open firewall ports
 
 RHEL/AlmaLinux enables `firewalld` by default. The PXE boot chain requires
@@ -243,6 +253,8 @@ iPXE or reach any HTTP service — causing a silent timeout after DHCP.
 sudo firewall-cmd --add-service=tftp --permanent        # TFTP (port 69/udp, iPXE firmware)
 sudo firewall-cmd --add-port=69/udp --permanent          # explicit UDP rule for TFTP data
 sudo firewall-cmd --add-port=80/tcp --permanent           # HTTP (nginx: kernel, initrd, boot.ipxe)
+sudo firewall-cmd --add-port=9000/tcp --permanent         # RustFS S3 API
+sudo firewall-cmd --add-port=9001/tcp --permanent         # RustFS console
 sudo firewall-cmd --add-port=27777/tcp --permanent        # cloud-init metadata service
 sudo firewall-cmd --add-port=27778/tcp --permanent        # BSS (boot script service)
 sudo firewall-cmd --add-port=27779/tcp --permanent        # SMD (state management database)
@@ -255,7 +267,7 @@ Verify:
 ```bash
 sudo firewall-cmd --list-all
 # Should show: services: ... tftp
-# Should show: ports: 69/udp 80/tcp 27777/tcp 27778/tcp 27779/tcp 28007/tcp
+# Should show: ports: 69/udp 80/tcp 9000/tcp 9001/tcp 27777/tcp 27778/tcp 27779/tcp 28007/tcp
 ```
 
 ### 4. Install iPXE boot firmware
@@ -333,6 +345,47 @@ curl -sf -o /dev/null -w "%{http_code}" http://localhost:80/artifacts/opensuse-v
 # Should return 200
 ```
 
+To serve the same image set through RustFS instead of nginx, upload the
+artifacts into a RustFS bucket and point BSS at the S3-style object URLs.
+
+Create a bucket and mirror the vanilla image into RustFS on the RHEL host:
+
+```bash
+set -a
+source /etc/openchami/openchami.env
+set +a
+
+export MC_HOST_rustfs="http://${RUSTFS_ACCESS_KEY}:${RUSTFS_SECRET_KEY}@127.0.0.1:9000"
+
+podman run --rm --network host -e MC_HOST_rustfs \
+  docker.io/minio/mc mb --ignore-existing rustfs/opensuse-vanilla
+
+podman run --rm --network host -e MC_HOST_rustfs \
+  -v /etc/openchami/artifacts:/artifacts:ro \
+  docker.io/minio/mc mirror --overwrite /artifacts/opensuse-vanilla rustfs/opensuse-vanilla
+
+podman run --rm --network host -e MC_HOST_rustfs \
+  docker.io/minio/mc anonymous set download rustfs/opensuse-vanilla
+```
+
+Verify the RustFS-backed URLs directly:
+
+```bash
+curl -sf -o /dev/null -w "%{http_code}" http://localhost:9000/opensuse-vanilla/opensuse-leap-live-vanilla-vmlinuz
+# Should return 200
+curl -sf -o /dev/null -w "%{http_code}" http://localhost:9000/opensuse-vanilla/opensuse-leap-live-vanilla.cpio.zst
+# Should return 200
+```
+
+The RustFS quadlet uses the same host artifact root as nginx. It stores S3 data
+under `/etc/openchami/artifacts/rustfs-data/` and logs under
+`/etc/openchami/artifacts/rustfs-logs/`, so both artifact-serving paths stay on
+the same disk without mixing S3 metadata into the static file tree. The quadlet
+sets `RUSTFS_OBS_LOGGER_LEVEL=warn`, keeps stdout mirroring enabled, and uses
+`RUST_LOG=warn,rustfs::server::http=debug` so request logs still reach both the
+RustFS log files and the host `journalctl -u rustfs` output without the full
+RustFS debug stream.
+
 The image boots directly into RAM — the kernel unpacks the cpio as the root
 filesystem with systemd as init. NetworkManager handles DHCP in userspace
 (wicked is disabled via preset). Cloud-init then contacts the metadata
@@ -398,6 +451,20 @@ The script constructs artifact URLs using the server's IP
 (`HOST_IP` env var, defaults to `192.168.100.1`) and registers them with BSS.
 Without `--mac`, it registers a "Default" fallback entry instead.
 
+To use RustFS instead of nginx for the kernel and initrd, override the artifact
+base URL with the RustFS bucket root. Add `--mac` when testing a single node,
+or omit it to make RustFS-backed URLs the default for all nodes:
+
+```bash
+ARTIFACT_BASE_URL="http://${HOST_IP:-192.168.100.1}:9000/opensuse-vanilla" \
+scripts/ops/register-bss-defaults.sh \
+  --mac <PXE_MAC> \
+  --image-name opensuse-vanilla \
+  --kernel opensuse-leap-live-vanilla-vmlinuz \
+  --initrd opensuse-leap-live-vanilla.cpio.zst \
+  --kernel-params "console=ttyS0,115200n8 console=tty0"
+```
+
 Verify the boot script BSS will serve to this MAC:
 
 ```bash
@@ -409,6 +476,14 @@ your server. The `arch` parameter is not part of the boot parameters we
 registered — the MAC alone selects the entry. BSS uses `arch` only to determine
 the iPXE script format in the response. iPXE passes it automatically when
 fetching the boot script at boot time.
+
+When booting from RustFS, the returned `kernel` and `initrd` lines should use
+`http://<host>:9000/<bucket>/...` URLs. You can confirm node fetches with:
+
+```bash
+journalctl -u rustfs -g 'uri=/opensuse-vanilla/'
+journalctl -u rustfs -g 'real_ip=<NODE_IP>'
+```
 
 ### 8. Verify kea-sync created the DHCP reservation
 
@@ -808,5 +883,3 @@ Architecture documentation and ADRs live under `docs/architecture/`:
 - `docs/architecture/README.md`
 - `docs/architecture/overview.md`
 - `docs/architecture/compose-pxe-lab.md`
-
-

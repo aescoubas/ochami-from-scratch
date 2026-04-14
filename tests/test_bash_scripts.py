@@ -261,6 +261,8 @@ class TestScriptStructure:
     def test_register_bss_defaults_uses_boot_artifacts(self):
         content = self._read_script("register-bss-defaults.sh")
         assert "resolve_boot_image_metadata" in content
+        assert "ARTIFACT_BASE_URL" in content
+        assert "--artifact-base-url" in content
 
     def test_create_test_vms_uses_default_kea_sync_port(self):
         content = self._read_script("create-test-vms.sh")

@@ -1,0 +1,30 @@
+[Unit]
+PartOf=openchami.target
+Description=OpenCHAMI rustfs object store
+
+[Container]
+Image=docker.io/rustfs/rustfs:latest
+Network=host
+EnvironmentFile=/etc/openchami/openchami.env
+Environment=RUSTFS_VOLUMES=/srv/openchami-artifacts/rustfs-data
+Environment=RUSTFS_ADDRESS=0.0.0.0:9000
+Environment=RUSTFS_CONSOLE_ADDRESS=0.0.0.0:9001
+Environment=RUSTFS_CONSOLE_ENABLE=true
+Environment=RUSTFS_OBS_LOGGER_LEVEL=warn
+Environment=RUST_LOG=warn,rustfs::server::http=debug
+Environment=RUSTFS_OBS_USE_STDOUT=true
+Environment=RUSTFS_OBS_LOG_STDOUT_ENABLED=true
+Environment=RUSTFS_OBS_LOG_DIRECTORY=/srv/openchami-artifacts/rustfs-logs
+Volume=/etc/openchami/artifacts:/srv/openchami-artifacts:z
+HealthCmd=sh -ec 'curl -fsS http://127.0.0.1:9000/health && curl -fsS http://127.0.0.1:9001/rustfs/console/health'
+HealthInterval=10s
+HealthTimeout=5s
+HealthRetries=30
+Notify=healthy
+
+[Service]
+Restart=on-failure
+TimeoutStartSec=300
+
+[Install]
+WantedBy=openchami.target

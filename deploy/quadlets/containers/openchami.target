@@ -1,6 +1,6 @@
 [Unit]
 Description=OpenCHAMI Services
-Wants=postgres.service smd-init.service smd.service bss-init.service bss.service cloud-init.service pcs-init.service pcs.service kea-init.service kea.service kea-sync.service http-server.service tftp.service
+Wants=postgres.service smd-init.service smd.service bss-init.service bss.service cloud-init.service pcs-init.service pcs.service kea-init.service kea.service kea-sync.service http-server.service rustfs.service tftp.service
 
 [Install]
 WantedBy=multi-user.target

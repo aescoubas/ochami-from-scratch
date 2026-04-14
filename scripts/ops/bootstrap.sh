@@ -15,17 +15,43 @@ ENV_TEMPLATE="/etc/openchami/configs/.env.template"
 CONFIGS_DIR="/etc/openchami/configs"
 ARTIFACTS_DIR="/etc/openchami/artifacts"
 TFTPBOOT_DIR="/etc/openchami/tftpboot"
+RUSTFS_DATA_DIR="${ARTIFACTS_DIR}/rustfs-data"
+RUSTFS_LOG_DIR="${ARTIFACTS_DIR}/rustfs-logs"
 
 log() { echo "[bootstrap] $*"; }
 
+ensure_env_var() {
+  local name="$1"
+  local value="$2"
+
+  if ! grep -q "^${name}=" "$ENV_FILE" 2>/dev/null; then
+    echo "${name}=${value}" >> "$ENV_FILE"
+    log "added ${name} to $ENV_FILE"
+  fi
+}
+
+set_env_var() {
+  local name="$1"
+  local value="$2"
+
+  if grep -q "^${name}=" "$ENV_FILE" 2>/dev/null; then
+    sed -i "s|^${name}=.*|${name}=${value}|" "$ENV_FILE"
+  else
+    echo "${name}=${value}" >> "$ENV_FILE"
+  fi
+}
+
 # --- 1. Create required directories ---
-mkdir -p "$ARTIFACTS_DIR" "$TFTPBOOT_DIR"
-log "ensured $ARTIFACTS_DIR and $TFTPBOOT_DIR exist"
+mkdir -p "$ARTIFACTS_DIR" "$TFTPBOOT_DIR" "$RUSTFS_DATA_DIR" "$RUSTFS_LOG_DIR"
+chown 10001:10001 "$RUSTFS_DATA_DIR" "$RUSTFS_LOG_DIR" 2>/dev/null || true
+log "ensured $ARTIFACTS_DIR, $TFTPBOOT_DIR, $RUSTFS_DATA_DIR, and $RUSTFS_LOG_DIR exist"
 
 # --- 2. Generate secrets env file if missing ---
+CREATED_ENV_FILE=false
 if [ -f "$ENV_FILE" ]; then
   log "$ENV_FILE already exists, skipping secret generation"
 else
+  CREATED_ENV_FILE=true
   log "generating secrets in $ENV_FILE"
   PASS="$(openssl rand -hex 16)"
 
@@ -54,6 +80,30 @@ EOF
   chmod 600 "$ENV_FILE"
   log "secrets written to $ENV_FILE"
 fi
+
+PASS="$(awk -F= '/^POSTGRES_PASSWORD=/{print $2; exit}' "$ENV_FILE" 2>/dev/null || true)"
+if [ -z "$PASS" ]; then
+  PASS="$(openssl rand -hex 16)"
+fi
+
+for var in POSTGRES_PASSWORD SMD_DB_PASSWORD BSS_DB_PASSWORD KEA_DB_PASSWORD PCS_DB_PASSWORD STORK_DB_PASSWORD; do
+  ensure_env_var "$var" "$PASS"
+done
+
+for var in SMD_DBPASS BSS_DBPASS KEA_DBPASS PCS_DBPASS; do
+  ensure_env_var "$var" "$PASS"
+done
+
+if [ "$CREATED_ENV_FILE" = "true" ]; then
+  set_env_var RUSTFS_ACCESS_KEY "$(openssl rand -hex 16)"
+  set_env_var RUSTFS_SECRET_KEY "$(openssl rand -hex 16)"
+  log "generated dedicated RustFS credentials in $ENV_FILE"
+else
+  ensure_env_var RUSTFS_ACCESS_KEY "$(openssl rand -hex 16)"
+  ensure_env_var RUSTFS_SECRET_KEY "$(openssl rand -hex 16)"
+fi
+
+chmod 600 "$ENV_FILE"
 
 # --- 3. Detect and persist network settings ---
 # OPENCHAMI_BASE_IP: the host's primary IP (used by all services)

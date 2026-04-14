@@ -9,6 +9,7 @@
 #   ./register-bss-defaults.sh --mac 02:00:00:00:00:01 [--dry-run]
 #   ./register-bss-defaults.sh --mac 02:00:00:00:00:01 --image-name opensuse-vanilla \
 #       --kernel opensuse-leap-live-vanilla-vmlinuz --initrd opensuse-leap-live-vanilla.cpio.zst \
+#       --artifact-base-url http://192.168.100.1:9000/opensuse-vanilla \
 #       --kernel-params "console=ttyS0,115200n8 console=tty0" [--dry-run]
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -28,6 +29,7 @@ IMAGE_NAME=""
 KERNEL_FILE_OVERRIDE=""
 INITRD_FILE_OVERRIDE=""
 KERNEL_PARAMS_OVERRIDE=""
+ARTIFACT_BASE_URL_OVERRIDE="${ARTIFACT_BASE_URL:-}"
 
 for arg in "$@"; do
   case "$arg" in
@@ -35,6 +37,7 @@ for arg in "$@"; do
     --image-name=*)    IMAGE_NAME="${arg#--image-name=}" ;;
     --kernel=*)        KERNEL_FILE_OVERRIDE="${arg#--kernel=}" ;;
     --initrd=*)        INITRD_FILE_OVERRIDE="${arg#--initrd=}" ;;
+    --artifact-base-url=*) ARTIFACT_BASE_URL_OVERRIDE="${arg#--artifact-base-url=}" ;;
     --kernel-params=*) KERNEL_PARAMS_OVERRIDE="${arg#--kernel-params=}" ;;
   esac
 done
@@ -45,6 +48,7 @@ for arg in "$@"; do
     --image-name)    IMAGE_NAME="$arg" ;;
     --kernel)        KERNEL_FILE_OVERRIDE="$arg" ;;
     --initrd)        INITRD_FILE_OVERRIDE="$arg" ;;
+    --artifact-base-url) ARTIFACT_BASE_URL_OVERRIDE="$arg" ;;
     --kernel-params) KERNEL_PARAMS_OVERRIDE="$arg" ;;
   esac
   prev="$arg"
@@ -92,7 +96,11 @@ else
   BOOT_PARAMS="$(tr '\n' ' ' < "$KERNEL_PARAMS_FILE" | xargs)"
 fi
 
-ARTIFACTS_URL="http://${HOST}:${HTTP_PORT}/${BOOT_IMAGE_RELATIVE_DIR}"
+if [ -n "$ARTIFACT_BASE_URL_OVERRIDE" ]; then
+  ARTIFACTS_URL="${ARTIFACT_BASE_URL_OVERRIDE%/}"
+else
+  ARTIFACTS_URL="http://${HOST}:${HTTP_PORT}/${BOOT_IMAGE_RELATIVE_DIR}"
+fi
 
 # --- Register with BSS ---
 if [ -n "$MAC" ]; then

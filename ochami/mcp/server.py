@@ -620,7 +620,7 @@ def handle_request(
             result = {
                 "protocolVersion": DEFAULT_PROTOCOL_VERSION,
                 "capabilities": {"tools": {}},
-                "serverInfo": {"name": "openchami-mcp", "version": "0.1.0"},
+                "serverInfo": {"name": "openchami-mcp", "version": "0.1.1"},
             }
             if request_id is not None:
                 return build_result_response(request_id, result)
