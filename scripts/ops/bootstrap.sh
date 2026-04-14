@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # bootstrap.sh — First-time setup for ochami-from-scratch RPM deployment.
 #
-# Generates secrets, creates required directories, and prepares the system
-# for starting the openchami.target.
+# Detects host network settings, generates secrets, renders config templates,
+# downloads iPXE firmware, and prepares the system for starting openchami.target.
 #
 # Usage: /usr/libexec/openchami/bootstrap.sh
 #
@@ -12,12 +12,13 @@ set -euo pipefail
 
 ENV_FILE="/etc/openchami/openchami.env"
 ENV_TEMPLATE="/etc/openchami/configs/.env.template"
+CONFIGS_DIR="/etc/openchami/configs"
 ARTIFACTS_DIR="/etc/openchami/artifacts"
+TFTPBOOT_DIR="/etc/openchami/tftpboot"
 
 log() { echo "[bootstrap] $*"; }
 
 # --- 1. Create required directories ---
-TFTPBOOT_DIR="/etc/openchami/tftpboot"
 mkdir -p "$ARTIFACTS_DIR" "$TFTPBOOT_DIR"
 log "ensured $ARTIFACTS_DIR and $TFTPBOOT_DIR exist"
 
@@ -54,7 +55,8 @@ EOF
   log "secrets written to $ENV_FILE"
 fi
 
-# Append OPENCHAMI_BASE_IP if not already set (used by cloud-init --base-url)
+# --- 3. Detect and persist network settings ---
+# OPENCHAMI_BASE_IP: the host's primary IP (used by all services)
 if ! grep -q '^OPENCHAMI_BASE_IP=' "$ENV_FILE" 2>/dev/null; then
   BASE_IP="$(hostname -I | awk '{print $1}')"
   if [ -n "$BASE_IP" ]; then
@@ -65,22 +67,111 @@ if ! grep -q '^OPENCHAMI_BASE_IP=' "$ENV_FILE" 2>/dev/null; then
   fi
 fi
 
-# --- 3. Render config templates with secrets ---
-CONFIGS_DIR="/etc/openchami/configs"
-if [ -f "$ENV_FILE" ] && [ -d "$CONFIGS_DIR" ]; then
-  # shellcheck disable=SC1090
-  set -a; . "$ENV_FILE"; set +a
-  for conf in "$CONFIGS_DIR"/*.conf; do
+# Derive network settings from the interface that holds OPENCHAMI_BASE_IP
+# shellcheck disable=SC1090
+set -a; . "$ENV_FILE"; set +a
+
+if [ -n "${OPENCHAMI_BASE_IP:-}" ]; then
+  # Find the interface and CIDR for this IP
+  IFACE_LINE=$(ip -o -4 addr show | grep " ${OPENCHAMI_BASE_IP}/" | head -1)
+  if [ -n "$IFACE_LINE" ]; then
+    CIDR=$(echo "$IFACE_LINE" | awk '{print $4}')       # e.g. 148.187.1.36/27
+    PREFIX=${CIDR#*/}                                     # e.g. 27
+
+    # Derive gateway from default route
+    GATEWAY=$(ip route show default | awk '{print $3}' | head -1)
+
+    # Derive subnet in CIDR notation using python (available on RHEL)
+    SUBNET=$(python3 -c "
+import ipaddress
+net = ipaddress.ip_network('${CIDR}', strict=False)
+print(net)
+")
+
+    # Derive a sensible DHCP pool: base_ip+4 to base_ip+14
+    # (avoids the server IP and low addresses typically used for infrastructure)
+    POOL_START=$(python3 -c "
+import ipaddress
+ip = ipaddress.ip_address('${OPENCHAMI_BASE_IP}')
+print(ip + 4)
+")
+    POOL_END=$(python3 -c "
+import ipaddress
+ip = ipaddress.ip_address('${OPENCHAMI_BASE_IP}')
+print(ip + 14)
+")
+
+    # Persist network vars if not already set
+    for var in OPENCHAMI_GATEWAY OPENCHAMI_SUBNET OPENCHAMI_POOL_START OPENCHAMI_POOL_END; do
+      if ! grep -q "^${var}=" "$ENV_FILE" 2>/dev/null; then
+        case "$var" in
+          OPENCHAMI_GATEWAY)    val="$GATEWAY" ;;
+          OPENCHAMI_SUBNET)     val="$SUBNET" ;;
+          OPENCHAMI_POOL_START) val="$POOL_START" ;;
+          OPENCHAMI_POOL_END)   val="$POOL_END" ;;
+        esac
+        echo "${var}=${val}" >> "$ENV_FILE"
+        log "set ${var}=${val}"
+      fi
+    done
+  else
+    log "WARNING: could not find interface for $OPENCHAMI_BASE_IP"
+  fi
+fi
+
+# --- 4. Render config templates with secrets and network vars ---
+# Reload env file (now includes network vars)
+# shellcheck disable=SC1090
+set -a; . "$ENV_FILE"; set +a
+
+ENVSUBST_VARS='$KEA_DB_PASSWORD $POSTGRES_PASSWORD $SMD_DB_PASSWORD $BSS_DB_PASSWORD $PCS_DB_PASSWORD $STORK_DB_PASSWORD $OPENCHAMI_BASE_IP $OPENCHAMI_GATEWAY $OPENCHAMI_SUBNET $OPENCHAMI_POOL_START $OPENCHAMI_POOL_END'
+
+TEMPLATE_PATTERN='\$\{?KEA_DB_PASSWORD|\$\{?POSTGRES_PASSWORD|\$\{?SMD_DB_PASSWORD|\$\{?BSS_DB_PASSWORD|\$\{?PCS_DB_PASSWORD|\$\{?OPENCHAMI_BASE_IP|\$\{?OPENCHAMI_GATEWAY|\$\{?OPENCHAMI_SUBNET|\$\{?OPENCHAMI_POOL_START|\$\{?OPENCHAMI_POOL_END'
+
+# Render config files (kea, boot.ipxe, etc.)
+if [ -d "$CONFIGS_DIR" ]; then
+  for conf in "$CONFIGS_DIR"/*.conf "$CONFIGS_DIR"/*.ipxe; do
     [ -f "$conf" ] || continue
-    if grep -q '\$KEA_DB_PASSWORD\|\$POSTGRES_PASSWORD\|\$SMD_DB_PASSWORD\|\$BSS_DB_PASSWORD\|\$PCS_DB_PASSWORD' "$conf" 2>/dev/null; then
-      envsubst '$KEA_DB_PASSWORD $POSTGRES_PASSWORD $SMD_DB_PASSWORD $BSS_DB_PASSWORD $PCS_DB_PASSWORD $STORK_DB_PASSWORD' < "$conf" > "$conf.rendered"
+    if grep -qE "$TEMPLATE_PATTERN" "$conf" 2>/dev/null; then
+      envsubst "$ENVSUBST_VARS" < "$conf" > "$conf.rendered"
       mv "$conf.rendered" "$conf"
-      log "rendered secrets in $(basename "$conf")"
+      log "rendered $(basename "$conf")"
     fi
   done
 fi
 
-# --- 4. Install ochami CLI config if missing ---
+# Render quadlet container files (BSS uses OPENCHAMI_BASE_IP in Environment= lines)
+QUADLET_DIR="/etc/containers/systemd"
+if [ -d "$QUADLET_DIR" ]; then
+  for container in "$QUADLET_DIR"/*.container; do
+    [ -f "$container" ] || continue
+    if grep -qE "$TEMPLATE_PATTERN" "$container" 2>/dev/null; then
+      envsubst "$ENVSUBST_VARS" < "$container" > "$container.rendered"
+      mv "$container.rendered" "$container"
+      log "rendered $(basename "$container")"
+    fi
+  done
+fi
+
+# --- 5. Download iPXE firmware if missing ---
+if [ ! -f "$TFTPBOOT_DIR/undionly.kpxe" ] || [ ! -f "$TFTPBOOT_DIR/ipxe.efi" ]; then
+  log "downloading iPXE firmware..."
+  IPXE_BASE="http://boot.ipxe.org"
+  if curl -sfL -o "$TFTPBOOT_DIR/undionly.kpxe" "$IPXE_BASE/undionly.kpxe"; then
+    log "  downloaded undionly.kpxe (BIOS)"
+  else
+    log "WARNING: failed to download undionly.kpxe"
+  fi
+  if curl -sfL -o "$TFTPBOOT_DIR/ipxe.efi" "$IPXE_BASE/x86_64-efi/ipxe.efi"; then
+    log "  downloaded ipxe.efi (UEFI x86_64)"
+  else
+    log "WARNING: failed to download ipxe.efi"
+  fi
+else
+  log "iPXE firmware already present in $TFTPBOOT_DIR"
+fi
+
+# --- 6. Install ochami CLI config if missing ---
 CLI_CONFIG="/etc/ochami/config.yaml"
 CLI_CONFIG_TEMPLATE="/etc/openchami/configs/ochami-cli.yaml"
 if [ -f "$CLI_CONFIG" ]; then
@@ -93,7 +184,7 @@ else
   log "CLI config template not found at $CLI_CONFIG_TEMPLATE, skipping"
 fi
 
-# --- 5. Reload systemd so quadlet units are visible ---
+# --- 7. Reload systemd so quadlet units are visible ---
 systemctl daemon-reload
 log "systemd daemon reloaded"
 

@@ -285,13 +285,16 @@ nodes. Boot images are built using `mkosi` in the
 repository, which produces a minimal openSUSE Leap 15.6 system as a compressed
 cpio archive.
 
+Use the unstripped vanilla image as the default. The older stripped image is
+kept for comparison only and is no longer the recommended node image.
+
 On your build machine (requires `mkosi` and `zstd`):
 
 ```bash
 cd openchami-image-building
 
-# Build the openSUSE Leap cpio image
-make build-leap-live
+# Build the default openSUSE Leap cpio image
+make build-leap-live-vanilla
 ```
 
 Then push the artifacts to the RHEL host using `push-boot-artifacts.sh` from
@@ -300,8 +303,8 @@ this repository:
 ```bash
 # From ochami-from-scratch/
 make push-boot-artifacts HOST=<RHEL_HOST> \
-  ARTIFACTS_DIR=<path-to>/openchami-image-building/mkosi/opensuse-leap-live/mkosi.output \
-  IMAGE_NAME=opensuse
+  ARTIFACTS_DIR=<path-to>/openchami-image-building/mkosi/opensuse-leap-live-vanilla/mkosi.output \
+  IMAGE_NAME=opensuse-vanilla
 ```
 
 Or call the script directly:
@@ -309,24 +312,24 @@ Or call the script directly:
 ```bash
 SSH_USER=root scripts/ops/push-boot-artifacts.sh \
   --host <RHEL_HOST> \
-  --artifacts-dir <path-to>/openchami-image-building/mkosi/opensuse-leap-live/mkosi.output \
-  --image-name opensuse
+  --artifacts-dir <path-to>/openchami-image-building/mkosi/opensuse-leap-live-vanilla/mkosi.output \
+  --image-name opensuse-vanilla
 ```
 
-This rsyncs the artifacts to `/etc/openchami/artifacts/opensuse/` on the server:
+This rsyncs the artifacts to `/etc/openchami/artifacts/opensuse-vanilla/` on the server:
 
 ```text
-/etc/openchami/artifacts/opensuse/
-├── vmlinuz                       (14 MB, kernel)
-└── opensuse-leap-live.cpio.zst   (244 MB, compressed rootfs)
+/etc/openchami/artifacts/opensuse-vanilla/
+├── opensuse-leap-live-vanilla-vmlinuz   (14 MB, kernel)
+└── opensuse-leap-live-vanilla.cpio.zst  (234 MB, compressed rootfs)
 ```
 
 Verify they are served:
 
 ```bash
-curl -sf -o /dev/null -w "%{http_code}" http://localhost:80/artifacts/opensuse/vmlinuz
+curl -sf -o /dev/null -w "%{http_code}" http://localhost:80/artifacts/opensuse-vanilla/opensuse-leap-live-vanilla-vmlinuz
 # Should return 200
-curl -sf -o /dev/null -w "%{http_code}" http://localhost:80/artifacts/opensuse/opensuse-leap-live.cpio.zst
+curl -sf -o /dev/null -w "%{http_code}" http://localhost:80/artifacts/opensuse-vanilla/opensuse-leap-live-vanilla.cpio.zst
 # Should return 200
 ```
 
@@ -379,9 +382,9 @@ Register boot parameters for a specific MAC address using
 ```bash
 scripts/ops/register-bss-defaults.sh \
   --mac <PXE_MAC> \
-  --image-name opensuse \
-  --kernel vmlinuz \
-  --initrd opensuse-leap-live.cpio.zst \
+  --image-name opensuse-vanilla \
+  --kernel opensuse-leap-live-vanilla-vmlinuz \
+  --initrd opensuse-leap-live-vanilla.cpio.zst \
   --kernel-params "console=ttyS0,115200n8 console=tty0"
 ```
 
@@ -402,7 +405,10 @@ curl -sf "http://localhost:27778/boot/v1/bootscript?mac=<PXE_MAC>&arch=x86_64"
 ```
 
 This should return an iPXE script with `kernel` and `initrd` lines pointing to
-your server.
+your server. The `arch` parameter is not part of the boot parameters we
+registered — the MAC alone selects the entry. BSS uses `arch` only to determine
+the iPXE script format in the response. iPXE passes it automatically when
+fetching the boot script at boot time.
 
 ### 8. Verify kea-sync created the DHCP reservation
 
@@ -802,6 +808,5 @@ Architecture documentation and ADRs live under `docs/architecture/`:
 - `docs/architecture/README.md`
 - `docs/architecture/overview.md`
 - `docs/architecture/compose-pxe-lab.md`
-
 
 

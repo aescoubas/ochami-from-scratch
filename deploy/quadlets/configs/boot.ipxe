@@ -2,16 +2,14 @@
 
 echo "=============================================="
 echo "OpenCHAMI Network Boot"
-echo "Server: 148.187.1.68:80"
+echo "Server: $OPENCHAMI_BASE_IP:80"
 echo "=============================================="
 
-set base-url http://148.187.1.68:80
+set base-url http://$OPENCHAMI_BASE_IP:80
 
-echo "Loading kernel..."
-kernel ${base-url}/artifacts/almalinux/vmlinuz ip=dhcp inst.repo=https://repo.almalinux.org/almalinux/9.7/BaseOS/x86_64/os/ inst.text console=ttyS0,115200n8 console=tty0
+echo "Chainloading BSS boot script..."
+chain ${base-url}/boot/v1/bootscript?mac=${mac}&arch=${buildarch} || goto retry
 
-echo "Loading initramfs..."
-initrd ${base-url}/artifacts/almalinux/initrd.img
-
-echo "Booting..."
-boot
+:retry
+sleep 10
+chain ${base-url}/boot/v1/bootscript?mac=${mac}&arch=${buildarch}&retry=1

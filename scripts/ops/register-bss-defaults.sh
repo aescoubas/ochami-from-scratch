@@ -7,8 +7,8 @@
 # Usage:
 #   ./register-bss-defaults.sh [--dry-run]
 #   ./register-bss-defaults.sh --mac 02:00:00:00:00:01 [--dry-run]
-#   ./register-bss-defaults.sh --mac 02:00:00:00:00:01 --image-name opensuse \
-#       --kernel vmlinuz --initrd opensuse-leap-live.cpio.zst \
+#   ./register-bss-defaults.sh --mac 02:00:00:00:00:01 --image-name opensuse-vanilla \
+#       --kernel opensuse-leap-live-vanilla-vmlinuz --initrd opensuse-leap-live-vanilla.cpio.zst \
 #       --kernel-params "console=ttyS0,115200n8 console=tty0" [--dry-run]
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
