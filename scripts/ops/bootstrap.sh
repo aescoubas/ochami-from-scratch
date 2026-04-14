@@ -138,18 +138,32 @@ net = ipaddress.ip_network('${CIDR}', strict=False)
 print(net)
 ")
 
-    # Derive a sensible DHCP pool: base_ip+4 to base_ip+14
-    # (avoids the server IP and low addresses typically used for infrastructure)
-    POOL_START=$(python3 -c "
+    # Derive a sensible DHCP pool: prefer base_ip+4 to base_ip+14,
+    # but clamp it to the subnet's usable host range so smaller subnets
+    # (for example /28 controller networks) still render a valid Kea config.
+    POOL_RANGE=$(python3 -c "
 import ipaddress
+
 ip = ipaddress.ip_address('${OPENCHAMI_BASE_IP}')
-print(ip + 4)
+net = ipaddress.ip_network('${CIDR}', strict=False)
+
+if net.num_addresses > 2:
+    first_usable = net.network_address + 1
+    last_usable = net.broadcast_address - 1
+else:
+    first_usable = net.network_address
+    last_usable = net.broadcast_address
+
+desired_start = ip + 4
+desired_end = ip + 14
+
+pool_start = min(max(desired_start, first_usable), last_usable)
+pool_end = min(max(desired_end, pool_start), last_usable)
+
+print(f'{pool_start} {pool_end}')
 ")
-    POOL_END=$(python3 -c "
-import ipaddress
-ip = ipaddress.ip_address('${OPENCHAMI_BASE_IP}')
-print(ip + 14)
-")
+    POOL_START="${POOL_RANGE%% *}"
+    POOL_END="${POOL_RANGE##* }"
 
     # Persist network vars if not already set
     for var in OPENCHAMI_GATEWAY OPENCHAMI_SUBNET OPENCHAMI_POOL_START OPENCHAMI_POOL_END; do

@@ -258,6 +258,13 @@ class TestScriptStructure:
         assert "CHECK_KEA" in content
         assert "resolve_boot_image_metadata" in content
 
+    def test_bootstrap_clamps_dhcp_pool_to_subnet_range(self):
+        content = self._read_script("bootstrap.sh")
+        assert "net.broadcast_address - 1" in content
+        assert "desired_start = ip + 4" in content
+        assert "desired_end = ip + 14" in content
+        assert "pool_end = min(max(desired_end, pool_start), last_usable)" in content
+
     def test_register_bss_defaults_uses_boot_artifacts(self):
         content = self._read_script("register-bss-defaults.sh")
         assert "resolve_boot_image_metadata" in content
