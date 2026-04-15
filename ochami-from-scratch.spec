@@ -63,6 +63,7 @@ install -m755 ochami-cli/ochami   %{buildroot}/usr/local/bin/ochami
 install -m644 ochami-cli/completions/ochami.bash %{buildroot}/usr/share/bash-completion/completions/ochami
 install -m644 ochami-cli/completions/ochami.fish %{buildroot}/usr/share/fish/vendor_completions.d/ochami.fish
 install -m644 ochami-cli/completions/ochami.zsh  %{buildroot}/usr/share/zsh/site-functions/_ochami
+install -m755 magellan-cli/magellan %{buildroot}/usr/local/bin/magellan
 
 chmod +x %{buildroot}/usr/libexec/openchami/*.sh
 chmod +x %{buildroot}/etc/openchami/pg-init/*.sh
@@ -84,6 +85,7 @@ chmod +x %{buildroot}/etc/openchami/pg-init/*.sh
 /usr/libexec/openchami/load-images.sh
 /usr/libexec/openchami/lib/common.sh
 /usr/local/bin/ochami
+/usr/local/bin/magellan
 /usr/share/bash-completion/completions/ochami
 /usr/share/fish/vendor_completions.d/ochami.fish
 /usr/share/zsh/site-functions/_ochami

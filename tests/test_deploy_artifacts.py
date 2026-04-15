@@ -91,3 +91,17 @@ class TestHelmArtifacts:
 
     def test_templates_dir_exists(self):
         assert (PROJECT / "deploy" / "helm" / "templates").is_dir()
+
+
+class TestRpmPackaging:
+    def test_makefile_builds_and_stages_magellan_cli(self):
+        content = (PROJECT / "Makefile").read_text()
+        assert "MAGELLAN_REPO" in content
+        assert "MAGELLAN_REF ?= v0.5.1" in content
+        assert "build-magellan" in content
+        assert ".rpm-staging/magellan-cli/magellan" in content
+
+    def test_spec_installs_magellan_cli(self):
+        content = (PROJECT / "ochami-from-scratch.spec").read_text()
+        assert "install -m755 magellan-cli/magellan %{buildroot}/usr/local/bin/magellan" in content
+        assert "/usr/local/bin/magellan" in content

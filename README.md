@@ -111,6 +111,10 @@ make rpm                   # Official profile
 make rpm PROFILE=cscs      # CSCS JFrog profile
 ```
 
+The RPM also stages the host CLIs `ochami` and `magellan`. By default,
+`magellan` is built from upstream tag `v0.5.1`; override `MAGELLAN_SRC`,
+`MAGELLAN_REPO`, or `MAGELLAN_REF` if you need a different checkout or ref.
+
 Install on AlmaLinux / RHEL / Fedora:
 
 ```bash
@@ -121,6 +125,13 @@ The RPM `%post` scriptlet runs `bootstrap.sh` which creates
 `/etc/openchami/artifacts/`, `/etc/openchami/artifacts/rustfs-{data,logs}/`,
 and `/etc/openchami/tftpboot/`, generates random database and RustFS
 credentials in `/etc/openchami/openchami.env`, and reloads systemd.
+
+After install, the host has both CLIs available:
+
+```bash
+ochami version
+magellan version
+```
 
 Images must be available in podman before starting:
 
@@ -208,7 +219,7 @@ On your build machine:
 
 ```bash
 make rpm-clean && make rpm
-scp openchami-0.1.2-1.x86_64.rpm <rhel-host>:~/
+scp openchami-0.1.3-1.x86_64.rpm <rhel-host>:~/
 ```
 
 On the RHEL host:

@@ -1,7 +1,7 @@
 .PHONY: test deploy teardown check build-images build-boot-artifacts create-test-vms
 .PHONY: health-check register-nodes register-bss-defaults push-boot-artifacts
 .PHONY: lab lab-server lab-clients lab-destroy lab-status
-.PHONY: rpm rpm-clean build-cli
+.PHONY: rpm rpm-clean build-cli build-magellan
 
 # --- Configuration ---
 
@@ -102,7 +102,7 @@ push-boot-artifacts:
 
 # --- RPM packaging ---
 
-RPM_VERSION ?= 0.1.2
+RPM_VERSION ?= 0.1.3
 RPM_RELEASE ?= 1
 RPM_ARCH := $(shell uname -m)
 
@@ -110,6 +110,12 @@ RPM_ARCH := $(shell uname -m)
 # Override OCHAMI_CLI_SRC to point at your own checkout if desired.
 OCHAMI_CLI_REPO ?= https://github.com/OpenCHAMI/ochami.git
 OCHAMI_CLI_SRC ?= $(CURDIR)/.ochami-cli
+
+# Path to the magellan source — cloned locally on first use.
+# Override MAGELLAN_SRC to point at your own checkout if desired.
+MAGELLAN_REPO ?= https://github.com/OpenCHAMI/magellan.git
+MAGELLAN_REF ?= v0.5.1
+MAGELLAN_SRC ?= $(CURDIR)/.magellan
 
 # Build the RPM package
 rpm: openchami-$(RPM_VERSION)-$(RPM_RELEASE).$(RPM_ARCH).rpm
@@ -132,22 +138,35 @@ build-cli: | $(OCHAMI_CLI_SRC)
 	$(MAKE) -C $(OCHAMI_CLI_SRC)
 	$(MAKE) -C $(OCHAMI_CLI_SRC) completions
 
+.PHONY: build-magellan
+build-magellan:
+	if [ "$(MAGELLAN_SRC)" = "$(CURDIR)/.magellan" ]; then \
+		if [ ! -d "$(MAGELLAN_SRC)/.git" ]; then \
+			git clone --branch "$(MAGELLAN_REF)" --depth 1 "$(MAGELLAN_REPO)" "$(MAGELLAN_SRC)"; \
+		else \
+			git -C "$(MAGELLAN_SRC)" fetch --tags origin; \
+			git -C "$(MAGELLAN_SRC)" checkout "$(MAGELLAN_REF)"; \
+		fi; \
+	fi
+	cd "$(MAGELLAN_SRC)" && go build -o magellan .
+
 RPM_SOURCES = ochami-from-scratch.spec $(wildcard deploy/quadlets/**/*) $(wildcard scripts/ops/*) $(wildcard scripts/ops/lib/*)
 
-$(HOME)/rpmbuild/SOURCES/openchami-$(RPM_VERSION).tar.gz: $(HOME)/rpmbuild $(RPM_SOURCES) build-cli
+$(HOME)/rpmbuild/SOURCES/openchami-$(RPM_VERSION).tar.gz: $(HOME)/rpmbuild $(RPM_SOURCES) build-cli build-magellan
 	mkdir -p $(HOME)/rpmbuild/SOURCES
 	rm -rf .rpm-staging
-	mkdir -p .rpm-staging/ochami-cli/completions
+	mkdir -p .rpm-staging/ochami-cli/completions .rpm-staging/magellan-cli
 	cp $(OCHAMI_CLI_SRC)/ochami .rpm-staging/ochami-cli/ochami
 	cp $(OCHAMI_CLI_SRC)/completions/ochami.bash .rpm-staging/ochami-cli/completions/
 	cp $(OCHAMI_CLI_SRC)/completions/ochami.fish .rpm-staging/ochami-cli/completions/
 	cp $(OCHAMI_CLI_SRC)/completions/ochami.zsh  .rpm-staging/ochami-cli/completions/
+	cp $(MAGELLAN_SRC)/magellan .rpm-staging/magellan-cli/magellan
 	rm -f $(HOME)/rpmbuild/SOURCES/openchami-$(RPM_VERSION).tar.gz
 	tar czvf $@ --transform 's,^,openchami-$(RPM_VERSION)/,' \
 		ochami-from-scratch.spec \
 		deploy/quadlets/ \
 		scripts/ops/ \
-		-C .rpm-staging ochami-cli/
+		-C .rpm-staging ochami-cli/ magellan-cli/
 	rm -rf .rpm-staging
 
 $(HOME)/rpmbuild/RPMS/$(RPM_ARCH)/openchami-$(RPM_VERSION)-$(RPM_RELEASE).$(RPM_ARCH).rpm: $(HOME)/rpmbuild/SPECS/openchami.spec $(HOME)/rpmbuild/SOURCES/openchami-$(RPM_VERSION).tar.gz

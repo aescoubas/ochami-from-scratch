@@ -37,3 +37,4 @@ result
 *.rpm
 .rpm-staging/
 .ochami-cli/
+.magellan/
