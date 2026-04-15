@@ -1,0 +1,32 @@
+[Unit]
+Description=OpenCHAMI openchami-mcp
+After=smd.service bss.service cloud-init.service pcs.service kea.service
+Requires=smd.service bss.service cloud-init.service pcs.service kea.service
+
+[Container]
+Image=jfrog.svc.cscs.ch/docker/openchami/cscs-openchami-mcp:v0.1.1
+Network=host
+HealthCmd=curl -sf http://127.0.0.1:8081/healthz
+HealthInterval=30s
+HealthTimeout=5s
+Environment=OPENCHAMI_MCP_MODE=read-write
+Environment=OPENCHAMI_MCP_ENABLE_WRITES=true
+Environment=OPENCHAMI_MCP_REQUIRE_WRITE_ACK=true
+Environment=OPENCHAMI_MCP_TRANSPORT=http
+Environment=OPENCHAMI_MCP_LOG_LEVEL=info
+Environment=OPENCHAMI_MCP_LISTEN_ADDR=127.0.0.1:8081
+Environment=OPENCHAMI_MCP_BASE_PATH=/mcp
+Environment=OPENCHAMI_MCP_HEALTH_PATH=/healthz
+Environment=OPENCHAMI_MCP_SMD_URL=https://localhost:27779
+Environment=OPENCHAMI_MCP_SMD_TLS_INSECURE_SKIP_VERIFY=true
+Environment=OPENCHAMI_MCP_BSS_URL=http://localhost:27778
+Environment=OPENCHAMI_MCP_CLOUD_INIT_URL=http://localhost:27777
+Environment=OPENCHAMI_MCP_POWER_CONTROL_URL=http://localhost:28007/v1
+Environment=OPENCHAMI_MCP_KEA_URL=http://localhost:8000
+
+[Service]
+Restart=on-failure
+TimeoutStartSec=300
+
+[Install]
+WantedBy=multi-user.target

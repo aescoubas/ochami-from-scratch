@@ -152,6 +152,12 @@ make rpm PROFILE=cscs
 The RPM quadlets reference `jfrog.svc.cscs.ch/...` so podman pulls
 automatically on `systemctl start openchami.target`.
 
+The CSCS quadlets currently pin `kea-sync` to
+`jfrog.svc.cscs.ch/docker/openchami/cscs-kea-sync:v0.1.0`. The RPM also ships
+`openchami-mcp.container`, which follows
+`jfrog.svc.cscs.ch/docker/openchami/cscs-openchami-mcp:v0.1.1`, runs it in HTTP
+mode on `127.0.0.1:8081`, and enables read-write MCP access on deployed hosts.
+
 ## Development And Verification
 
 ```bash
@@ -202,7 +208,7 @@ On your build machine:
 
 ```bash
 make rpm-clean && make rpm
-scp openchami-0.1.1-1.x86_64.rpm <rhel-host>:~/
+scp openchami-0.1.2-1.x86_64.rpm <rhel-host>:~/
 ```
 
 On the RHEL host:
@@ -241,6 +247,27 @@ curl -sf http://localhost:80/boot.ipxe -o /dev/null && echo "http-server OK"
 curl -sf http://localhost:9000/health -o /dev/null && echo "rustfs S3 OK"
 curl -sf http://localhost:9001/rustfs/console/health -o /dev/null && echo "rustfs console OK"
 ```
+
+The packaged `openchami-mcp` service starts with `openchami.target` on hosts
+such as `msws`. It runs as a localhost-only HTTP MCP endpoint. Verify it like
+this:
+
+```bash
+curl -sf http://127.0.0.1:8081/healthz && echo "openchami-mcp OK"
+curl -sS \
+  -H 'Content-Type: application/json' \
+  http://127.0.0.1:8081/mcp \
+  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"curl","version":"0"}}}' | jq .
+```
+
+`openchami-mcp` is not exposed through nginx. The RPM runs it as a dedicated
+localhost-bound HTTP service so systemd can manage it like the rest of the
+stack without the old FIFO/stdin bridge. In this deployment, `openchami-mcp`
+talks to SMD over `https://localhost:27779` and skips certificate verification
+for that one backend because SMD uses a localhost self-signed certificate.
+For Codex, Claude Code, and Gemini CLI client configuration, including SSH
+tunnel patterns for this localhost-only endpoint, see the `openchami-mcp`
+repository README.
 
 ### 3. Open firewall ports
 

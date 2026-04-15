@@ -5,7 +5,7 @@ After=smd.service kea-init.service kea.service http-server.service
 Requires=smd.service kea-init.service kea.service http-server.service
 
 [Container]
-Image=jfrog.svc.cscs.ch/docker/openchami/cscs-kea-sync:main
+Image=jfrog.svc.cscs.ch/docker/openchami/cscs-kea-sync:v0.1.0
 Network=host
 Environment=KEA_SYNC_KEA_SERVICES=dhcp4
 Environment=KEA_SYNC_KEA_URL=http://localhost:8000
@@ -14,7 +14,7 @@ Environment=KEA_SYNC_LOG_LEVEL=info
 Environment=KEA_SYNC_SMD_URL=http://localhost:80
 Environment=KEA_SYNC_SYNC_INTERVAL=10s
 EnvironmentFile=/etc/openchami/openchami.env
-Exec=/bin/kea-sync
+Exec=/usr/local/bin/kea-sync
 HealthCmd=curl -fsS http://localhost:28080/readiness
 HealthInterval=5s
 HealthTimeout=5s

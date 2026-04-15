@@ -265,6 +265,18 @@ class TestScriptStructure:
         assert "desired_end = ip + 14" in content
         assert "pool_end = min(max(desired_end, pool_start), last_usable)" in content
 
+    def test_bootstrap_no_longer_creates_openchami_mcp_runtime_dir(self):
+        content = self._read_script("bootstrap.sh")
+        assert 'OPENCHAMI_MCP_DIR="/etc/openchami/openchami-mcp"' not in content
+        assert 'chown 65534:65534 "$OPENCHAMI_MCP_DIR"' not in content
+
+    def test_bootstrap_renders_dbpass_aliases_into_quadlets(self):
+        content = self._read_script("bootstrap.sh")
+        assert "$SMD_DBPASS" in content
+        assert "$BSS_DBPASS" in content
+        assert "$KEA_DBPASS" in content
+        assert "$PCS_DBPASS" in content
+
     def test_register_bss_defaults_uses_boot_artifacts(self):
         content = self._read_script("register-bss-defaults.sh")
         assert "resolve_boot_image_metadata" in content

@@ -102,7 +102,7 @@ push-boot-artifacts:
 
 # --- RPM packaging ---
 
-RPM_VERSION ?= 0.1.1
+RPM_VERSION ?= 0.1.2
 RPM_RELEASE ?= 1
 RPM_ARCH := $(shell uname -m)
 
